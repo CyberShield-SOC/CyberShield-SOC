@@ -6,8 +6,8 @@ AI-Powered Log Monitoring and Threat Detection Platform
 |------|------|
 | Yugal Limbu | Project Manager / Documentation Lead |
 | Paul Truong | Frontend Developer |
-| Marvellous Obasanya | Backend Developer |
-| Samin Rijal | Cybersecurity / Detection Lead |
+| Samin Rijal | Backend Developer |
+| Marvellous Obasanya| Cybersecurity / Detection Lead |
 | Kapil Khanal | ML / DevOps / Testing Lead |
 
 ## Tech Stack
