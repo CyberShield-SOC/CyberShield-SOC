@@ -1,0 +1,9 @@
+Jun 14 02:11:43 Failed password for root from 203.0.113.4
+Jun 14 02:11:45 Failed password for root from 203.0.113.4
+Jun 14 02:11:47 Failed password for root from 203.0.113.4
+Jun 14 02:11:49 Failed password for root from 203.0.113.4
+Jun 14 02:11:51 Failed password for root from 203.0.113.4
+Jun 14 02:12:01 Invalid user admin from 203.0.113.4
+Jun 14 02:15:11 sudo auth failure
+Jun 14 02:15:14 sudo auth failure
+Jun 14 02:18:25 Accepted password for jdoe from 10.0.0.5

@@ -1,0 +1,10 @@
+timestamp,ip,username,event,status
+Jun 14 02:11:43,203.0.113.4,root,Failed Password,FAIL
+Jun 14 02:11:45,203.0.113.4,root,Failed Password,FAIL
+Jun 14 02:11:47,203.0.113.4,root,Failed Password,FAIL
+Jun 14 02:11:49,203.0.113.4,root,Failed Password,FAIL
+Jun 14 02:11:51,203.0.113.4,root,Failed Password,FAIL
+Jun 14 02:12:01,203.0.113.4,admin,Invalid User,FAIL
+Jun 14 02:15:11,,,Sudo Authentication Failure,FAIL
+Jun 14 02:15:14,,,Sudo Authentication Failure,FAIL
+Jun 14 02:18:25,10.0.0.5,jdoe,Login Success,SUCCESS
