@@ -133,6 +133,7 @@ React/Vite/Tailwind dashboard for uploading and viewing parsed security logs.
 cd ./frontend_demo
 npm install
 npm run dev
+```
 
 ## Folder Structure
 
