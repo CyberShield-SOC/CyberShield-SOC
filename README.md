@@ -106,6 +106,34 @@ The backend API returns JSON containing:
 - Skipped lines
 - Error details when validation fails
 
+## Frontend
+
+React/Vite/Tailwind dashboard for uploading and viewing parsed security logs.
+
+## Features
+
+- Drag-and-drop file upload
+- Select file button
+- Supports `.txt`, `.log`, `.csv`, `.json`
+- Parsed logs table
+- Log search/filter
+- Parsed log count
+- Threat analysis cards
+- Responsive layout
+
+## Tech Stack
+
+- React.js
+- Vite
+- Tailwind CSS
+
+## Install
+
+```bash
+cd ./frontend_demo
+npm install
+npm run dev
+
 ## Folder Structure
 
 - `parser/` - parser source code
