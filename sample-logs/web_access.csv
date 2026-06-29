@@ -1,0 +1,31 @@
+timestamp,ip_address,username,event_type,status,method,path,status_code,bytes,user_agent
+2026-06-14T08:00:01Z,10.0.0.105,jdoe,http_get,SUCCESS,GET,/dashboard,200,14520,Mozilla/5.0 (Windows NT 10.0) Chrome/124.0
+2026-06-14T08:00:45Z,10.0.0.105,jdoe,http_get,SUCCESS,GET,/api/alerts,200,3210,Mozilla/5.0 (Windows NT 10.0) Chrome/124.0
+2026-06-14T08:15:30Z,10.0.0.108,msmith,http_get,SUCCESS,GET,/dashboard,200,14520,Mozilla/5.0 (Macintosh) Safari/17.0
+2026-06-14T08:16:01Z,10.0.0.108,msmith,http_post,SUCCESS,POST,/api/upload,200,512,Mozilla/5.0 (Macintosh) Safari/17.0
+2026-06-14T09:00:00Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,401,180,python-requests/2.31.0
+2026-06-14T09:00:02Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,401,180,python-requests/2.31.0
+2026-06-14T09:00:04Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,401,180,python-requests/2.31.0
+2026-06-14T09:00:06Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,401,180,python-requests/2.31.0
+2026-06-14T09:00:08Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,401,180,python-requests/2.31.0
+2026-06-14T09:00:10Z,185.220.101.47,,login_attempt,FAILED,POST,/admin/login,429,90,python-requests/2.31.0
+2026-06-14T09:14:22Z,91.108.4.200,,security_event,FAILED,GET,/etc/passwd,404,162,curl/7.88.1
+2026-06-14T09:14:25Z,91.108.4.200,,security_event,FAILED,GET,/../../../etc/shadow,400,140,curl/7.88.1
+2026-06-14T09:14:28Z,91.108.4.200,,security_event,FAILED,GET,/wp-admin/setup-config.php,404,162,curl/7.88.1
+2026-06-14T09:14:31Z,91.108.4.200,,security_event,FAILED,GET,/.env,404,162,curl/7.88.1
+2026-06-14T09:14:34Z,91.108.4.200,,security_event,FAILED,GET,/config.php,404,162,curl/7.88.1
+2026-06-14T10:00:00Z,10.0.0.77,ksmith,http_get,SUCCESS,GET,/reports,200,9800,Mozilla/5.0 (Windows NT 10.0) Firefox/125.0
+2026-06-14T10:05:18Z,10.0.0.77,ksmith,http_post,SUCCESS,POST,/api/export,200,204800,Mozilla/5.0 (Windows NT 10.0) Firefox/125.0
+2026-06-14T10:30:00Z,172.16.5.10,contractor1,login_attempt,SUCCESS,POST,/login,200,320,Mozilla/5.0 (X11; Linux) Chrome/124.0
+2026-06-14T10:30:45Z,172.16.5.10,contractor1,http_get,SUCCESS,GET,/dashboard,200,14520,Mozilla/5.0 (X11; Linux) Chrome/124.0
+2026-06-14T10:31:00Z,172.16.5.10,contractor1,http_get,FAILED,GET,/admin,403,210,Mozilla/5.0 (X11; Linux) Chrome/124.0
+2026-06-14T10:31:05Z,172.16.5.10,contractor1,http_get,FAILED,GET,/admin/users,403,210,Mozilla/5.0 (X11; Linux) Chrome/124.0
+2026-06-14T11:45:00Z,10.0.0.105,jdoe,http_post,SUCCESS,POST,/api/upload,200,1048576,Mozilla/5.0 (Windows NT 10.0) Chrome/124.0
+2026-06-14T12:00:00Z,10.0.0.1,,http_get,SUCCESS,GET,/health,200,42,kube-probe/1.29
+2026-06-14T13:00:00Z,10.0.0.1,,http_get,SUCCESS,GET,/health,200,42,kube-probe/1.29
+2026-06-14T14:22:11Z,198.51.100.88,,security_event,FAILED,POST,/api/graphql,400,380,Mozilla/5.0 (Windows NT 10.0) Chrome/124.0
+2026-06-14T14:22:14Z,198.51.100.88,,security_event,FAILED,POST,/api/graphql,400,380,Mozilla/5.0 (Windows NT 10.0) Chrome/124.0
+2026-06-14T15:00:00Z,10.0.0.108,msmith,connection_closed,INFO,GET,/logout,200,80,Mozilla/5.0 (Macintosh) Safari/17.0
+2026-06-14T16:30:00Z,10.0.0.77,ksmith,connection_closed,INFO,GET,/logout,200,80,Mozilla/5.0 (Windows NT 10.0) Firefox/125.0
+2026-06-14T22:00:00Z,203.0.113.200,,port_scan,FAILED,GET,/actuator/env,404,162,Nuclei/3.2.0
+2026-06-14T22:00:01Z,203.0.113.200,,port_scan,FAILED,GET,/actuator/heapdump,404,162,Nuclei/3.2.0

@@ -63,7 +63,7 @@ def save_csv(data, output_file):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python parser/log_parser.py sample_logs/auth.log")
+        print("Usage: python parser/log_parser.py sample-logs/auth.log")
         sys.exit(1)
 
     input_path = Path(sys.argv[1])

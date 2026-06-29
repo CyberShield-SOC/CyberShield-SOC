@@ -1,0 +1,31 @@
+timestamp,ip_address,username,event_type,status,event_id,workstation,domain,logon_type,failure_reason
+2026-06-14T07:00:03Z,10.0.0.105,jdoe,login_attempt,SUCCESS,4624,WS-JDOE,CORP,Interactive,
+2026-06-14T07:02:44Z,10.0.0.105,jdoe,privilege_escalation,SUCCESS,4672,WS-JDOE,CORP,,
+2026-06-14T07:45:11Z,10.0.0.108,msmith,login_attempt,SUCCESS,4624,WS-MSMITH,CORP,Interactive,
+2026-06-14T08:01:59Z,10.0.0.108,msmith,privilege_escalation,FAILED,4625,WS-MSMITH,CORP,Interactive,Wrong password
+2026-06-14T08:02:03Z,10.0.0.108,msmith,privilege_escalation,FAILED,4625,WS-MSMITH,CORP,Interactive,Wrong password
+2026-06-14T08:02:08Z,10.0.0.108,msmith,privilege_escalation,FAILED,4625,WS-MSMITH,CORP,Interactive,Wrong password
+2026-06-14T08:15:00Z,10.0.0.1,svc_deploy,login_attempt,SUCCESS,4624,DC01,CORP,Network,
+2026-06-14T08:30:22Z,192.168.1.200,guest,login_attempt,FAILED,4625,UNKNOWN,CORP,Network,Account disabled
+2026-06-14T08:30:25Z,192.168.1.200,guest,login_attempt,FAILED,4625,UNKNOWN,CORP,Network,Account disabled
+2026-06-14T09:00:00Z,10.0.0.105,jdoe,login_attempt,SUCCESS,4624,WS-JDOE,CORP,Network,
+2026-06-14T09:14:37Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Wrong password
+2026-06-14T09:14:40Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Wrong password
+2026-06-14T09:14:43Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Wrong password
+2026-06-14T09:14:46Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Wrong password
+2026-06-14T09:14:49Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Wrong password
+2026-06-14T09:14:52Z,10.0.0.50,administrator,login_attempt,FAILED,4625,SRV-FILE01,CORP,Network,Account locked out
+2026-06-14T10:05:19Z,10.0.0.105,jdoe,privilege_escalation,SUCCESS,4688,WS-JDOE,CORP,,
+2026-06-14T10:45:00Z,10.0.0.108,msmith,login_attempt,SUCCESS,4624,WS-MSMITH,CORP,Interactive,
+2026-06-14T11:00:00Z,10.0.0.200,svc_antivirus,login_attempt,SUCCESS,4624,SRV-AV01,CORP,Service,
+2026-06-14T11:30:44Z,10.0.0.77,ksmith,login_attempt,FAILED,4625,WS-KSMITH,CORP,Interactive,Wrong password
+2026-06-14T11:30:49Z,10.0.0.77,ksmith,login_attempt,SUCCESS,4624,WS-KSMITH,CORP,Interactive,
+2026-06-14T12:00:01Z,10.0.0.1,svc_backup,login_attempt,SUCCESS,4624,DC01,CORP,Network,
+2026-06-14T13:22:05Z,172.16.5.10,contractor1,login_attempt,SUCCESS,4624,VPN-GW,CORP,Network,
+2026-06-14T13:22:10Z,172.16.5.10,contractor1,privilege_escalation,FAILED,4625,SRV-PROD01,CORP,Network,Access denied
+2026-06-14T14:00:00Z,10.0.0.105,jdoe,connection_closed,INFO,4634,WS-JDOE,CORP,,
+2026-06-14T17:00:00Z,10.0.0.108,msmith,connection_closed,INFO,4634,WS-MSMITH,CORP,,
+2026-06-14T23:47:12Z,203.0.113.5,administrator,login_attempt,FAILED,4625,DC01,CORP,Network,Wrong password
+2026-06-14T23:47:15Z,203.0.113.5,administrator,login_attempt,FAILED,4625,DC01,CORP,Network,Wrong password
+2026-06-14T23:47:18Z,203.0.113.5,administrator,login_attempt,FAILED,4625,DC01,CORP,Network,Wrong password
+2026-06-14T23:47:21Z,203.0.113.5,administrator,login_attempt,FAILED,4625,DC01,CORP,Network,Wrong password

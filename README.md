@@ -9,7 +9,7 @@ This Sprint 1 prototype focuses on log ingestion and parsing. It includes a pars
 ## Sprint 1 Deliverables Included
 
 - Python parser script (`parser/log_parser.py`)
-- Sample security log dataset (`sample_logs/auth.log`)
+- Sample security log dataset (`sample-logs/auth.log`)
 - Parsed JSON output (`output/parsed_logs.json`)
 - Parsed CSV output (`output/parsed_logs.csv`)
 - Backend FastAPI upload API (`backend/`)
@@ -24,7 +24,7 @@ This Sprint 1 prototype focuses on log ingestion and parsing. It includes a pars
 ## Run the Parser
 
 ```bash
-python parser/log_parser.py sample_logs/auth.log
+python parser/log_parser.py sample-logs/auth.log
 ```
 
 ## Run the Backend API
@@ -39,20 +39,24 @@ Run the server:
 
 ```bash
 cd backend
-uvicorn app.main:app --reload --port 3000
-```
-
-You can also run the script launcher from the repository root:
-
-```bash
-python backend/main.py
+python main.py
 ```
 
 Open:
 
-- Upload page: `http://localhost:3000/`
+- Frontend dashboard: `http://localhost:5173` (with Vite dev server running)
 - API docs: `http://localhost:3000/docs`
 - Health check: `http://localhost:3000/health`
+
+## Run the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open `http://localhost:5173` in your browser.
 
 ## Backend API
 
@@ -89,7 +93,7 @@ Returns backend service health.
 | Parsed JSON response | Yes |
 | Error handling for unsupported, empty, large, or bad files | Yes |
 | Basic fields: timestamp, IP address, username, event type, status | Yes |
-| Simple table display | Yes, preview page at `/` |
+| Simple table display | Yes, React dashboard at `http://localhost:5173` |
 
 ## Output
 
@@ -114,7 +118,7 @@ React/Vite/Tailwind dashboard for uploading and viewing parsed security logs.
 
 - Drag-and-drop file upload
 - Select file button
-- Supports `.txt`, `.log`, `.csv`, `.json`
+- Supports `.log` and `.csv`
 - Parsed logs table
 - Log search/filter
 - Parsed log count
@@ -126,19 +130,23 @@ React/Vite/Tailwind dashboard for uploading and viewing parsed security logs.
 - React.js
 - Vite
 - Tailwind CSS
-
-## Install
-
-```bash
-cd ./frontend_demo
-npm install
-npm run dev
-```
+- FastAPI (Python)
 
 ## Folder Structure
 
 - `parser/` - parser source code
-- `sample_logs/` - test input logs
+- `sample-logs/` - test input logs
 - `output/` - generated parsed files
 - `docs/` - Sprint 1 documentation
 - `backend/` - FastAPI backend upload API
+- `frontend/` - React/Vite/Tailwind dashboard
+
+## Team Members
+
+| Name | Role |
+|------|------|
+| Yugal Limbu | Project Manager / Documentation Lead |
+| Paul Truong | Frontend Developer |
+| Samin Rijal | Backend Developer |
+| Marvellous Obasanya | Cybersecurity / Detection Lead |
+| Kapil Khanal | ML / DevOps / Testing Lead |
