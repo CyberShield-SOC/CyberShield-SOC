@@ -4,7 +4,7 @@
 
 :root {
   font-family: Gilroy, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f1f1f1;
+  background: #0D1117;
 }
 
 * {
@@ -16,15 +16,15 @@ body {
 }
 
 ::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
+  height: 8px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #ffbc99;
-  border-radius: 999px;
+  background: #30363D;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(28, 28, 28, 0.08);
+  background: transparent;
 }
