@@ -25,7 +25,7 @@ function StatusBadge({ status }) {
     status === 'SUCCESS' ? 'bg-[#15803D] text-white' :
                            'bg-[#374151] text-white/60';
   return (
-    <span className={`rounded px-2 py-0.5 text-[11px] font-semibold tracking-wide ${cls}`}>
+    <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-semibold tracking-[.08em] ${cls}`}>
       {status}
     </span>
   );
@@ -117,8 +117,8 @@ function App() {
               <p className="mb-4 inline-flex w-fit items-center rounded border border-[#58A6FF]/25 bg-[#58A6FF]/10 px-2.5 py-1 text-[10px] font-bold tracking-[.16em] text-[#58A6FF]">
                 CYBERSHIELD SOC — SPRINT 1
               </p>
-              <h1 className="text-3xl font-bold leading-[1.15] tracking-tight sm:text-4xl lg:text-[2.75rem]">
-                Upload logs. Parse events.<br className="hidden sm:block" /> Spot threats faster.
+              <h1 className="font-display text-3xl font-semibold leading-[1.15] tracking-[-0.02em] [text-shadow:none] sm:text-4xl lg:text-[2.75rem]">
+                Centralized log monitoring and threat detection.
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45 sm:text-base">
                 Upload .log or .csv files to detect failed logins, invalid users, privilege escalation, and connection events.
@@ -127,11 +127,11 @@ function App() {
 
             {/* KPI tile */}
             <div className="rounded-lg border border-white/10 bg-[#0D1117] p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-white/35">
+              <p className="text-[9px] font-medium uppercase tracking-[.23em] text-white/35">
                 Parsed Log Count
               </p>
               <hr className="my-3 border-white/10" />
-              <p className="text-6xl font-bold tabular-nums leading-none">{logs.length}</p>
+              <p className="text-6xl font-mono font-bold tabular-nums leading-none">{logs.length}</p>
               <p className="mt-4 text-xs leading-relaxed text-white/40">{message}</p>
             </div>
 
@@ -209,8 +209,8 @@ function App() {
               className="rounded-lg border border-white/10 bg-[#161B22] p-4"
               style={{ borderTop: `2px solid ${accent}` }}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">{label}</p>
-              <p className="mt-2 break-words text-3xl font-bold tabular-nums">{value}</p>
+              <p className="text-[9px] font-medium uppercase tracking-[.10em] text-white/35">{label}</p>
+              <p className="mt-2 break-words text-3xl font-mono font-bold tabular-nums">{value}</p>
             </article>
           ))}
         </section>
@@ -220,7 +220,7 @@ function App() {
 
           {/* Threat analysis */}
           <div className="rounded-xl border border-white/10 bg-[#161B22] p-5">
-            <h2 className="text-[10px] font-semibold uppercase tracking-[.15em] text-white/40">
+            <h2 className="text-[9px] font-medium uppercase tracking-[.20em] text-white/40">
               Threat Analysis
             </h2>
 
@@ -235,7 +235,7 @@ function App() {
                   aria-label="Event status distribution"
                 >
                   <div className="grid size-24 place-items-center rounded-full bg-[#161B22] text-center">
-                    <span className="text-2xl font-bold tabular-nums leading-none">{logs.length}</span>
+                    <span className="text-2xl font-mono font-bold tabular-nums leading-none">{logs.length}</span>
                     <span className="mt-0.5 text-[9px] uppercase tracking-wider text-white/35">events</span>
                   </div>
                 </div>
@@ -251,8 +251,8 @@ function App() {
                   <div key={label} className="flex items-center gap-2">
                     <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
                     <span className="flex-1 text-xs text-white/50">{label}</span>
-                    <span className="text-sm font-semibold tabular-nums">{count}</span>
-                    <span className="w-8 text-right text-xs text-white/30">{pct}%</span>
+                    <span className="text-sm font-mono font-semibold tabular-nums">{count}</span>
+                    <span className="w-8 text-right text-xs font-mono text-white/30">{pct}%</span>
                   </div>
                 ))}
               </div>
@@ -281,12 +281,12 @@ function App() {
           <div className="rounded-xl border border-white/10 bg-[#161B22] p-4 sm:p-5">
             <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div>
-                <h2 className="text-[10px] font-semibold uppercase tracking-[.15em] text-white/40">
+                <h2 className="text-[9px] font-medium uppercase tracking-[.20em] text-white/40">
                   Parsed Logs
                 </h2>
                 <p className="mt-0.5 text-xs text-white/25">Timestamp · IP · user · event · status</p>
               </div>
-              <span className="text-xs font-semibold text-[#58A6FF]">
+              <span className="text-xs font-mono font-semibold text-[#58A6FF]">
                 {filteredLogs.length} / {logs.length} records
               </span>
             </div>
@@ -326,8 +326,8 @@ function App() {
                     >
                       <td className="px-3 py-2 font-mono text-white/40">{log.timestamp || '—'}</td>
                       <td className="px-3 py-2 font-mono text-white/55">{log.ip || '—'}</td>
-                      <td className="px-3 py-2 text-white/65">{log.username || '—'}</td>
-                      <td className="px-3 py-2 font-medium text-white/90">{log.event}</td>
+                      <td className="px-3 py-2 font-mono text-white/65">{log.username || '—'}</td>
+                      <td className="px-3 py-2 font-mono font-medium text-white/90">{log.event}</td>
                       <td className="px-3 py-2">
                         <StatusBadge status={log.status} />
                       </td>
