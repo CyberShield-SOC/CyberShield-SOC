@@ -1,4 +1,33 @@
 import React, { useMemo, useRef, useState } from 'react';
+
+const SEVERITY_STYLE = {
+  HIGH:   { border: '#EF4444', text: 'text-[#EF4444]' },
+  MEDIUM: { border: '#F59E0B', text: 'text-[#F59E0B]' },
+  LOW:    { border: '#6B7280', text: 'text-white/40'  },
+};
+
+const RULE_LABELS = {
+  brute_force_login:        'Brute-Force Login',
+  invalid_user_enumeration: 'Username Enumeration',
+  sudo_failure:             'Sudo Failure',
+};
+
+function AlertCard({ alert }) {
+  const style = SEVERITY_STYLE[alert.severity] || SEVERITY_STYLE.LOW;
+  return (
+    <div className="rounded-md border-l-2 bg-[#0D1117] px-3 py-2.5" style={{ borderColor: style.border }}>
+      <p className={`text-[10px] font-bold uppercase tracking-wider ${style.text}`}>
+        {alert.severity} — {RULE_LABELS[alert.rule] || alert.rule}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-white/50">{alert.description}</p>
+      {alert.source_ip && (
+        <p className="mt-1 font-mono text-[10px] text-white/30">
+          {alert.source_ip} · {alert.count} events · {alert.time_window_seconds}s window
+        </p>
+      )}
+    </div>
+  );
+}
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -32,13 +61,14 @@ function StatusBadge({ status }) {
 }
 
 function App() {
-  const [files, setFiles]             = useState([]);
-  const [logs, setLogs]               = useState(SAMPLE_LOGS);
-  const [query, setQuery]             = useState('');
-  const [logQuery, setLogQuery]       = useState('');
+  const [files, setFiles]               = useState([]);
+  const [logs, setLogs]                 = useState(SAMPLE_LOGS);
+  const [alerts, setAlerts]             = useState([]);
+  const [query, setQuery]               = useState('');
+  const [logQuery, setLogQuery]         = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [dragging, setDragging]       = useState(false);
-  const [message, setMessage]         = useState('Sample SOC logs are loaded. Upload files to analyze your own data.');
+  const [dragging, setDragging]         = useState(false);
+  const [message, setMessage]           = useState('Sample SOC logs are loaded. Upload files to analyze your own data.');
   const inputRef = useRef(null);
 
   const addFiles = async (fileList) => {
@@ -47,6 +77,7 @@ function App() {
     const rejected  = incoming.length - supported.length;
     const parsedBatches = [];
     const fileSummaries = [];
+    const allAlerts     = [];
 
     for (const file of supported) {
       const formData = new FormData();
@@ -67,6 +98,7 @@ function App() {
         }));
         parsedBatches.push(...parsed);
         fileSummaries.push({ name: file.name, size: file.size, type: extensionOf(file.name), rows: parsed.length });
+        allAlerts.push(...(data.alerts || []));
       } catch (err) {
         setMessage(`Error uploading ${file.name}: ${err.message}`);
       }
@@ -75,6 +107,7 @@ function App() {
     if (fileSummaries.length) {
       setFiles((cur) => [...fileSummaries, ...cur]);
       setLogs(parsedBatches);
+      setAlerts(allAlerts);
       setMessage(`${fileSummaries.length} file(s) parsed successfully${rejected ? `; ${rejected} unsupported file(s) skipped` : ''}.`);
     } else if (rejected) {
       setMessage('Unsupported file type. Please upload .log or .csv files.');
@@ -258,22 +291,21 @@ function App() {
               </div>
             </div>
 
-            {/* Alert notices */}
+            {/* Alert notices — driven by backend detection engine */}
             <div className="mt-5 space-y-2">
-              <div className="rounded-md border-l-2 border-[#F59E0B] bg-[#0D1117] px-3 py-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#F59E0B]">High risk</p>
-                <p className="mt-1 text-xs leading-relaxed text-white/50">
-                  {stats.failures >= 5
-                    ? 'Repeated failures indicate brute-force behavior.'
-                    : 'No brute-force threshold reached.'}
-                </p>
-              </div>
-              <div className="rounded-md border-l-2 border-[#475569] bg-[#0D1117] px-3 py-2.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">Investigation</p>
-                <p className="mt-1 text-xs leading-relaxed text-white/40">
-                  Review invalid users and sudo failures for privilege escalation attempts.
-                </p>
-              </div>
+              {alerts.length > 0
+                ? alerts.map((a, i) => <AlertCard key={i} alert={a} />)
+                : (
+                  <div className="rounded-md border-l-2 border-[#374151] bg-[#0D1117] px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                      No Threats Detected
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/40">
+                      Upload a log file to run the detection engine.
+                    </p>
+                  </div>
+                )
+              }
             </div>
           </div>
 
