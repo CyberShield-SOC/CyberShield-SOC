@@ -4,8 +4,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.detection import DetectionEngine
+from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
 from app.parsers.log_parser import parse_log
+
+_engine = DetectionEngine()
 
 router = APIRouter(tags=["Upload"])
 
@@ -39,6 +43,20 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
     # --- Parse ---
     parsed = parse_log(content_str, logfile.filename or "unknown.log")
 
+    # --- Run detection engine ---
+    records = [
+        LogRecord(
+            line_number=entry["line_number"],
+            timestamp=entry["parsed"].get("timestamp"),
+            ip_address=entry["parsed"].get("ip_address") or None,
+            username=entry["parsed"].get("username") or None,
+            event_type=entry["parsed"].get("event_type"),
+            status=entry["parsed"].get("status"),
+        )
+        for entry in parsed["entries"]
+    ]
+    alerts = _engine.run(records)
+
     # --- Build response ---
     return JSONResponse(
         status_code=200,
@@ -60,6 +78,7 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
             },
             "entries": parsed["entries"],
             "skipped_lines": parsed["skipped_lines"],
+            "alerts": [a.model_dump() for a in alerts],
         },
     )
 
