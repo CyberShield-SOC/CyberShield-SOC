@@ -78,7 +78,7 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
             },
             "entries": parsed["entries"],
             "skipped_lines": parsed["skipped_lines"],
-            "alerts": [a.model_dump() for a in alerts],
+            "alerts": [_serialize_model(a) for a in alerts],
         },
     )
 
@@ -104,3 +104,5 @@ def get_accepted_formats():
         ],
         "note": "Sprint 2 will run threat detection rules over the returned entries[].",
     }
+def _serialize_model(model) -> dict:
+    return model.model_dump() if hasattr(model, "model_dump") else model.dict()
