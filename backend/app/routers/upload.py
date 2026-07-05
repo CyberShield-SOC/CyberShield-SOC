@@ -106,7 +106,7 @@ def get_accepted_formats():
 
 
 def _serialize_alert(alert: Alert) -> dict:
-    data = alert.model_dump()
+    data = alert.model_dump() if hasattr(alert, "model_dump") else alert.dict()
     data.update(
         {
             "title": _title_for_rule(alert.rule),
