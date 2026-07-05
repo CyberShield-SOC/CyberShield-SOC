@@ -1,0 +1,10 @@
+Jun 14 02:11:43 server01 sshd[1234]: Failed password for root from 203.0.113.4 port 22 ssh2
+Jun 14 02:11:45 server01 sshd[1235]: Failed password for root from 203.0.113.4 port 22 ssh2
+Jun 14 02:11:47 server01 sshd[1236]: Failed password for root from 203.0.113.4 port 22 ssh2
+Jun 14 02:11:49 server01 sshd[1237]: Failed password for root from 203.0.113.4 port 22 ssh2
+Jun 14 02:11:51 server01 sshd[1238]: Failed password for root from 203.0.113.4 port 22 ssh2
+Jun 14 02:12:01 server01 sshd[1239]: Invalid user admin from 203.0.113.4 port 22 ssh2
+Jun 14 02:15:11 server01 sudo[2001]: pam_unix(sudo:auth): authentication failure; logname=jdoe uid=1000 euid=0 tty=/dev/pts/0 ruser=jdoe rhost= user=jdoe
+Jun 14 02:15:14 server01 sudo[2002]: pam_unix(sudo:auth): authentication failure; logname=jdoe uid=1000 euid=0 tty=/dev/pts/0 ruser=jdoe rhost= user=jdoe
+Jun 14 02:18:25 server01 sshd[1240]: Accepted password for jdoe from 10.0.0.5 port 34567 ssh2
+Jun 14 02:19:01 server01 sshd[1240]: Connection closed by 10.0.0.5 port 34567

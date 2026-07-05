@@ -4,8 +4,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.detection import DetectionEngine
+from app.detection.alert_store import replace_alerts
+from app.detection.models import Alert, LogRecord
 from app.middleware.file_validation import validate_log_file
 from app.parsers.log_parser import parse_log
+
+_engine = DetectionEngine()
 
 router = APIRouter(tags=["Upload"])
 
@@ -14,16 +19,12 @@ router = APIRouter(tags=["Upload"])
 async def upload_log(logfile: UploadFile = File(..., description="Security log file (.log, .csv)")):
     """
     Accepts a security log file, validates it, parses it,
-    and returns structured JSON entries ready for Sprint 2 detection rules.
+    runs detection rules, and returns structured JSON for the frontend.
     """
 
-    # --- Read file content ---
     content_bytes = await logfile.read()
-
-    # --- Validate (raises HTTPException on failure) ---
     validate_log_file(logfile, content_bytes)
 
-    # --- Decode ---
     try:
         content_str = content_bytes.decode("utf-8")
     except UnicodeDecodeError:
@@ -36,10 +37,22 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
             },
         )
 
-    # --- Parse ---
     parsed = parse_log(content_str, logfile.filename or "unknown.log")
 
-    # --- Build response ---
+    records = [
+        LogRecord(
+            line_number=entry["line_number"],
+            timestamp=entry["parsed"].get("timestamp"),
+            ip_address=entry["parsed"].get("ip_address") or None,
+            username=entry["parsed"].get("username") or None,
+            event_type=entry["parsed"].get("event_type"),
+            status=entry["parsed"].get("status"),
+        )
+        for entry in parsed["entries"]
+    ]
+    alerts = [_serialize_alert(alert) for alert in _engine.run(records)]
+    replace_alerts(alerts)
+
     return JSONResponse(
         status_code=200,
         content={
@@ -58,8 +71,13 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
                 "skipped_lines": len(parsed["skipped_lines"]),
                 "fields": parsed["fields"],
             },
+            "detection": {
+                "rules_run": [rule.__class__.__name__ for rule in _engine.rules],
+                "alerts_generated": len(alerts),
+            },
             "entries": parsed["entries"],
             "skipped_lines": parsed["skipped_lines"],
+            "alerts": alerts,
         },
     )
 
@@ -83,5 +101,31 @@ def get_accepted_formats():
                 "example": "access_logs.csv",
             },
         ],
-        "note": "Sprint 2 will run threat detection rules over the returned entries[].",
+        "note": "Detection rules run automatically over parsed entries.",
     }
+
+
+def _serialize_alert(alert: Alert) -> dict:
+    data = alert.model_dump()
+    data.update(
+        {
+            "title": _title_for_rule(alert.rule),
+            "ip_address": alert.source_ip,
+            "user": alert.username,
+            "reason": alert.description,
+            "timestamp_range": {
+                "start": alert.first_seen,
+                "end": alert.last_seen,
+            },
+        }
+    )
+    return data
+
+
+def _title_for_rule(rule: str) -> str:
+    labels = {
+        "brute_force_login": "Possible brute-force login activity",
+        "invalid_user_enumeration": "Possible username enumeration",
+        "sudo_failure": "Repeated sudo authentication failures",
+    }
+    return labels.get(rule, "Security alert")
