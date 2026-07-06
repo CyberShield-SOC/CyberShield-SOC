@@ -2,7 +2,33 @@ import re
 
 CORE_FIELDS = ["timestamp", "ip_address", "username", "event_type", "status"]
 
-_IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_IP_OCTET = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
+_IP_RE = re.compile(rf"\b(?:{_IP_OCTET}\.){{3}}{_IP_OCTET}\b")
+
+_FAILED_WORDS = ("failed", "failure", "invalid", "denied", "blocked", "error", "reject", "rejected")
+_SUCCESS_WORDS = ("accepted", "success", "successful", "allowed", "pass", "passed", "ok")
+_INFO_WORDS = ("closed", "disconnected", "started", "stopped", "info")
+
+_STATUS_ALIASES = {
+    "fail": "FAILED",
+    "failed": "FAILED",
+    "failure": "FAILED",
+    "denied": "FAILED",
+    "blocked": "FAILED",
+    "rejected": "FAILED",
+    "error": "FAILED",
+    "success": "SUCCESS",
+    "successful": "SUCCESS",
+    "accepted": "SUCCESS",
+    "allowed": "SUCCESS",
+    "pass": "SUCCESS",
+    "passed": "SUCCESS",
+    "ok": "SUCCESS",
+    "info": "INFO",
+    "closed": "INFO",
+    "disconnected": "INFO",
+    "unknown": "UNKNOWN",
+}
 
 
 def normalize_entry(
@@ -18,11 +44,11 @@ def normalize_entry(
     detection engine. Parsers may include additional fields as needed.
     """
     return {
-        "timestamp": timestamp,
-        "ip_address": ip_address,
-        "username": username,
-        "event_type": event_type,
-        "status": status,
+        "timestamp": _clean_text(timestamp),
+        "ip_address": normalize_ip(ip_address),
+        "username": _clean_text(username),
+        "event_type": normalize_event_type(event_type),
+        "status": normalize_status(status),
     }
 
 
@@ -31,13 +57,38 @@ def first_ip(text: str):
     return match.group(0) if match else None
 
 
+def normalize_ip(value):
+    value = _clean_text(value)
+    if not value:
+        return None
+    match = _IP_RE.fullmatch(value)
+    return value if match else None
+
+
+def normalize_status(value):
+    value = _clean_text(value)
+    if not value:
+        return "UNKNOWN"
+
+    key = re.sub(r"[\s_-]+", " ", value).strip().lower()
+    return _STATUS_ALIASES.get(key, key.upper())
+
+
+def normalize_event_type(value):
+    value = _clean_text(value)
+    if not value:
+        return "security_event"
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
+    return normalized or "security_event"
+
+
 def status_from_text(text: str):
     lowered = (text or "").lower()
-    if any(word in lowered for word in ["failed", "failure", "invalid", "denied", "blocked", "error"]):
+    if any(word in lowered for word in _FAILED_WORDS):
         return "FAILED"
-    if any(word in lowered for word in ["accepted", "success", "successful", "allowed"]):
+    if any(word in lowered for word in _SUCCESS_WORDS):
         return "SUCCESS"
-    if "closed" in lowered or "disconnected" in lowered:
+    if any(word in lowered for word in _INFO_WORDS):
         return "INFO"
     return "UNKNOWN"
 
@@ -61,8 +112,11 @@ def username_from_text(text: str):
     text = text or ""
     patterns = [
         r"\bfor\s+(?:invalid user\s+)?([A-Za-z0-9_.-]+)\b",
+        r"\bfrom\s+user\s+([A-Za-z0-9_.-]+)\b",
         r"\buser=([A-Za-z0-9_.-]+)\b",
         r"\bUSER=([A-Za-z0-9_.-]+)\b",
+        r"\buser:\s*([A-Za-z0-9_.-]+)\b",
+        r"\busername[:=]\s*([A-Za-z0-9_.-]+)\b",
         r"\b([A-Za-z0-9_.-]+)\s+:\s+TTY=",
         r"\blogname=([A-Za-z0-9_.-]+)\b",
     ]
@@ -79,3 +133,10 @@ def status_from_http_code(status_code: int):
     if 400 <= status_code < 600:
         return "FAILED"
     return "UNKNOWN"
+
+
+def _clean_text(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return None if value in ("", "-", "null", "NULL", "None") else value
