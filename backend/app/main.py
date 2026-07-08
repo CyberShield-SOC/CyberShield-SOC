@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.routers import upload
+from app.routers import alerts, upload
 
 app = FastAPI(
     title="CyberShield SOC",
@@ -25,7 +25,9 @@ app.add_middleware(
 )
 
 app.include_router(upload.router)
+app.include_router(alerts.router)
 app.include_router(upload.router, prefix="/api")
+app.include_router(alerts.router, prefix="/api")
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 

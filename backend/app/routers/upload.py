@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.detection import DetectionEngine
+from app.detection.alert_store import replace_alerts, serialize_alert
 from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
 from app.parsers.log_parser import parse_log
@@ -56,6 +57,8 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
         for entry in parsed["entries"]
     ]
     alerts = _engine.run(records)
+    serialized_alerts = [serialize_alert(a) for a in alerts]
+    replace_alerts(serialized_alerts)
 
     # --- Build response ---
     return JSONResponse(
@@ -78,7 +81,7 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
             },
             "entries": parsed["entries"],
             "skipped_lines": parsed["skipped_lines"],
-            "alerts": [_serialize_model(a) for a in alerts],
+            "alerts": serialized_alerts,
         },
     )
 
@@ -104,5 +107,3 @@ def get_accepted_formats():
         ],
         "note": "Sprint 2 will run threat detection rules over the returned entries[].",
     }
-def _serialize_model(model) -> dict:
-    return model.model_dump() if hasattr(model, "model_dump") else model.dict()
