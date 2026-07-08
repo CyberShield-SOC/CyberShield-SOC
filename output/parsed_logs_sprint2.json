@@ -1,0 +1,92 @@
+[
+    {
+        "timestamp": "Jun 14 02:11:43",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "root",
+        "event_type": "failed_login",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:11:45",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "root",
+        "event_type": "failed_login",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:11:47",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "root",
+        "event_type": "failed_login",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:11:49",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "root",
+        "event_type": "failed_login",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:11:51",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "root",
+        "event_type": "failed_login",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:12:01",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "203.0.113.4",
+        "user": "admin",
+        "event_type": "invalid_user",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:15:11",
+        "host": "server01",
+        "source": "sudo",
+        "ip": "",
+        "user": "jdoe",
+        "event_type": "sudo_auth_failure",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:15:14",
+        "host": "server01",
+        "source": "sudo",
+        "ip": "",
+        "user": "jdoe",
+        "event_type": "sudo_auth_failure",
+        "status": "failure"
+    },
+    {
+        "timestamp": "Jun 14 02:18:25",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "10.0.0.5",
+        "user": "jdoe",
+        "event_type": "successful_login",
+        "status": "success"
+    },
+    {
+        "timestamp": "Jun 14 02:19:01",
+        "host": "server01",
+        "source": "sshd",
+        "ip": "10.0.0.5",
+        "user": "",
+        "event_type": "connection_closed",
+        "status": "closed"
+    }
+]
