@@ -70,3 +70,34 @@ def test_upload_syslog():
     data = response.json()
     assert data["success"] is True
     assert data["parsing"]["format"] == "syslog"
+
+
+def test_upload_brute_force_alert_shape_and_alerts_endpoint():
+    from io import BytesIO
+    log_content = (
+        b"Jun 14 02:11:43 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
+        b"Jun 14 02:11:45 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
+        b"Jun 14 02:11:47 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
+        b"Jun 14 02:11:49 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
+        b"Jun 14 02:11:51 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
+    )
+    response = client.post(
+        "/upload",
+        files={"logfile": ("auth.log", BytesIO(log_content), "text/plain")},
+    )
+
+    assert response.status_code == 200
+    alert = response.json()["alerts"][0]
+    assert alert["title"] == "Possible brute-force login activity"
+    assert alert["severity"] == "HIGH"
+    assert alert["ip_address"] == "203.0.113.4"
+    assert alert["user"] == "root"
+    assert "Brute-force detected" in alert["reason"]
+    assert alert["timestamp_range"]["start"]
+    assert alert["timestamp_range"]["end"]
+
+    alerts_response = client.get("/alerts")
+    assert alerts_response.status_code == 200
+    alerts_data = alerts_response.json()
+    assert alerts_data["success"] is True
+    assert alerts_data["alerts"][0]["rule"] == "brute_force_login"

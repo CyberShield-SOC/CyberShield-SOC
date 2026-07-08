@@ -47,6 +47,7 @@ class BruteForceLoginRule(BaseRule):
                         rule="brute_force_login",
                         severity="HIGH",
                         source_ip=ip,
+                        username=matched[0][0].username,
                         count=len(matched),
                         time_window_seconds=self.window_seconds,
                         first_seen=ts_to_str(matched[0][1]),
