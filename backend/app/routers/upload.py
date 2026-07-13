@@ -16,7 +16,9 @@ from app.detection import DetectionEngine
 from app.detection.alert_store import replace_alerts, serialize_alert
 from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
+from app.models.user import User
 from app.parsers.log_parser import parse_log
+from app.security import require_roles
 
 
 from app.db.session import get_db
@@ -35,6 +37,7 @@ async def upload_log(
         ...,
         description="Security log file (.log, .csv)",
     ),
+    user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
     """
@@ -148,7 +151,9 @@ async def upload_log(
     )
 
 @router.get("/upload/formats", tags=["Upload"])
-def get_accepted_formats():
+def get_accepted_formats(
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
+):
     """Returns accepted file types and usage guide."""
     return {
         "success": True,

@@ -45,7 +45,7 @@ def upgrade() -> None:
     sa.UniqueConstraint('username')
     )
     op.create_index(op.f('ix_users_role_id'), 'users', ['role_id'], unique=False)
-    op.drop_table('docker_test')
+    op.execute('DROP TABLE IF EXISTS docker_test')
     # ### end Alembic commands ###
 
 
