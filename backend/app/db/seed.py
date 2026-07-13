@@ -1,12 +1,21 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
 from app.models.role import Role
+from app.models.user import User
+from app.security import hash_password
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(PROJECT_ROOT / ".env")
 
 DEFAULT_ROLES = (
     {
-        "name": "Administrator",
+        "name": "Admin",
         "description": (
             "Manages users, roles, and CyberShield system settings."
         ),
@@ -26,8 +35,8 @@ DEFAULT_ROLES = (
 )
 
 
-def seed_roles() -> None:
-    """Insert default roles without creating duplicates."""
+def seed_roles_and_admin() -> None:
+    """Insert default roles and an optional first Admin account."""
 
     with SessionLocal() as db:
         existing_names = set(
@@ -45,6 +54,28 @@ def seed_roles() -> None:
 
         db.commit()
 
+        admin_password = os.getenv("CYBERSHIELD_ADMIN_PASSWORD")
+        admin_username = os.getenv("CYBERSHIELD_ADMIN_USERNAME", "admin")
+        admin_email = os.getenv("CYBERSHIELD_ADMIN_EMAIL", "admin@cybershield.local")
+
+        admin_user = db.scalar(
+            select(User).where(User.username == admin_username)
+        )
+
+        if admin_password and admin_user is None:
+            admin_role = db.scalar(select(Role).where(Role.name == "Admin"))
+            db.add(
+                User(
+                    username=admin_username,
+                    email=admin_email,
+                    full_name="CyberShield Admin",
+                    password_hash=hash_password(admin_password),
+                    role_id=admin_role.id,
+                )
+            )
+            db.commit()
+            print(f"Added admin user: {admin_username}")
+
     if added_names:
         print(f"Added roles: {', '.join(added_names)}")
     else:
@@ -52,4 +83,4 @@ def seed_roles() -> None:
 
 
 if __name__ == "__main__":
-    seed_roles()
+    seed_roles_and_admin()
