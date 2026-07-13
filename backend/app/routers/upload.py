@@ -1,8 +1,16 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.detection import DetectionEngine
 from app.detection.alert_store import replace_alerts, serialize_alert
@@ -10,39 +18,61 @@ from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
 from app.parsers.log_parser import parse_log
 
+
+from app.db.session import get_db
+from app.repositories.log_repository import (
+    create_logs_from_parse_result,
+)
+
 _engine = DetectionEngine()
 
 router = APIRouter(tags=["Upload"])
 
 
 @router.post("/upload")
-async def upload_log(logfile: UploadFile = File(..., description="Security log file (.log, .csv)")):
+async def upload_log(
+    logfile: UploadFile = File(
+        ...,
+        description="Security log file (.log, .csv)",
+    ),
+    db: Session = Depends(get_db),
+):
     """
     Accepts a security log file, validates it, parses it,
-    and returns structured JSON entries ready for Sprint 2 detection rules.
+    stores parsed events, runs detection rules, and returns JSON.
     """
 
     # --- Read file content ---
     content_bytes = await logfile.read()
 
-    # --- Validate (raises HTTPException on failure) ---
+    # --- Validate ---
     validate_log_file(logfile, content_bytes)
 
     # --- Decode ---
     try:
         content_str = content_bytes.decode("utf-8")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
         raise HTTPException(
             status_code=400,
             detail={
                 "success": False,
-                "error": "File could not be decoded as UTF-8. Please upload a plain text log file.",
+                "error": (
+                    "File could not be decoded as UTF-8. "
+                    "Please upload a plain text log file."
+                ),
                 "code": "ENCODING_ERROR",
             },
-        )
+        ) from exc
 
     # --- Parse ---
-    parsed = parse_log(content_str, logfile.filename or "unknown.log")
+    source_filename = logfile.filename or "unknown.log"
+
+    parsed = parse_log(
+        content_str,
+        source_filename,
+    )
+
+    upload_id = uuid.uuid4()
 
     # --- Run detection engine ---
     records = [
@@ -56,8 +86,37 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
         )
         for entry in parsed["entries"]
     ]
+
     alerts = _engine.run(records)
-    serialized_alerts = [serialize_alert(a) for a in alerts]
+    serialized_alerts = [
+        serialize_alert(alert)
+        for alert in alerts
+    ]
+
+    # --- Store parsed logs ---
+    try:
+        saved_logs = create_logs_from_parse_result(
+            db,
+            upload_id=upload_id,
+            source_filename=source_filename,
+            parsed_result=parsed,
+        )
+
+        db.commit()
+
+    except SQLAlchemyError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": "Parsed logs could not be stored.",
+                "code": "DATABASE_WRITE_ERROR",
+            },
+        ) from exc
+
+    # Keep current in-memory alert behavior for now.
     replace_alerts(serialized_alerts)
 
     # --- Build response ---
@@ -66,16 +125,19 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
         content={
             "success": True,
             "upload": {
-                "upload_id": str(uuid.uuid4()),
-                "filename": logfile.filename,
+                "upload_id": str(upload_id),
+                "filename": source_filename,
                 "mime_type": logfile.content_type,
                 "size_bytes": len(content_bytes),
-                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "uploaded_at": datetime.now(
+                    timezone.utc
+                ).isoformat(),
             },
             "parsing": {
                 "format": parsed["format"],
                 "total_lines": parsed["total_lines"],
                 "parsed_entries": len(parsed["entries"]),
+                "stored_entries": len(saved_logs),
                 "skipped_lines": len(parsed["skipped_lines"]),
                 "fields": parsed["fields"],
             },
@@ -84,7 +146,6 @@ async def upload_log(logfile: UploadFile = File(..., description="Security log f
             "alerts": serialized_alerts,
         },
     )
-
 
 @router.get("/upload/formats", tags=["Upload"])
 def get_accepted_formats():
