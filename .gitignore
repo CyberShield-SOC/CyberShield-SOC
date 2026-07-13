@@ -13,3 +13,7 @@ frontend/dist/
 # Environment
 .env
 .env.*
+
+
+# PostgreSQL local files
+postgres-data/
