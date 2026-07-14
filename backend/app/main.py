@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.routers import alerts, upload
+from app.routers import alerts, incidents, upload
 
 app = FastAPI(
     title="CyberShield SOC",
@@ -20,14 +20,18 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
 )
 
 app.include_router(upload.router)
 app.include_router(alerts.router)
+app.include_router(incidents.router)
+
+
 app.include_router(upload.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
+app.include_router(incidents.router, prefix="/api")
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
