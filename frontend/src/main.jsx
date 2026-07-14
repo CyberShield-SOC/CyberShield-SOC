@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const SEVERITY_STYLE = {
   HIGH:   { border: '#EF4444', text: 'text-[#EF4444]' },
@@ -70,6 +70,50 @@ function App() {
   const [dragging, setDragging]         = useState(false);
   const [message, setMessage]           = useState('Sample SOC logs are loaded. Upload files to analyze your own data.');
   const inputRef = useRef(null);
+
+  const loadLatestUpload = async () => {
+  try {
+    const response = await fetch('/upload/latest');
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.detail?.error ||
+        data.detail ||
+        data.error ||
+        'Could not load the latest upload.'
+      );
+    }
+
+    if (!data.upload) {
+      setMessage(
+        'No stored uploads yet. Upload a log file to begin.'
+      );
+
+      return;
+    }
+
+    setLogs(data.logs || []);
+    setAlerts(data.alerts || []);
+
+    setMessage(
+      `${data.upload.stored_entries} entries loaded from ${data.upload.filename}.`
+    );
+  } catch (error) {
+    console.error(
+      'Latest upload loading failed:',
+      error
+    );
+
+    setMessage(
+      `Could not load the latest upload: ${error.message}`
+    );
+  }
+};
+
+useEffect(() => {
+  loadLatestUpload();
+}, []);
 
   const addFiles = async (fileList) => {
     const incoming  = Array.from(fileList || []);

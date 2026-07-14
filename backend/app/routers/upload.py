@@ -9,6 +9,8 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
+
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,8 @@ from app.detection import DetectionEngine
 from app.detection.alert_store import serialize_alert
 from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
+from app.models.alert import Alert
+from app.models.log import Log
 from app.parsers.log_parser import parse_log
 from app.repositories.alert_repository import (
     create_alerts_from_detection,
@@ -30,6 +34,31 @@ from app.repositories.log_repository import (
 _engine = DetectionEngine()
 
 router = APIRouter(tags=["Upload"])
+
+def serialize_log_for_dashboard(log: Log) -> dict:
+    """
+    Convert a stored Log model into the structure expected
+    by the existing React dashboard.
+    """
+
+    parsed_data = log.parsed_data or {}
+
+    timestamp = parsed_data.get("timestamp")
+
+    if not timestamp and log.event_timestamp:
+        timestamp = log.event_timestamp.isoformat()
+
+    return {
+        "timestamp": timestamp or "",
+        "ip": (
+            str(log.ip_address)
+            if log.ip_address is not None
+            else ""
+        ),
+        "username": log.username or "",
+        "event": log.event_type or "Log Entry",
+        "status": (log.status or "UNKNOWN").upper(),
+    }
 
 
 @router.post("/upload")
@@ -162,6 +191,79 @@ async def upload_log(
         },
     )
 
+
+@router.get("/upload/latest")
+def get_latest_upload(
+    db: Session = Depends(get_db),
+):
+    """
+    Return the logs and alerts belonging only to the
+    most recently uploaded file.
+    """
+
+    latest_upload_id = db.scalar(
+        select(Log.upload_id)
+        .order_by(
+            Log.ingested_at.desc(),
+            Log.id.desc(),
+        )
+        .limit(1)
+    )
+
+    if latest_upload_id is None:
+        return {
+            "success": True,
+            "upload": None,
+            "logs": [],
+            "alerts": [],
+        }
+
+    stored_logs = list(
+        db.scalars(
+            select(Log)
+            .where(
+                Log.upload_id == latest_upload_id
+            )
+            .order_by(Log.line_number.asc())
+        ).all()
+    )
+
+    stored_alerts = list(
+        db.scalars(
+            select(Alert)
+            .where(
+                Alert.upload_id == latest_upload_id
+            )
+            .order_by(
+                Alert.created_at.asc(),
+                Alert.id.asc(),
+            )
+        ).all()
+    )
+
+    source_filename = (
+        stored_logs[0].source_filename
+        if stored_logs
+        else None
+    )
+
+    return {
+        "success": True,
+        "upload": {
+            "upload_id": str(latest_upload_id),
+            "filename": source_filename,
+            "stored_entries": len(stored_logs),
+            "stored_alerts": len(stored_alerts),
+        },
+        "logs": [
+            serialize_log_for_dashboard(log)
+            for log in stored_logs
+        ],
+        "alerts": [
+            serialize_alert_record(alert)
+            for alert in stored_alerts
+        ],
+    }
 
 @router.get("/upload/formats", tags=["Upload"])
 def get_accepted_formats():
