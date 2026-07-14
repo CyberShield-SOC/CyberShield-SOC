@@ -131,6 +131,9 @@ React/Vite/Tailwind dashboard for uploading and viewing parsed security logs.
 - Vite
 - Tailwind CSS
 - FastAPI (Python)
+- Docker
+- PosgreSQL
+- Alembic
 
 ## Folder Structure
 
