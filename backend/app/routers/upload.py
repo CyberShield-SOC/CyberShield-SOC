@@ -12,17 +12,20 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.db.session import get_db
 from app.detection import DetectionEngine
-from app.detection.alert_store import replace_alerts, serialize_alert
+from app.detection.alert_store import serialize_alert
 from app.detection.models import LogRecord
 from app.middleware.file_validation import validate_log_file
 from app.parsers.log_parser import parse_log
-
-
-from app.db.session import get_db
+from app.repositories.alert_repository import (
+    create_alerts_from_detection,
+    serialize_alert_record,
+)
 from app.repositories.log_repository import (
     create_logs_from_parse_result,
 )
+
 
 _engine = DetectionEngine()
 
@@ -38,8 +41,8 @@ async def upload_log(
     db: Session = Depends(get_db),
 ):
     """
-    Accepts a security log file, validates it, parses it,
-    stores parsed events, runs detection rules, and returns JSON.
+    Accept a security log file, validate it, parse it,
+    run detection rules, and store logs and alerts.
     """
 
     # --- Read file content ---
@@ -88,12 +91,13 @@ async def upload_log(
     ]
 
     alerts = _engine.run(records)
+
     serialized_alerts = [
         serialize_alert(alert)
         for alert in alerts
     ]
 
-    # --- Store parsed logs ---
+    # --- Store logs and alerts in one transaction ---
     try:
         saved_logs = create_logs_from_parse_result(
             db,
@@ -102,7 +106,18 @@ async def upload_log(
             parsed_result=parsed,
         )
 
+        saved_alerts = create_alerts_from_detection(
+            db,
+            upload_id=upload_id,
+            serialized_alerts=serialized_alerts,
+        )
+
         db.commit()
+
+        response_alerts = [
+            serialize_alert_record(alert)
+            for alert in saved_alerts
+        ]
 
     except SQLAlchemyError as exc:
         db.rollback()
@@ -111,13 +126,12 @@ async def upload_log(
             status_code=500,
             detail={
                 "success": False,
-                "error": "Parsed logs could not be stored.",
+                "error": (
+                    "Parsed logs and alerts could not be stored."
+                ),
                 "code": "DATABASE_WRITE_ERROR",
             },
         ) from exc
-
-    # Keep current in-memory alert behavior for now.
-    replace_alerts(serialized_alerts)
 
     # --- Build response ---
     return JSONResponse(
@@ -138,18 +152,21 @@ async def upload_log(
                 "total_lines": parsed["total_lines"],
                 "parsed_entries": len(parsed["entries"]),
                 "stored_entries": len(saved_logs),
+                "stored_alerts": len(saved_alerts),
                 "skipped_lines": len(parsed["skipped_lines"]),
                 "fields": parsed["fields"],
             },
             "entries": parsed["entries"],
             "skipped_lines": parsed["skipped_lines"],
-            "alerts": serialized_alerts,
+            "alerts": response_alerts,
         },
     )
 
+
 @router.get("/upload/formats", tags=["Upload"])
 def get_accepted_formats():
-    """Returns accepted file types and usage guide."""
+    """Return accepted file types and usage information."""
+
     return {
         "success": True,
         "field_name": "logfile",
@@ -157,14 +174,21 @@ def get_accepted_formats():
         "accepted_formats": [
             {
                 "extension": ".log",
-                "description": "Generic, syslog, Apache, or Nginx-style log files",
+                "description": (
+                    "Generic, syslog, Apache, or Nginx-style log files"
+                ),
                 "example": "/var/log/auth.log",
             },
             {
                 "extension": ".csv",
-                "description": "Comma-separated log exports with header row",
+                "description": (
+                    "Comma-separated log exports with header row"
+                ),
                 "example": "access_logs.csv",
             },
         ],
-        "note": "Sprint 2 will run threat detection rules over the returned entries[].",
+        "note": (
+            "Detection rules run over parsed entries "
+            "and persistent alerts are stored in PostgreSQL."
+        ),
     }
