@@ -10,6 +10,24 @@ jobs:
   backend:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cybershield
+          POSTGRES_PASSWORD: cybershield
+          POSTGRES_DB: cybershield_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U cybershield -d cybershield_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://cybershield:cybershield@localhost:5432/cybershield_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +37,10 @@ jobs:
 
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
+
+      - name: Apply database migrations
+        working-directory: backend
+        run: alembic upgrade head
 
       - name: Run backend tests
         working-directory: backend
