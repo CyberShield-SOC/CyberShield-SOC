@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import Depends, HTTPException, status
@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.auth_session import AuthSession
 from app.models.user import User
@@ -36,10 +37,14 @@ def token_digest(token: str) -> str:
 
 def create_access_token(db: Session, user: User) -> str:
     token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
     db.add(
         AuthSession(
             user_id=user.id,
             token_hash=token_digest(token),
+            expires_at=now + timedelta(
+                minutes=settings.auth_session_ttl_minutes,
+            ),
         )
     )
     db.commit()
@@ -77,6 +82,7 @@ def current_user(
         .options(joinedload(AuthSession.user).joinedload(User.role))
         .where(AuthSession.token_hash == token_digest(credentials.credentials))
         .where(AuthSession.revoked_at.is_(None))
+        .where(AuthSession.expires_at > datetime.now(timezone.utc))
     )
 
     if session is None or session.user is None or not session.user.is_active:

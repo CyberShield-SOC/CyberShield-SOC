@@ -13,7 +13,7 @@ from app.routers import alerts, auth, incidents, notes, upload, users
 
 app = FastAPI(
     title="CyberShield SOC",
-    description="Sprint 1 – Log Upload & Parsing API",
+    description="Log Upload & Parsing API",
     version="1.0.0",
 )
 

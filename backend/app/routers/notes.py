@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.user import User
 from app.repositories.incident_repository import (
     IncidentNotFoundError,
     UserNotFoundError,
@@ -19,6 +20,7 @@ from app.repositories.note_repository import (
     serialize_note_record,
 )
 from app.schemas.note import NoteCreate
+from app.security import require_roles
 
 
 router = APIRouter(tags=["Notes"])
@@ -31,6 +33,7 @@ router = APIRouter(tags=["Notes"])
 def create_incident_note(
     incident_id: int,
     payload: NoteCreate,
+    user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
     """Add an analyst note to an incident."""
@@ -39,7 +42,7 @@ def create_incident_note(
         note = create_note_record(
             db,
             incident_id=incident_id,
-            author_user_id=payload.author_user_id,
+            author_user_id=user.id,
             body=payload.body,
         )
 
@@ -84,6 +87,7 @@ def get_incident_notes(
         ge=1,
         le=500,
     ),
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
     db: Session = Depends(get_db),
 ):
     """Return an incident's analyst notes."""

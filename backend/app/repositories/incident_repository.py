@@ -31,6 +31,7 @@ def create_incident_from_alert(
     db: Session,
     *,
     alert_id: int,
+    created_by_user_id: int | None = None,
     assigned_user_id: int | None = None,
     title: str | None = None,
     description: str | None = None,
@@ -64,9 +65,19 @@ def create_incident_from_alert(
                 f"User {assigned_user_id} does not exist."
             )
 
+    if created_by_user_id is not None:
+        creator = db.get(User, created_by_user_id)
+
+        if creator is None:
+            raise UserNotFoundError(
+                f"User {created_by_user_id} does not exist."
+            )
+
     incident = Incident(
         source_alert_id=alert.id,
         assigned_user_id=assigned_user_id,
+        created_by_user_id=created_by_user_id,
+        updated_by_user_id=created_by_user_id,
         title=title or alert.title,
         description=description or alert.description,
         priority=(priority or alert.severity).upper(),
@@ -138,6 +149,7 @@ def update_incident_record(
     *,
     incident_id: int,
     updates: dict[str, Any],
+    updated_by_user_id: int | None = None,
 ) -> Incident:
     """Apply allowed incident updates."""
 
@@ -191,6 +203,16 @@ def update_incident_record(
             incident.resolved_at = None
             incident.closed_at = None
 
+    if updated_by_user_id is not None:
+        updater = db.get(User, updated_by_user_id)
+
+        if updater is None:
+            raise UserNotFoundError(
+                f"User {updated_by_user_id} does not exist."
+            )
+
+        incident.updated_by_user_id = updated_by_user_id
+
     db.flush()
 
     return incident
@@ -205,6 +227,8 @@ def serialize_incident_record(
         "id": incident.id,
         "source_alert_id": incident.source_alert_id,
         "assigned_user_id": incident.assigned_user_id,
+        "created_by_user_id": incident.created_by_user_id,
+        "updated_by_user_id": incident.updated_by_user_id,
         "title": incident.title,
         "description": incident.description,
         "priority": incident.priority,

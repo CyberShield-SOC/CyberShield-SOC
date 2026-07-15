@@ -4,11 +4,6 @@ from pydantic import BaseModel, Field, field_validator
 class NoteCreate(BaseModel):
     """Request body for adding a note to an incident."""
 
-    author_user_id: int = Field(
-        gt=0,
-        description="User ID of the analyst writing the note.",
-    )
-
     body: str = Field(
         min_length=1,
         max_length=5000,
