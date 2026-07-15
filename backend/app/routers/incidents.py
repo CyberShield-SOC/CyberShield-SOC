@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.user import User
 from app.repositories.incident_repository import (
     AlertNotFoundError,
     IncidentAlreadyExistsError,
@@ -24,6 +25,7 @@ from app.schemas.incident import (
     IncidentCreate,
     IncidentUpdate,
 )
+from app.security import require_roles
 
 
 router = APIRouter(tags=["Incidents"])
@@ -35,6 +37,7 @@ router = APIRouter(tags=["Incidents"])
 )
 def create_incident(
     payload: IncidentCreate,
+    user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
     """Create an incident from an existing persistent alert."""
@@ -43,6 +46,7 @@ def create_incident(
         incident = create_incident_from_alert(
             db,
             alert_id=payload.alert_id,
+            created_by_user_id=user.id,
             assigned_user_id=payload.assigned_user_id,
             title=payload.title,
             description=payload.description,
@@ -114,6 +118,7 @@ def get_incidents(
         ge=1,
         le=500,
     ),
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
     db: Session = Depends(get_db),
 ):
     """Return persistent incidents with optional filters."""
@@ -141,6 +146,7 @@ def get_incidents(
 @router.get("/incidents/{incident_id}")
 def get_incident(
     incident_id: int,
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
     db: Session = Depends(get_db),
 ):
     """Return one persistent incident."""
@@ -167,6 +173,7 @@ def get_incident(
 def update_incident(
     incident_id: int,
     payload: IncidentUpdate,
+    user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
     """Update assignment, status, priority, or incident details."""
@@ -180,6 +187,7 @@ def update_incident(
             db,
             incident_id=incident_id,
             updates=updates,
+            updated_by_user_id=user.id,
         )
 
         db.commit()

@@ -40,6 +40,8 @@ class Incident(Base):
         Index("ix_incidents_status", "status"),
         Index("ix_incidents_priority", "priority"),
         Index("ix_incidents_assigned_user_id", "assigned_user_id"),
+        Index("ix_incidents_created_by_user_id", "created_by_user_id"),
+        Index("ix_incidents_updated_by_user_id", "updated_by_user_id"),
         Index("ix_incidents_created_at", "created_at"),
     )
 
@@ -60,6 +62,24 @@ class Incident(Base):
     )
 
     assigned_user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    updated_by_user_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey(
             "users.id",
@@ -121,7 +141,17 @@ class Incident(Base):
 
     source_alert: Mapped[Alert] = relationship()
 
-    assigned_user: Mapped[User | None] = relationship()
+    assigned_user: Mapped[User | None] = relationship(
+        foreign_keys=[assigned_user_id],
+    )
+
+    created_by_user: Mapped[User | None] = relationship(
+        foreign_keys=[created_by_user_id],
+    )
+
+    updated_by_user: Mapped[User | None] = relationship(
+        foreign_keys=[updated_by_user_id],
+    )
 
     def __repr__(self) -> str:
         return (

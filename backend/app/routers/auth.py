@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.user import User
+from app.schemas.auth import (
+    CurrentUserResponse,
+    LoginRequest,
+    LoginResponse,
+)
 from app.security import (
     authenticate_user,
     bearer_scheme,
@@ -19,22 +23,18 @@ from app.security import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=50)
-    password: str = Field(min_length=1)
-
-
 def user_payload(user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "full_name": user.full_name,
+        "is_active": user.is_active,
         "role": user.role.name if user.role else None,
     }
 
 
-@router.post("/login")
+@router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = authenticate_user(db, payload.username, payload.password)
     if user is None:
@@ -60,7 +60,7 @@ def logout(
     return {"success": True}
 
 
-@router.get("/me")
+@router.get("/me", response_model=CurrentUserResponse)
 def me(user: User = Depends(current_user)):
     return {
         "success": True,

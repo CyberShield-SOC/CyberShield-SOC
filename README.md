@@ -73,6 +73,9 @@ Request:
 
 The project also supports `POST /api/upload` for frontend/API routing.
 
+Authentication and RBAC backend handoff details are documented in
+[`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md).
+
 ### `GET /upload/formats`
 
 Returns accepted upload formats.

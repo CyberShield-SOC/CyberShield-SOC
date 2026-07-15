@@ -197,6 +197,7 @@ async def upload_log(
 
 @router.get("/upload/latest")
 def get_latest_upload(
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
     db: Session = Depends(get_db),
 ):
     """
