@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     database_url: str
+    auth_session_ttl_minutes: int = 60
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

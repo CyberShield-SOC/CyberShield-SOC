@@ -9,11 +9,11 @@ from fastapi.staticfiles import StaticFiles
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.routers import alerts, incidents, upload, notes
+from app.routers import alerts, auth, incidents, notes, upload, users
 
 app = FastAPI(
     title="CyberShield SOC",
-    description="Sprint 1 – Log Upload & Parsing API",
+    description="Log Upload & Parsing API",
     version="1.0.0",
 )
 
@@ -24,12 +24,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(upload.router)
 app.include_router(alerts.router)
 app.include_router(incidents.router)
 app.include_router(notes.router)
-
-
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
 app.include_router(incidents.router, prefix="/api")

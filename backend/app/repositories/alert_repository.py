@@ -11,6 +11,10 @@ from app.models.alert import Alert
 from app.repositories.log_repository import parse_event_timestamp
 
 
+class AlertNotFoundError(Exception):
+    """Raised when the requested alert does not exist."""
+
+
 def optional_text(value: Any) -> str | None:
     """Return stripped text or None."""
 
@@ -142,6 +146,33 @@ def list_alert_records(
     ).limit(limit)
 
     return list(db.scalars(statement).all())
+
+
+def update_alert_record(
+    db: Session,
+    *,
+    alert_id: int,
+    severity: str | None = None,
+    status: str | None = None,
+) -> Alert:
+    """Update mutable alert workflow fields."""
+
+    alert = db.get(Alert, alert_id)
+
+    if alert is None:
+        raise AlertNotFoundError(
+            f"Alert {alert_id} does not exist."
+        )
+
+    if severity is not None:
+        alert.severity = severity.upper()
+
+    if status is not None:
+        alert.status = status.upper()
+
+    db.flush()
+
+    return alert
 
 
 def serialize_alert_record(alert: Alert) -> dict:

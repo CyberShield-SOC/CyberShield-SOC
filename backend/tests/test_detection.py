@@ -11,6 +11,9 @@ from app.detection.models import Alert, LogRecord
 from app.detection.rules.brute_force import BruteForceLoginRule
 from app.detection.rules.invalid_user import InvalidUserRule
 from app.detection.rules.sudo_failure import SudoFailureRule
+from app.models.role import Role
+from app.models.user import User
+from app.security import current_user
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -269,6 +272,17 @@ class TestUploadEndpointAlerts:
         from fastapi.testclient import TestClient
         from app.main import app
 
+        user = User(
+            id=1,
+            role_id=1,
+            username="analyst1",
+            email="analyst1@example.test",
+            password_hash="not-returned",
+            is_active=True,
+        )
+        user.role = Role(id=1, name="Analyst")
+        app.dependency_overrides[current_user] = lambda: user
+
         client = TestClient(app)
         log = (
             b"Jun 14 02:11:43 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
@@ -277,9 +291,12 @@ class TestUploadEndpointAlerts:
             b"Jun 14 02:11:49 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
             b"Jun 14 02:11:51 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
         )
-        resp = client.post("/upload", files={"logfile": ("auth.log", BytesIO(log), "text/plain")})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "alerts" in data
-        assert isinstance(data["alerts"], list)
-        assert any(a["rule"] == "brute_force_login" for a in data["alerts"])
+        try:
+            resp = client.post("/upload", files={"logfile": ("auth.log", BytesIO(log), "text/plain")})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "alerts" in data
+            assert isinstance(data["alerts"], list)
+            assert any(a["rule"] == "brute_force_login" for a in data["alerts"])
+        finally:
+            app.dependency_overrides.pop(current_user, None)
