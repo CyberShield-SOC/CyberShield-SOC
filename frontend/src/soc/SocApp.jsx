@@ -15,7 +15,7 @@ const AiAnalysisPage = lazy(() => import("./pages/AiAnalysisPage"));
 const AnalystNotesPage = lazy(() => import("./pages/AnalystNotesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const HelpPage = lazy(() => import("./pages/HelpPage"));
-const SecondaryPage = lazy(() => import("./pages/SecondaryPage"));
+const ReportsPage = lazy(() => import("./pages/SecondaryPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const ManagementPage = lazy(() => import("./pages/ManagementPage"));
 
@@ -43,13 +43,15 @@ function RouteView({ navigate, route, theme, toggleTheme }) {
       return <SettingsPage navigate={navigate} theme={theme} toggleTheme={toggleTheme} />;
     case SOC_ROUTES.help:
       return <HelpPage navigate={navigate} />;
+    case SOC_ROUTES.reports:
+      return <ReportsPage />;
     case SOC_ROUTES.users:
       return <UsersPage />;
     case SOC_ROUTES.manage:
     case SOC_ROUTES.integrations:
       return <ManagementPage navigate={navigate} route={route} />;
     default:
-      return <SecondaryPage key={route} route={route} />;
+      return <DashboardPage navigate={navigate} />;
   }
 }
 

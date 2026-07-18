@@ -429,19 +429,3 @@ export function CoverageBars({ items = [] }) {
     </div>
   );
 }
-
-export function MiniBars({ values = [], labels = [] }) {
-  const normalized = values.map((value) => Math.max(0, finiteNumber(value)));
-  if (!normalized.length) return <ChartEmpty />;
-  const max = Math.max(1, ...normalized);
-  return (
-    <div className="mini-bars" role="img" aria-label="Analysis result distribution">
-      {normalized.map((value, index) => (
-        <div key={labels[index] || index}>
-          <span style={{ height: `${Math.max((value / max) * 100, 8)}%` }} />
-          {labels[index] && <small>{labels[index]}</small>}
-        </div>
-      ))}
-    </div>
-  );
-}
