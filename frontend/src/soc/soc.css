@@ -435,9 +435,7 @@
 }
 .soc-route-title { flex: 0 0 auto; font-size: 15.5px; letter-spacing: -.015em; }
 .live-pill,
-.assist-pill,
-.confidence-pill,
-.review-required {
+.assist-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -801,7 +799,6 @@
 .dashboard-severity-footer { display: flex; padding-top: 9px; margin-top: auto; border-top: 1px solid var(--soc-border); }
 .dashboard-chart-range select { min-height: 29px; padding: 0 27px 0 9px; color: var(--soc-text); font-size: calc(9.5px + var(--soc-font-delta)); font-weight: 600; background-color: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 6px; }
 .dashboard-chart-range select:hover { border-color: color-mix(in srgb, var(--soc-accent) 32%, var(--soc-border)); }
-.dashboard-panel-total { display: inline-flex; align-items: center; gap: 5px; color: var(--soc-text-muted); font-family: "IBM Plex Mono", monospace; font-size: calc(9.5px + var(--soc-font-delta)); white-space: nowrap; }
 .dashboard-source-list { display: flex; flex-direction: column; gap: 11px; padding: 0; margin: 0 0 13px; list-style: none; }
 .dashboard-source-list li { display: grid; min-width: 0; gap: 4px; }
 .dashboard-source-list li > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -908,7 +905,6 @@
 
 .soc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .soc-grid .span-2,
-.analysis-results .span-2,
 .tracking-grid .span-2 { grid-column: span 2; }
 .soc-panel { min-width: 0; overflow: hidden; transition: border-color 160ms ease, box-shadow 160ms ease; }
 .soc-panel:hover { border-color: color-mix(in srgb, var(--soc-accent) 15%, var(--soc-border)); box-shadow: var(--soc-shadow), 0 8px 22px color-mix(in srgb, var(--soc-navy-900) 5%, transparent); }
@@ -1237,50 +1233,7 @@
 
 /* AI analysis */
 .assist-pill { border: 1px solid color-mix(in srgb, var(--soc-accent) 22%, transparent); }
-.analysis-runner { margin-bottom: 16px; }
-.analysis-form { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 7px 6px 12px; color: var(--soc-accent); background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 7px; }
-.analysis-form input { min-height: 34px; color: var(--soc-text); font-family: "IBM Plex Mono", monospace; font-size: 11.5px; background: transparent; border: 0; outline: 0; }
-.analysis-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.analysis-suggestions > span { color: var(--soc-text-muted); font-size: 9.5px; }
-.analysis-suggestions button { padding: 5px 8px; color: var(--soc-text-muted); font-size: 9.5px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 99px; }
-.analysis-suggestions button:hover { color: var(--soc-accent); border-color: var(--soc-accent); }
 .analysis-notice { margin: 10px 14px 0; }
-.analysis-empty { display: grid; min-height: 325px; place-items: center; align-content: center; gap: 8px; color: var(--soc-text-muted); text-align: center; }
-.analysis-empty > div { display: grid; width: 64px; height: 64px; place-items: center; color: var(--soc-accent); background: var(--soc-accent-tint); border-radius: 16px; }
-.analysis-empty h2 { color: var(--soc-text); font-size: 18px; }
-.analysis-empty p { max-width: 520px; font-size: 11.5px; line-height: 1.6; }
-.analysis-loading { display: flex; min-height: 260px; align-items: center; justify-content: center; gap: 18px; }
-.analysis-loading > div { display: flex; flex-direction: column; gap: 4px; }
-.analysis-loading span { color: var(--soc-text-muted); font-size: 10.5px; }
-.analysis-orbit { display: grid; width: 56px; height: 56px; place-items: center; color: var(--soc-accent); background: var(--soc-accent-tint); border: 1px solid color-mix(in srgb, var(--soc-accent) 30%, transparent); border-radius: 50%; animation: analysisGlow 1.2s ease-in-out infinite alternate; }
-@keyframes analysisGlow { to { transform: scale(1.06); box-shadow: 0 0 24px color-mix(in srgb, var(--soc-accent) 25%, transparent); } }
-.analysis-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-.analysis-summary .soc-panel-body { padding: 18px; }
-.analysis-verdict { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.analysis-verdict > div:first-child { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.analysis-verdict h3 { font-size: 17px; }
-.analysis-verdict .risk-meter { width: 180px; margin: 4px 0 0; }
-.analysis-copy { margin: 14px 0 !important; color: var(--soc-text-muted); font-size: 11.5px; line-height: 1.65; }
-.model-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; color: var(--soc-text-muted); font-size: 9.8px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 6px; }
-.model-note svg { flex: 0 0 auto; color: var(--soc-accent); }
-.confidence-pill { color: var(--state-ok); background: var(--state-ok-bg); }
-.review-required { color: var(--severity-medium); background: var(--severity-medium-bg); }
-.mini-bars { display: flex; height: 190px; align-items: end; justify-content: space-between; gap: 8px; padding-top: 15px; }
-.mini-bars > div { display: flex; height: 100%; flex: 1; flex-direction: column; justify-content: flex-end; gap: 7px; text-align: center; }
-.mini-bars span { display: block; min-height: 8px; background: linear-gradient(180deg, var(--soc-accent-bright), var(--soc-accent)); border-radius: 4px 4px 1px 1px; }
-.mini-bars div:nth-child(odd) span { background: var(--soc-accent); }
-.mini-bars small { color: var(--soc-text-faint); font-size: 8px; }
-.analysis-list { display: flex; flex-direction: column; gap: 11px; padding: 0; margin: 0; list-style: none; }
-.analysis-list li { display: flex; align-items: flex-start; gap: 9px; }
-.analysis-list li > span { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; color: var(--soc-accent); font-family: "IBM Plex Mono", monospace; font-size: 9px; background: var(--soc-accent-tint); border-radius: 50%; }
-.analysis-list p { color: var(--soc-text-muted); font-size: 10.7px; line-height: 1.5; }
-.action-list li { padding: 9px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 6px; }
-.action-list p { color: var(--soc-text); font-weight: 560; }
-.action-list small { display: block; margin-top: 3px; color: var(--soc-text-muted); font-size: 9.3px; }
-.mitre-list { display: flex; flex-wrap: wrap; gap: 7px; padding: 0; margin: 0; list-style: none; }
-.mitre-list li { padding: 7px 9px; color: var(--severity-high); font-family: "IBM Plex Mono", monospace; font-size: 9.5px; background: var(--severity-high-bg); border: 1px solid color-mix(in srgb, var(--severity-high) 18%, transparent); border-radius: 5px; }
-.panel-footnote { margin-top: 12px !important; color: var(--soc-text-muted); font-size: 9.5px; line-height: 1.5; }
-.analysis-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
 
 .ai-assistant-layout { display: grid; grid-template-columns: minmax(430px, 1.45fr) minmax(300px, .95fr) minmax(230px, .7fr); gap: 16px; align-items: start; margin-bottom: 16px; }
 .ai-chat-panel .soc-panel-body { padding: 0; }
@@ -1449,11 +1402,6 @@
 .config-detail { text-align: left; }
 .config-detail h3 { margin: 12px 0 5px; font-size: 16px; }
 .config-detail > p { margin-bottom: 14px; color: var(--soc-text-muted); font-size: 10.7px; line-height: 1.55; }
-.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 10px 0; border-top: 1px solid var(--soc-border); border-bottom: 1px solid var(--soc-border); }
-.switch-row > span { display: flex; flex-direction: column; gap: 2px; }
-.switch-row small { color: var(--soc-text-muted); font-size: 9.5px; }
-.switch-row input { width: 36px; height: 20px; accent-color: var(--soc-accent); }
-
 /* Functional management, integration, and user administration workspaces. */
 .management-card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .management-card-grid > button { position: relative; display: grid; min-width: 0; min-height: 150px; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: 10px; overflow: hidden; padding: 14px; color: var(--soc-text); text-align: left; background: linear-gradient(145deg, color-mix(in srgb, var(--soc-accent) 5%, var(--soc-surface-subtle)), var(--soc-surface-subtle)); border: 1px solid var(--soc-border); border-radius: 8px; box-shadow: var(--soc-shadow); transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
@@ -1927,8 +1875,6 @@
   .global-search { width: 220px; }
   .filter-bar { grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(130px, .6fr)); }
   .filter-bar > :nth-child(4) { display: none; }
-  .analysis-results { grid-template-columns: 1fr 1fr; }
-  .analysis-results .span-2 { grid-column: span 2; }
   .ai-assistant-layout { grid-template-columns: minmax(0, 1.2fr) minmax(290px, .8fr); }
   .ai-context-column { display: grid; grid-column: span 2; grid-template-columns: 1fr 1fr; }
   .tracking-summary { grid-template-columns: repeat(3, 1fr); }
@@ -2018,7 +1964,6 @@
   .soc-stat-card strong { font-size: 21px; }
   .soc-grid,
   .dashboard-bottom,
-  .analysis-results,
   .tracking-grid { grid-template-columns: 1fr; }
   .ai-assistant-layout { grid-template-columns: 1fr; }
   .ai-context-column { display: flex; grid-column: auto; }
@@ -2030,7 +1975,6 @@
   .ai-message-list { min-height: 320px; max-height: 500px; }
   .soc-grid .span-2,
   .dashboard-bottom .span-2,
-  .analysis-results .span-2,
   .tracking-grid .span-2 { grid-column: auto; }
   .filter-bar { grid-template-columns: 1fr 1fr; }
   .filter-bar > :first-child { grid-column: span 2; }
@@ -2058,12 +2002,6 @@
   .notes-filter-bar > button { grid-column: auto; }
   .donut-layout { justify-content: center; flex-wrap: wrap; }
   .chart-legend { max-width: 180px; }
-  .analysis-form { grid-template-columns: auto 1fr; }
-  .analysis-form button { grid-column: span 2; }
-  .analysis-verdict { flex-direction: column; }
-  .analysis-verdict .risk-meter { width: 100%; }
-  .analysis-actions { flex-direction: column; }
-  .analysis-actions .soc-button { width: 100%; }
   .note-detail-actions,
   .note-editor-actions { flex-direction: column; }
   .note-detail-actions .soc-button,

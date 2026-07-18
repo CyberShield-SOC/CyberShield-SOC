@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
-import { secondaryPageContent } from "../data/mockData";
+import { reportsPageContent } from "../data/mockData";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
 
-export default function SecondaryPage({ route }) {
+export default function ReportsPage() {
   const { canAdminister, repositoryMode } = useSocWorkspace();
-  const content = secondaryPageContent[route] || secondaryPageContent.manage;
+  const content = reportsPageContent;
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(content.items[0]);
   const filtered = useMemo(

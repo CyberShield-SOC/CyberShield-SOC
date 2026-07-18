@@ -555,47 +555,9 @@ export const workspaceSettings = Object.freeze({
   },
 });
 
-export const secondaryPageContent = Object.freeze({
-  "threat-detection": {
-    title: "Threat Detection",
-    description: "Manage detection coverage, rule health, and ATT&CK-aligned analytics.",
-    stats: [["Enabled rules", "27"], ["Coverage", "71%"], ["Needs tuning", "4"], ["Last deployment", "18m"]],
-    items: ["Credential access rule pack", "Cloud identity guardrails", "Endpoint execution analytics", "Data exfiltration thresholds"],
-  },
-  alerts: {
-    title: "Alerts",
-    description: "Triage active findings before promotion to an incident.",
-    stats: [["Active", "14"], ["Critical", "2"], ["Acknowledged", "6"], ["Contained", "3"]],
-    items: ["Brute-force: 47 failed SSH logins", "Cloud console login without MFA", "Unsigned PowerShell execution", "Large outbound transfer"],
-  },
-  reports: {
-    title: "Reports",
-    description: "Generate operational, compliance, and executive security reports.",
-    stats: [["Scheduled", "6"], ["Generated today", "3"], ["Recipients", "18"], ["Retention", "365d"]],
-    items: ["Daily SOC operations", "Weekly incident summary", "Detection coverage", "Executive risk overview"],
-  },
-  manage: {
-    title: "Manage",
-    description: "Review environment health, retention, and operational controls.",
-    stats: [["Assets", "248"], ["Collectors", "4"], ["Healthy", "98.7%"], ["Storage", "1.8 TB"]],
-    items: ["Data retention policies", "Network allow lists", "Notification routing", "Audit log retention"],
-  },
-  users: {
-    title: "Users",
-    description: "Manage analysts, roles, access state, and review dates.",
-    stats: [["Active users", "12"], ["Administrators", "2"], ["Analysts", "8"], ["Pending review", "2"]],
-    items: ["Yugal P. · Administrator", "Marvellous · Senior analyst", "Samin · Analyst", "Paul · Analyst"],
-  },
-  integrations: {
-    title: "Integrations",
-    description: "Connect telemetry, identity, ticketing, and notification systems.",
-    stats: [["Connected", "7"], ["Healthy", "6"], ["Degraded", "1"], ["Events/min", "1,284"]],
-    items: ["Linux authentication", "Apache access logs", "Firewall telemetry", "Microsoft Entra ID"],
-  },
-  settings: {
-    title: "Settings",
-    description: "Configure workspace defaults, security controls, and preferences.",
-    stats: [["Workspace", "UTA SOC"], ["Region", "US Central"], ["Session", "30m"], ["Audit", "Enabled"]],
-    items: ["Workspace profile", "Session and access policy", "Notifications", "Data and privacy"],
-  },
+export const reportsPageContent = Object.freeze({
+  title: "Reports",
+  description: "Generate operational, compliance, and executive security reports.",
+  stats: [["Scheduled", "6"], ["Generated today", "3"], ["Recipients", "18"], ["Retention", "365d"]],
+  items: ["Daily SOC operations", "Weekly incident summary", "Detection coverage", "Executive risk overview"],
 });

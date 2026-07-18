@@ -319,7 +319,7 @@ export default function UsersPage() {
             <form onSubmit={resetPassword} noValidate>
               <label>New temporary password<input type="password" value={passwordDraft.password} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(passwordErrors.password)} onChange={(event) => setPasswordDraft((current) => ({ ...current, password: event.target.value }))} /><span className="soc-field-error">{passwordErrors.password}</span></label>
               <label>Confirm password<input type="password" value={passwordDraft.confirmPassword} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(passwordErrors.confirmPassword)} onChange={(event) => setPasswordDraft((current) => ({ ...current, confirmPassword: event.target.value }))} /><span className="soc-field-error">{passwordErrors.confirmPassword}</span></label>
-              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setPasswordOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving}>{saving ? <span className="soc-spinner small" /> : <KeyRound size={15} />}{saving ? "Resettingâ€¦" : "Reset password"}</button></div>
+              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setPasswordOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving}>{saving ? <span className="soc-spinner small" /> : <KeyRound size={15} />}{saving ? "Resetting…" : "Reset password"}</button></div>
             </form>
           </section>
         </div>
@@ -333,7 +333,7 @@ export default function UsersPage() {
               <button type="button" disabled={saving} onClick={() => setRevokeTarget(null)} aria-label="Close"><X size={18} /></button>
             </header>
             {Number(revokeTarget.id) === Number(currentUser?.id) && <InlineNotice tone="warning" title="This includes your current session">You will return to the sign-in page after the sessions are revoked.</InlineNotice>}
-            <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setRevokeTarget(null)}>Cancel</button><button className="soc-button danger" type="button" disabled={saving} onClick={revokeSessions}><LogOut size={15} />{saving ? "Revokingâ€¦" : "Revoke sessions"}</button></div>
+            <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setRevokeTarget(null)}>Cancel</button><button className="soc-button danger" type="button" disabled={saving} onClick={revokeSessions}><LogOut size={15} />{saving ? "Revoking…" : "Revoke sessions"}</button></div>
           </section>
         </div>
       )}
