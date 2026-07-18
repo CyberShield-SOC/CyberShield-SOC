@@ -2,9 +2,11 @@
 
 ## Authentication Strategy
 
-CyberShield uses database-backed opaque bearer sessions instead of JWTs.
-`POST /auth/login` returns a random bearer token. Only the SHA-256 digest is
-stored in `auth_sessions`, so raw tokens are not persisted.
+CyberShield uses database-backed opaque sessions instead of JWTs. `POST
+/auth/login` returns a random token for API clients and also installs it in an
+HttpOnly, SameSite=Strict browser cookie. Only the SHA-256 digest is stored in
+`auth_sessions`, so raw tokens are not persisted. The React application uses
+the cookie session and never stores the returned token.
 
 Session lifetime is controlled by:
 
@@ -72,6 +74,10 @@ Header:
 Authorization: Bearer <access_token>
 ```
 
+Browser clients may omit this header and use the HttpOnly session cookie. A
+cookie-authenticated state-changing request must copy the non-secret CSRF
+cookie into `X-CSRF-Token`.
+
 Success:
 
 ```json
@@ -90,8 +96,9 @@ Success:
 
 ### `POST /auth/logout`
 
-Revokes the current bearer session. The frontend should then remove the local
-token and redirect to login.
+Revokes the current cookie or bearer session, expires the browser cookies, and
+returns a no-store response. The frontend redirects to login; it has no local
+authentication token to remove.
 
 ## Endpoint Protection Inventory
 
@@ -112,6 +119,9 @@ token and redirect to login.
 | `PATCH /incidents/{incident_id}` | Role restricted | Admin, Analyst |
 | `GET /incidents/{incident_id}/notes` | Role restricted | Admin, Analyst, Viewer |
 | `POST /incidents/{incident_id}/notes` | Role restricted | Admin, Analyst |
+| `GET /notes` | Role restricted | Admin, Analyst, Viewer |
+| `PATCH /notes/{note_id}` | Role restricted | Admin, Analyst |
+| `DELETE /notes/{note_id}` | Role restricted | Admin, Analyst |
 | `GET /users/roles` | Role restricted | Admin |
 | `GET /users` | Role restricted | Admin |
 | `POST /users` | Role restricted | Admin |
@@ -120,6 +130,12 @@ token and redirect to login.
 
 Routers are also exposed under `/api` for frontend compatibility, so the same
 permissions apply to `/api/...` paths.
+
+Authentication responses are marked `Cache-Control: no-store`. API responses
+also deny framing, disable content-type sniffing, use a strict referrer policy,
+and restrict browser permissions. In production, enable secure cookies with
+`AUTH_COOKIE_SECURE=true`, terminate TLS before the service, and rate-limit the
+public login endpoint at the edge.
 
 ## Setup
 

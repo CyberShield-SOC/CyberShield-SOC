@@ -34,7 +34,7 @@ class Incident(Base):
             name="ck_incidents_priority",
         ),
         CheckConstraint(
-            "status IN ('OPEN', 'INVESTIGATING', 'RESOLVED', 'CLOSED')",
+            "status IN ('OPEN', 'INVESTIGATING', 'RESOLVED', 'FALSE_POSITIVE')",
             name="ck_incidents_status",
         ),
         Index("ix_incidents_status", "status"),

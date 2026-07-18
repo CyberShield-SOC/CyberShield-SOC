@@ -193,7 +193,7 @@ def update_incident_record(
             incident.resolved_at = now
             incident.closed_at = None
 
-        elif new_status == "CLOSED":
+        elif new_status == "FALSE_POSITIVE":
             if incident.resolved_at is None:
                 incident.resolved_at = now
 

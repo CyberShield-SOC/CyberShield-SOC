@@ -56,7 +56,7 @@ def seed_roles_and_admin() -> None:
 
         admin_password = os.getenv("CYBERSHIELD_ADMIN_PASSWORD")
         admin_username = os.getenv("CYBERSHIELD_ADMIN_USERNAME", "admin")
-        admin_email = os.getenv("CYBERSHIELD_ADMIN_EMAIL", "admin@cybershield.local")
+        admin_email = os.getenv("CYBERSHIELD_ADMIN_EMAIL", "admin@cybershield.io")
 
         admin_user = db.scalar(
             select(User).where(User.username == admin_username)

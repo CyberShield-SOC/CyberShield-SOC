@@ -1,0 +1,28 @@
+{
+  "events": [
+    {
+      "@timestamp": "2026-07-17T07:15:00Z",
+      "source": { "ip": "203.0.113.24" },
+      "user": { "name": "analyst" },
+      "event": { "action": "login", "outcome": "failure" },
+      "log": { "level": "high" },
+      "message": "Authentication failed for an analyst account from a first-seen source."
+    },
+    {
+      "@timestamp": "2026-07-17T07:16:00Z",
+      "source": { "ip": "10.0.8.12" },
+      "user": { "name": "svc-backup" },
+      "event": { "action": "backup_started", "outcome": "success" },
+      "log": { "level": "info" },
+      "message": "Scheduled backup workflow started."
+    },
+    {
+      "@timestamp": "2026-07-17T07:17:00Z",
+      "source": { "ip": "198.51.100.77" },
+      "user": { "name": "root" },
+      "event": { "action": "sudo", "outcome": "failure" },
+      "log": { "level": "medium" },
+      "message": "Privileged command authentication failed."
+    }
+  ]
+}

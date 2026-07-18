@@ -4,13 +4,17 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
+    String,
     Text,
     func,
+    text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -55,9 +59,37 @@ class Note(Base):
         nullable=False,
     )
 
+    title: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="Analyst note",
+        server_default=text("'Analyst note'"),
+    )
+
     body: Mapped[str] = mapped_column(
         Text,
         nullable=False,
+    )
+
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'::varchar[]"),
+    )
+
+    pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
+    archived: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
     )
 
     created_at: Mapped[datetime] = mapped_column(
