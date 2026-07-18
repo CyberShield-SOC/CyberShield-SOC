@@ -1,0 +1,25 @@
+* text=auto
+
+# Keep source and configuration files consistent across Windows and CI.
+*.css text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.jsx text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Windows launchers remain native to PowerShell users.
+*.ps1 text eol=crlf
+
+# Binary assets must never be newline-normalized.
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.png binary
+*.woff binary
+*.woff2 binary

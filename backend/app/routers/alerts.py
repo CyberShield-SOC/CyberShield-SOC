@@ -13,7 +13,7 @@ from app.repositories.alert_repository import (
     serialize_alert_record,
     update_alert_record,
 )
-from app.schemas.alert import AlertUpdate
+from app.schemas.alert import AlertSeverity, AlertStatus, AlertUpdate
 
 
 router = APIRouter(tags=["Alerts"])
@@ -21,11 +21,11 @@ router = APIRouter(tags=["Alerts"])
 
 @router.get("/alerts")
 def get_alerts(
-    severity: str | None = Query(
+    severity: AlertSeverity | None = Query(
         default=None,
         description="Optional severity filter.",
     ),
-    status: str | None = Query(
+    status: AlertStatus | None = Query(
         default=None,
         description="Optional alert status filter.",
     ),

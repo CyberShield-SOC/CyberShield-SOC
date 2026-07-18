@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +16,11 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     database_url: str
-    auth_session_ttl_minutes: int = 60
+    auth_session_ttl_minutes: int = Field(default=60, ge=5, le=1440)
+    auth_remember_ttl_days: int = Field(default=7, ge=1, le=90)
+    auth_cookie_name: str = Field(default="cybershield_session", min_length=1, max_length=100)
+    auth_csrf_cookie_name: str = Field(default="cybershield_csrf", min_length=1, max_length=100)
+    auth_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

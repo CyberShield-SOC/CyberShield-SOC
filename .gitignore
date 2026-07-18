@@ -1,19 +1,31 @@
+# Editors and operating-system metadata
 .idea/
+.DS_Store
+Thumbs.db
+
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+pytest-cache-files-*/
 .venv/
 venv/
-backend/server.*.log
+backend/*.log
 
-# Frontend
-node_modules/
+# Frontend dependencies and build output
+frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+frontend/*.log
 
-# Environment
+# Generated parser and database output
+output/
+postgres-data/
+
+# Local environments and secrets. Keep safe templates tracked.
 .env
 .env.*
-
-
-# PostgreSQL local files
-postgres-data/
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
