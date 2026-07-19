@@ -2,26 +2,81 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Start Database",
+      "type": "shell",
+      "command": "docker compose up -d --wait database",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Apply Database Migrations",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe -m alembic upgrade head",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "dependsOn": ["Start Database"],
+      "dependsOrder": "sequence",
+      "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
+      "problemMatcher": []
+    },
+    {
       "label": "Start Backend",
       "type": "shell",
-      "command": "python main.py",
+      "command": ".\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 3000",
       "options": { "cwd": "${workspaceFolder}/backend" },
+      "dependsOn": ["Seed Database"],
+      "dependsOrder": "sequence",
+      "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Seed Database",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe -m app.db.seed",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "dependsOn": ["Apply Database Migrations"],
+      "dependsOrder": "sequence",
       "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
       "problemMatcher": []
     },
     {
       "label": "Start Frontend",
       "type": "shell",
-      "command": "npm run dev",
+      "command": "npm.cmd run dev",
       "options": { "cwd": "${workspaceFolder}/frontend" },
       "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
       "problemMatcher": []
     },
     {
       "label": "Start CyberShield SOC (both servers)",
-      "dependsOn": ["Start Backend", "Start Frontend"],
-      "dependsOrder": "parallel",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\start.ps1"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "new", "group": "cybershield" },
       "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Frontend",
+      "type": "shell",
+      "command": "npm.cmd test",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Backend",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": "test",
       "problemMatcher": []
     }
   ]

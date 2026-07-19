@@ -1,3 +1,5 @@
+name: cybershield-soc-main
+
 services:
   database:
     image: postgres:17

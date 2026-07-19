@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from app.security import (
     current_user,
     revoke_current_session,
 )
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -35,7 +38,11 @@ def user_payload(user: User) -> dict:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(
+    payload: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     user = authenticate_user(db, payload.username, payload.password)
     if user is None:
         raise HTTPException(
@@ -43,9 +50,36 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid username or password",
         )
 
+    ttl_minutes = (
+        settings.auth_remember_ttl_days * 24 * 60
+        if payload.remember_me
+        else settings.auth_session_ttl_minutes
+    )
+    access_token = create_access_token(db, user, ttl_minutes=ttl_minutes)
+    csrf_token = secrets.token_urlsafe(32)
+    cookie_options = {
+        "secure": settings.auth_cookie_secure,
+        "samesite": "strict",
+        "path": "/",
+    }
+    if payload.remember_me:
+        cookie_options["max_age"] = ttl_minutes * 60
+    response.set_cookie(
+        settings.auth_cookie_name,
+        access_token,
+        httponly=True,
+        **cookie_options,
+    )
+    response.set_cookie(
+        settings.auth_csrf_cookie_name,
+        csrf_token,
+        httponly=False,
+        **cookie_options,
+    )
+
     return {
         "success": True,
-        "access_token": create_access_token(db, user),
+        "access_token": access_token,
         "token_type": "bearer",
         "user": user_payload(user),
     }
@@ -53,10 +87,19 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 def logout(
+    request: Request,
+    response: Response,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
-    revoke_current_session(credentials, db)
+    # Logout is idempotent: stale or already-revoked sessions still have their
+    # browser cookies cleared and receive the same non-enumerating response.
+    try:
+        revoke_current_session(request, credentials, db)
+    except HTTPException:
+        pass
+    response.delete_cookie(settings.auth_cookie_name, path="/")
+    response.delete_cookie(settings.auth_csrf_cookie_name, path="/")
     return {"success": True}
 
 
