@@ -1,6 +1,7 @@
 from app.parsers.apache_parser import parse_apache_log
 from app.parsers.syslog_parser import parse_syslog
 from app.parsers.csv_parser import parse_csv_log
+from app.parsers.json_parser import parse_json_log
 from app.parsers.generic_parser import parse_generic_log
 
 import re
@@ -25,6 +26,9 @@ def parse_log(content: str, filename: str) -> dict:
 
     if ext == "csv":
         return parse_csv_log(content, lines)
+
+    if ext in {"json", "jsonl"}:
+        return parse_json_log(content, lines)
 
     # Check content patterns on first 5 lines
     sample = lines[:5]

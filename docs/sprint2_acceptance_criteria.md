@@ -9,7 +9,7 @@
 
 ## File Validation
 
-- Only `.log` and `.csv` files are accepted.
+- `.log`, `.csv`, `.json`, and `.jsonl` files are accepted.
 - Unsupported extensions return an error response before parsing.
 - Empty files return a validation error.
 - Files larger than the configured size limit return a validation error.
@@ -18,6 +18,7 @@
 ## Parser Integration
 
 - `.csv` files are routed to the CSV parser.
+- `.json` and `.jsonl` files are routed to the structured-event parser.
 - `.log` files are routed through automatic parser detection.
 - Parsed entries include normalized fields:
   - `timestamp`
@@ -51,6 +52,8 @@
 
 - A valid `.log` sample returns HTTP `200`, parsed entries, and detection output.
 - A valid `.csv` sample returns HTTP `200`, parsed entries, and detection output.
+- Valid JSON arrays and newline-delimited JSON return HTTP `200` with normalized entries.
+- Valid JSON with no parseable event objects returns HTTP `422` without replacing the latest upload.
 - A brute-force sample generates at least one brute-force alert.
 - An unsupported file type returns HTTP `415`.
 - Backend syntax compilation passes.

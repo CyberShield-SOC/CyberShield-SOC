@@ -23,6 +23,8 @@ from app.repositories.incident_repository import (
 )
 from app.schemas.incident import (
     IncidentCreate,
+    IncidentPriority,
+    IncidentStatus,
     IncidentUpdate,
 )
 from app.security import require_roles
@@ -104,11 +106,11 @@ def create_incident(
 
 @router.get("/incidents")
 def get_incidents(
-    incident_status: str | None = Query(
+    incident_status: IncidentStatus | None = Query(
         default=None,
         alias="status",
     ),
-    priority: str | None = Query(default=None),
+    priority: IncidentPriority | None = Query(default=None),
     assigned_user_id: int | None = Query(
         default=None,
         gt=0,

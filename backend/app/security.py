@@ -5,9 +5,9 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -35,7 +35,12 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_access_token(db: Session, user: User) -> str:
+def create_access_token(
+    db: Session,
+    user: User,
+    *,
+    ttl_minutes: int | None = None,
+) -> str:
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     db.add(
@@ -43,7 +48,7 @@ def create_access_token(db: Session, user: User) -> str:
             user_id=user.id,
             token_hash=token_digest(token),
             expires_at=now + timedelta(
-                minutes=settings.auth_session_ttl_minutes,
+                minutes=ttl_minutes if ttl_minutes is not None else settings.auth_session_ttl_minutes,
             ),
         )
     )
@@ -52,10 +57,16 @@ def create_access_token(db: Session, user: User) -> str:
 
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
+    identifier = username.strip()
     user = db.scalar(
         select(User)
         .options(joinedload(User.role))
-        .where(User.username == username)
+        .where(
+            or_(
+                User.username == identifier,
+                func.lower(User.email) == identifier.lower(),
+            )
+        )
     )
 
     if user is None or not user.is_active:
@@ -68,10 +79,12 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
 
 
 def current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    token = _request_token(request, credentials)
+    if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
@@ -80,7 +93,7 @@ def current_user(
     session = db.scalar(
         select(AuthSession)
         .options(joinedload(AuthSession.user).joinedload(User.role))
-        .where(AuthSession.token_hash == token_digest(credentials.credentials))
+        .where(AuthSession.token_hash == token_digest(token))
         .where(AuthSession.revoked_at.is_(None))
         .where(AuthSession.expires_at > datetime.now(timezone.utc))
     )
@@ -95,10 +108,12 @@ def current_user(
 
 
 def revoke_current_session(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None,
     db: Session,
 ) -> None:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    token = _request_token(request, credentials)
+    if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
@@ -106,7 +121,7 @@ def revoke_current_session(
 
     session = db.scalar(
         select(AuthSession)
-        .where(AuthSession.token_hash == token_digest(credentials.credentials))
+        .where(AuthSession.token_hash == token_digest(token))
         .where(AuthSession.revoked_at.is_(None))
     )
 
@@ -118,6 +133,18 @@ def revoke_current_session(
 
     session.revoked_at = datetime.now(timezone.utc)
     db.commit()
+
+
+def _request_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
+) -> str | None:
+    """Prefer an explicit bearer token and otherwise use the browser session."""
+
+    if credentials is not None and credentials.scheme.lower() == "bearer":
+        return credentials.credentials
+
+    return request.cookies.get(settings.auth_cookie_name)
 
 
 def require_roles(*allowed_roles: str):

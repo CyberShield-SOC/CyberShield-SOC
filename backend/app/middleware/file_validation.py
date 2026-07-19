@@ -1,8 +1,17 @@
 from fastapi import UploadFile, HTTPException
 
 # Allowed file extensions and their accepted MIME types
-ALLOWED_EXTENSIONS = {".log", ".csv"}
-ALLOWED_MIME_TYPES = {"text/plain", "text/csv", "application/octet-stream"}
+ALLOWED_EXTENSIONS = {".log", ".csv", ".json", ".jsonl"}
+ALLOWED_MIME_TYPES = {
+    "text/plain",
+    "text/csv",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/octet-stream",
+    "application/json",
+    "application/x-ndjson",
+    "application/jsonlines",
+}
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -62,5 +71,16 @@ def validate_log_file(file: UploadFile, content: bytes) -> None:
                 "success": False,
                 "error": "Uploaded file is empty.",
                 "code": "EMPTY_FILE",
+            },
+        )
+
+    # NUL bytes are a strong binary-file signal and should never reach a text parser.
+    if b"\x00" in content:
+        raise HTTPException(
+            status_code=415,
+            detail={
+                "success": False,
+                "error": "Uploaded files must contain plain-text log data.",
+                "code": "BINARY_FILE",
             },
         )
