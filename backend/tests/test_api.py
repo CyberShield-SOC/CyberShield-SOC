@@ -1,8 +1,10 @@
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.main import app
@@ -27,8 +29,25 @@ def fake_user(role_name: str = "Admin") -> User:
 
 
 @pytest.fixture(autouse=True)
-def authenticated_admin():
-    app.dependency_overrides[current_user] = lambda: fake_user("Admin")
+def authenticated_admin(db_session):
+    admin_role = db_session.scalar(select(Role).where(Role.name == "Admin"))
+    if admin_role is None:
+        admin_role = Role(name="Admin", description="Administrator")
+        db_session.add(admin_role)
+        db_session.flush()
+
+    suffix = uuid4().hex
+    admin_user = User(
+        role_id=admin_role.id,
+        username=f"test_api_admin_{suffix}",
+        email=f"test_api_admin_{suffix}@example.test",
+        password_hash="not-returned",
+        is_active=True,
+    )
+    db_session.add(admin_user)
+    db_session.commit()
+
+    app.dependency_overrides[current_user] = lambda: admin_user
     yield
     app.dependency_overrides.pop(current_user, None)
 
@@ -399,6 +418,150 @@ def test_complete_persisted_investigation_workflow():
     assert any(item["incident_id"] == incident_id for item in notes.json()["notes"])
 
 
+def test_create_incident_tracks_alert_assignment_status_and_timestamps(db_session):
+    """Verify the incident tracking API persists the core backend contract."""
+
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.models.alert import Alert
+    from app.models.role import Role
+    from app.models.user import User
+
+    admin_role = db_session.scalar(select(Role).where(Role.name == "Admin"))
+    if admin_role is None:
+        admin_role = Role(name="Admin", description="Administrator")
+        db_session.add(admin_role)
+        db_session.flush()
+
+    analyst_role = db_session.scalar(select(Role).where(Role.name == "Analyst"))
+    if analyst_role is None:
+        analyst_role = Role(name="Analyst", description="Security analyst")
+        db_session.add(analyst_role)
+        db_session.flush()
+
+    suffix = uuid4().hex
+    admin_user = User(
+        role_id=admin_role.id,
+        username=f"incident_admin_{suffix}",
+        email=f"incident_admin_{suffix}@example.test",
+        password_hash="not-used",
+        is_active=True,
+    )
+    assigned_analyst = User(
+        role_id=analyst_role.id,
+        username=f"assigned_analyst_{suffix}",
+        email=f"assigned_analyst_{suffix}@example.test",
+        password_hash="not-used",
+        is_active=True,
+    )
+    source_alert = Alert(
+        upload_id=uuid4(),
+        rule="contract_incident_tracking",
+        title="Suspicious authentication burst",
+        severity="HIGH",
+        status="NEW",
+        description="Repeated failed authentication attempts from one source.",
+        event_count=5,
+        time_window_seconds=60,
+        matched_line_numbers=[1, 2, 3, 4, 5],
+    )
+    db_session.add_all([admin_user, assigned_analyst, source_alert])
+    db_session.commit()
+
+    app.dependency_overrides[current_user] = lambda: admin_user
+
+    created = client.post(
+        "/incidents",
+        json={
+            "alert_id": source_alert.id,
+            "assigned_user_id": assigned_analyst.id,
+        },
+    )
+
+    assert created.status_code == 201
+    incident = created.json()["incident"]
+    assert incident["source_alert_id"] == source_alert.id
+    assert incident["assigned_user_id"] == assigned_analyst.id
+    assert incident["created_by_user_id"] == admin_user.id
+    assert incident["updated_by_user_id"] == admin_user.id
+    assert incident["status"] == "OPEN"
+    assert incident["opened_at"] is not None
+    assert incident["created_at"] is not None
+    assert incident["updated_at"] is not None
+    assert incident["resolved_at"] is None
+    assert incident["closed_at"] is None
+
+    fetched = client.get(f"/incidents/{incident['id']}")
+
+    assert fetched.status_code == 200
+    assert fetched.json()["incident"]["source_alert_id"] == source_alert.id
+    assert fetched.json()["incident"]["assigned_user_id"] == assigned_analyst.id
+
+
+def test_create_analyst_note_persists_incident_author_content_and_timestamps(db_session):
+    """Verify the notes API stores analyst-note data for an incident."""
+
+    from app.models.alert import Alert
+    from app.models.incident import Incident
+
+    source_alert = Alert(
+        upload_id=uuid4(),
+        rule="contract_note_tracking",
+        title="Suspicious endpoint activity",
+        severity="MEDIUM",
+        status="ESCALATED",
+        description="Endpoint generated repeated policy violations.",
+        event_count=3,
+        time_window_seconds=120,
+        matched_line_numbers=[2, 4, 6],
+    )
+    db_session.add(source_alert)
+    db_session.flush()
+
+    admin_user = app.dependency_overrides[current_user]()
+    incident = Incident(
+        source_alert_id=source_alert.id,
+        created_by_user_id=admin_user.id,
+        updated_by_user_id=admin_user.id,
+        title="Investigate endpoint policy violations",
+        description="Review the source alert evidence and document analyst findings.",
+        priority="MEDIUM",
+        status="OPEN",
+    )
+    db_session.add(incident)
+    db_session.commit()
+
+    created = client.post(
+        f"/incidents/{incident.id}/notes",
+        json={
+            "title": "Initial analyst review",
+            "body": "Validated the endpoint signal and preserved the related alert evidence.",
+            "tags": [" Endpoint ", "triage", "endpoint"],
+        },
+    )
+
+    assert created.status_code == 201
+    note = created.json()["note"]
+    assert note["incident_id"] == incident.id
+    assert note["author_user_id"] == admin_user.id
+    assert note["title"] == "Initial analyst review"
+    assert note["body"] == "Validated the endpoint signal and preserved the related alert evidence."
+    assert note["tags"] == ["endpoint", "triage"]
+    assert note["pinned"] is False
+    assert note["archived"] is False
+    assert note["created_at"] is not None
+    assert note["updated_at"] is not None
+
+    listed = client.get(f"/incidents/{incident.id}/notes")
+    workspace_notes = client.get("/notes")
+
+    assert listed.status_code == 200
+    assert listed.json()["notes"][0]["id"] == note["id"]
+    assert any(item["id"] == note["id"] for item in workspace_notes.json()["notes"])
+
+
 def test_note_limit_delete_reuse_and_false_positive_completion():
     """Exercise note-cap recovery and the second terminal incident outcome."""
 
@@ -448,4 +611,4 @@ def test_note_limit_delete_reuse_and_false_positive_completion():
     incident = completed.json()["incident"]
     assert incident["status"] == "FALSE_POSITIVE"
     assert incident["closed_at"] is not None
-    assert incident["updated_by_user_id"] == 1
+    assert incident["updated_by_user_id"] == incident["created_by_user_id"]
