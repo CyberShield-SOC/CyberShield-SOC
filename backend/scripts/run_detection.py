@@ -5,7 +5,7 @@ Usage:
     python scripts/run_detection.py <logfile>
 
 Example:
-    python scripts/run_detection.py ../sample_logs/auth.log
+    python scripts/run_detection.py ../sample-logs/auth.log
 """
 import sys
 from pathlib import Path

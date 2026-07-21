@@ -59,13 +59,14 @@ def username_from_text(text: str):
     text = text or ""
     patterns = [
         r"\bfor\s+(?:invalid user\s+)?([A-Za-z0-9_.-]+)\b",
+        r"\binvalid user\s+([A-Za-z0-9_.-]+)\b",
         r"\buser=([A-Za-z0-9_.-]+)\b",
         r"\bUSER=([A-Za-z0-9_.-]+)\b",
         r"\b([A-Za-z0-9_.-]+)\s+:\s+TTY=",
         r"\blogname=([A-Za-z0-9_.-]+)\b",
     ]
     for pattern in patterns:
-        match = re.search(pattern, text)
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1)
     return None
