@@ -16,15 +16,18 @@ export function useSession() {
     let active = true;
     const requestVersion = ++sessionVersionRef.current;
 
-    authClient.currentUser()
+    // Resume the session from the HttpOnly refresh cookie (if any) rather
+    // than calling /auth/me directly: resource routes now require a Bearer
+    // access token, which only exists in memory and doesn't survive a page
+    // reload on its own.
+    authClient.refresh()
       .then((user) => {
         if (active && sessionVersionRef.current === requestVersion) {
-          setServerSession({ status: "authenticated", user, expired: false });
-        }
-      })
-      .catch(() => {
-        if (active && sessionVersionRef.current === requestVersion) {
-          setServerSession({ status: "anonymous", user: null, expired: false });
+          setServerSession(
+            user
+              ? { status: "authenticated", user, expired: false }
+              : { status: "anonymous", user: null, expired: false },
+          );
         }
       });
 

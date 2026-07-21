@@ -1098,6 +1098,12 @@
 .filter-search:focus-within,
 .secondary-search:focus-within { border-color: color-mix(in srgb, var(--soc-accent) 34%, var(--soc-border)); }
 .file-notice { margin: 0 0 16px; }
+.csv-dropzone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 16px; color: var(--soc-text-muted); text-align: center; background: var(--soc-surface-subtle); border: 1.5px dashed var(--soc-border); border-radius: 8px; transition: background-color 120ms ease, border-color 120ms ease; }
+.csv-dropzone strong { color: var(--soc-text); font-size: 13px; }
+.csv-dropzone small { font-size: 10px; }
+.csv-dropzone.active { color: var(--soc-accent); background: var(--soc-accent-tint); border-color: var(--soc-accent); border-style: solid; }
+.csv-dropzone.disabled { opacity: .6; pointer-events: none; }
+.csv-dropzone .file-button { margin: 2px 0; }
 .event-workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) minmax(280px, 300px); gap: 16px; align-items: start; }
 .events-table-wrap { max-height: clamp(180px, calc(100dvh - 190px), 590px); overflow: auto; }
 .events-table { min-width: 900px; }
