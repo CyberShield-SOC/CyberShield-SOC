@@ -6,7 +6,8 @@ $envPath = Join-Path $PSScriptRoot ".env"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $npmExe = (Get-Command npm.cmd -ErrorAction Stop).Source
 $backendHealthUrl = "http://127.0.0.1:3000/health"
-$frontendUrl = "http://127.0.0.1:5173/"
+$frontendUrl = "https://127.0.0.1:5173/"
+$frontendPort = 5173
 
 function Test-ServiceEndpoint {
     param([Parameter(Mandatory)][string]$Uri)
@@ -30,6 +31,49 @@ function Wait-ForService {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
         if (Test-ServiceEndpoint -Uri $Uri) {
+            Write-Host "$Name is ready." -ForegroundColor Green
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    throw "$Name did not become ready within $TimeoutSeconds seconds. Check its .err.log file."
+}
+
+function Test-TcpPort {
+    param(
+        [Parameter(Mandatory)][string]$ComputerName,
+        [Parameter(Mandatory)][int]$Port
+    )
+
+    # Vite serves HTTPS with a self-signed local certificate. Windows
+    # PowerShell 5.1's Invoke-WebRequest uses the legacy .NET Framework
+    # HttpWebRequest stack, which can fail TLS renegotiation against
+    # Node's HTTPS server even when certificate validation is bypassed.
+    # A plain TCP connect is enough to know the dev server is listening.
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $async = $client.BeginConnect($ComputerName, $Port, $null, $null)
+        $connected = $async.AsyncWaitHandle.WaitOne(1000) -and $client.Connected
+        $client.Close()
+        return $connected
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-ForTcpPort {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$ComputerName,
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-TcpPort -ComputerName $ComputerName -Port $Port) {
             Write-Host "$Name is ready." -ForegroundColor Green
             return
         }
@@ -134,7 +178,7 @@ else {
     Wait-ForService -Name "FastAPI" -Uri $backendHealthUrl
 }
 
-if (Test-ServiceEndpoint -Uri $frontendUrl) {
+if (Test-TcpPort -ComputerName "127.0.0.1" -Port $frontendPort) {
     Write-Host "Vite is already running." -ForegroundColor Green
 }
 else {
@@ -146,7 +190,7 @@ else {
         -RedirectStandardOutput (Join-Path $frontendRoot "vite.out.log") `
         -RedirectStandardError (Join-Path $frontendRoot "vite.err.log")
 
-    Wait-ForService -Name "Vite" -Uri $frontendUrl
+    Wait-ForTcpPort -Name "Vite" -ComputerName "127.0.0.1" -Port $frontendPort
 }
 
 Write-Host "CyberShield SOC is ready at $frontendUrl" -ForegroundColor Green
