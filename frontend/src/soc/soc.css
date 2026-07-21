@@ -136,6 +136,9 @@
 }
 
 .soc-shell button:disabled { cursor: not-allowed; opacity: 0.55; }
+.soc-shell select:disabled,
+.soc-shell input:disabled,
+.soc-shell textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 .soc-shell h1,
 .soc-shell h2,
 .soc-shell h3,
@@ -663,6 +666,7 @@
 .soc-text-button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 0 0; color: var(--soc-accent); font-size: 10.5px; font-weight: 600; background: transparent; border: 0; }
 .file-button { position: relative; cursor: pointer; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.file-button.disabled { cursor: not-allowed; opacity: .5; }
 
 .soc-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .soc-stat-card,
