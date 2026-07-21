@@ -20,6 +20,9 @@ const RULE_IDS = Object.freeze({
   brute_force_login: "R-101",
   invalid_user_enumeration: "R-102",
   sudo_failure: "R-103",
+  password_spraying: "R-104",
+  credential_stuffing_success: "R-105",
+  port_scan: "R-106",
 });
 let apiNotesSnapshot = new Map();
 const runApiReadOnce = createInFlightDeduper();

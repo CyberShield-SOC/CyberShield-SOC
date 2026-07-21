@@ -6,14 +6,22 @@ import {
   summarizeRuleActivity,
 } from "../src/soc/data/detectionRulePack.js";
 
-test("catalogs the three rules registered by the backend detection engine", () => {
-  assert.deepEqual(CURRENT_DETECTION_RULE_IDS, ["R-101", "R-102", "R-103"]);
+test("catalogs the six rules registered by the backend detection engine", () => {
+  assert.deepEqual(CURRENT_DETECTION_RULE_IDS, [
+    "R-101", "R-102", "R-103", "R-104", "R-105", "R-106",
+  ]);
   assert.equal(CURRENT_DETECTION_RULES["R-101"].engineKey, "brute_force_login");
   assert.match(CURRENT_DETECTION_RULES["R-101"].criteria, /5 failed login attempts.+60 seconds/i);
   assert.equal(CURRENT_DETECTION_RULES["R-102"].engineKey, "invalid_user_enumeration");
   assert.match(CURRENT_DETECTION_RULES["R-102"].criteria, /3 distinct usernames.+600 seconds/i);
   assert.equal(CURRENT_DETECTION_RULES["R-103"].engineKey, "sudo_failure");
   assert.match(CURRENT_DETECTION_RULES["R-103"].criteria, /3 failed sudo attempts.+300 seconds/i);
+  assert.equal(CURRENT_DETECTION_RULES["R-104"].engineKey, "password_spraying");
+  assert.match(CURRENT_DETECTION_RULES["R-104"].criteria, /5 distinct source IPs.+600 seconds/i);
+  assert.equal(CURRENT_DETECTION_RULES["R-105"].engineKey, "credential_stuffing_success");
+  assert.match(CURRENT_DETECTION_RULES["R-105"].criteria, /5 failed login attempts.+60 seconds.+120 seconds/i);
+  assert.equal(CURRENT_DETECTION_RULES["R-106"].engineKey, "port_scan");
+  assert.match(CURRENT_DETECTION_RULES["R-106"].criteria, /10 scan events.+60 seconds/i);
 });
 
 test("summarizes active and terminal alert activity without accepting invalid dates", () => {

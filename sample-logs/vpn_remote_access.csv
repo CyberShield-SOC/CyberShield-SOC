@@ -1,0 +1,17 @@
+timestamp,ip_address,username,event_type,status,vpn_client,gateway,mfa_used
+2026-07-21T09:02:11Z,10.20.4.15,j.tanaka,login_attempt,SUCCESS,GlobalProtect,gw-east-01,true
+2026-07-21T09:15:47Z,10.20.4.22,m.oconnor,login_attempt,SUCCESS,GlobalProtect,gw-east-01,true
+2026-07-21T10:41:03Z,10.20.4.31,p.singh,login_attempt,SUCCESS,AnyConnect,gw-west-02,true
+2026-07-21T11:00:00Z,45.142.212.10,svc-vpn-backup,login_attempt,FAILED,GlobalProtect,gw-east-01,false
+2026-07-21T11:01:12Z,45.142.212.33,svc-vpn-backup,login_attempt,FAILED,GlobalProtect,gw-east-01,false
+2026-07-21T11:02:47Z,45.142.212.58,svc-vpn-backup,login_attempt,FAILED,GlobalProtect,gw-east-01,false
+2026-07-21T11:03:59Z,45.142.212.71,svc-vpn-backup,login_attempt,FAILED,GlobalProtect,gw-east-01,false
+2026-07-21T11:05:20Z,45.142.212.90,svc-vpn-backup,login_attempt,FAILED,GlobalProtect,gw-east-01,false
+2026-07-21T13:05:56Z,10.20.4.15,j.tanaka,connection_closed,INFO,GlobalProtect,gw-east-01,
+2026-07-21T14:22:10Z,10.20.4.44,a.novak,login_attempt,SUCCESS,AnyConnect,gw-west-02,true
+2026-07-21T15:30:00Z,185.107.56.24,r.alvarez,login_attempt,FAILED,AnyConnect,gw-west-02,false
+2026-07-21T15:30:04Z,185.107.56.24,r.alvarez,login_attempt,FAILED,AnyConnect,gw-west-02,false
+2026-07-21T15:30:09Z,185.107.56.24,r.alvarez,login_attempt,FAILED,AnyConnect,gw-west-02,false
+2026-07-21T15:30:13Z,185.107.56.24,r.alvarez,login_attempt,FAILED,AnyConnect,gw-west-02,false
+2026-07-21T15:30:18Z,185.107.56.24,r.alvarez,login_attempt,FAILED,AnyConnect,gw-west-02,false
+2026-07-21T15:30:47Z,185.107.56.24,r.alvarez,login_attempt,SUCCESS,AnyConnect,gw-west-02,false

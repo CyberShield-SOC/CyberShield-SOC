@@ -637,6 +637,7 @@
   transition: transform 120ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 .soc-button:active { transform: translateY(1px); }
+.soc-button:disabled { cursor: not-allowed; opacity: .5; transform: none; }
 .soc-button.primary { color: white; background: var(--soc-accent); border-color: var(--soc-accent); }
 .soc-button.primary:hover { background: var(--soc-accent-hover); border-color: var(--soc-accent-hover); }
 .soc-button.secondary { background: var(--soc-surface); }
@@ -1408,6 +1409,7 @@
 .config-detail { text-align: left; }
 .config-detail h3 { margin: 12px 0 5px; font-size: 16px; }
 .config-detail > p { margin-bottom: 14px; color: var(--soc-text-muted); font-size: 10.7px; line-height: 1.55; }
+.config-detail-actions { display: flex; margin: 14px 0; }
 /* Functional management, integration, and user administration workspaces. */
 .management-card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .management-card-grid > button { position: relative; display: grid; min-width: 0; min-height: 150px; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: 10px; overflow: hidden; padding: 14px; color: var(--soc-text); text-align: left; background: linear-gradient(145deg, color-mix(in srgb, var(--soc-accent) 5%, var(--soc-surface-subtle)), var(--soc-surface-subtle)); border: 1px solid var(--soc-border); border-radius: 8px; box-shadow: var(--soc-shadow); transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
