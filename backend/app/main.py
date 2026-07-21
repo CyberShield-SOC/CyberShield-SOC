@@ -22,7 +22,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://localhost:5173",
+        "https://127.0.0.1:5173",
+    ],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     # Keep the browser contract explicit: credentialed requests may send JSON,
     # the CSRF value, and an optional bearer credential for non-browser clients.
