@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     auth_cookie_name: str = Field(default="cybershield_session", min_length=1, max_length=100)
     auth_csrf_cookie_name: str = Field(default="cybershield_csrf", min_length=1, max_length=100)
     auth_cookie_secure: bool = False
+    jwt_secret_key: str
+    jwt_algorithm: str = Field(default="HS256", min_length=1, max_length=20)
+    jwt_access_ttl_minutes: int = Field(default=10, ge=1, le=60)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

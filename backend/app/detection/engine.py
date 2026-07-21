@@ -3,7 +3,10 @@ from __future__ import annotations
 from app.detection.models import Alert, LogRecord
 from app.detection.rules.base import BaseRule
 from app.detection.rules.brute_force import BruteForceLoginRule
+from app.detection.rules.credential_stuffing import CredentialStuffingRule
 from app.detection.rules.invalid_user import InvalidUserRule
+from app.detection.rules.password_spraying import PasswordSprayingRule
+from app.detection.rules.port_scan import PortScanRule
 from app.detection.rules.sudo_failure import SudoFailureRule
 
 
@@ -12,6 +15,9 @@ def _default_rules() -> list[BaseRule]:
         BruteForceLoginRule(),
         InvalidUserRule(),
         SudoFailureRule(),
+        PasswordSprayingRule(),
+        CredentialStuffingRule(),
+        PortScanRule(),
     ]
 
 

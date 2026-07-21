@@ -1,0 +1,15 @@
+timestamp,ip_address,username,event_type,status,application,mfa_method,country
+2026-07-21T08:01:15Z,172.64.9.10,l.bianchi,login_attempt,SUCCESS,Workday,push,Italy
+2026-07-21T08:20:40Z,172.64.9.11,k.patel,login_attempt,SUCCESS,Salesforce,push,United States
+2026-07-21T09:44:02Z,172.64.9.12,s.mueller,login_attempt,SUCCESS,Google Workspace,sms,Germany
+2026-07-21T10:15:00Z,203.0.113.77,jsmith,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T10:16:22Z,203.0.113.77,jsmith.admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T10:17:45Z,203.0.113.77,administrator,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T10:19:03Z,203.0.113.77,root,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T12:10:33Z,172.64.9.13,o.dubois,login_attempt,SUCCESS,Workday,push,France
+2026-07-21T14:47:00Z,91.219.237.14,it-admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T14:47:09Z,91.219.237.14,it-admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T14:47:18Z,91.219.237.14,it-admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T14:47:27Z,91.219.237.14,it-admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T14:47:35Z,91.219.237.14,it-admin,login_attempt,FAILED,Okta Admin Console,none,Unknown
+2026-07-21T16:02:18Z,172.64.9.14,k.patel,login_attempt,SUCCESS,Salesforce,push,United States

@@ -25,6 +25,15 @@ class LoginResponse(BaseModel):
     success: bool
     access_token: str
     token_type: str
+    expires_in: int
+    user: UserResponse
+
+
+class RefreshResponse(BaseModel):
+    success: bool
+    access_token: str
+    token_type: str
+    expires_in: int
     user: UserResponse
 
 

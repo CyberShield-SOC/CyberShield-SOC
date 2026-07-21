@@ -276,3 +276,4 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 | Samin Rijal | Backend Developer |
 | Marvellous Obasanya | Cybersecurity / Detection Lead |
 | Kapil Khanal | ML / DevOps / Testing Lead |
+

@@ -9,10 +9,12 @@ import { ErrorState, InlineNotice, LoadingState, PageHeader, Panel, SeverityBadg
 
 const MAX_INCIDENT_NOTES = 5;
 const PLAYBOOK_STEPS = [
-  "Validate source IP reputation",
-  "Review matched authentication events",
-  "Contain affected assets if compromise is confirmed",
-  "Document the response decision and next steps",
+  "Validate source IP reputation and enrich with threat intelligence",
+  "Review matched authentication and detection events to confirm scope",
+  "Contain affected assets and revoke active sessions if compromise is confirmed",
+  "Eradicate the root cause: reset credentials, patch, or remove persistence",
+  "Restore affected systems and monitor for recurrence",
+  "Document the response decision, root cause, and lessons learned",
 ];
 const WORKFLOW_STATES = ["Open", "Investigating", "Outcome recorded"];
 
@@ -24,7 +26,9 @@ function workflowIndex(status) {
 }
 
 function defaultTasks(incident) {
-  const completed = isTerminalIncidentStatus(incident.status) ? PLAYBOOK_STEPS.length : incident.status === "investigating" ? 1 : 0;
+  const completed = isTerminalIncidentStatus(incident.status)
+    ? PLAYBOOK_STEPS.length
+    : incident.status === "investigating" ? Math.ceil(PLAYBOOK_STEPS.length / 2) : 0;
   return PLAYBOOK_STEPS.map((title, index) => ({ id: index + 1, title, owner: incident.owner || "Unassigned", done: index < completed }));
 }
 

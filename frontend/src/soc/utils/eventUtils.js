@@ -87,6 +87,27 @@ export function downloadIncidentsCsv(incidents) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
+export function alertsToCsv(alerts) {
+  const columns = ["id", "ruleId", "ruleName", "severity", "status", "sourceIp", "user", "firstSeen", "lastSeen", "summary"];
+  return [
+    columns.map(escapeCsvCell).join(","),
+    ...alerts.map((alert) => columns.map((key) => escapeCsvCell(alert[key])).join(",")),
+  ].join("\n");
+}
+
+export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
+  const blob = new Blob([alertsToCsv(alerts)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cybershield-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
 export function validateLogFile(
   file,
   { allowedExtensions = [".log", ".csv", ".json", ".jsonl"], maxBytes = 10 * 1024 * 1024 } = {},

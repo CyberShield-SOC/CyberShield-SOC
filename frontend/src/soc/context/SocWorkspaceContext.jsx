@@ -372,6 +372,42 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite, currentActor, incidents, user?.id]);
 
+  const updateIncidentAssignee = useCallback(async (incidentId, assignedUserId, assigneeLabel) => {
+    if (rejectReadOnlyMutation()) return false;
+    const mutationKey = `incident-assignee:${incidentId}`;
+    if (!acquireMutation(mutationKey)) return false;
+    const previousIncident = incidents.find((incident) => incident.id === incidentId);
+    const nextOwner = assigneeLabel || (assignedUserId ? `User ${assignedUserId}` : "Unassigned");
+    setIncidents((current) => current.map((incident) => incident.id === incidentId ? {
+      ...incident,
+      assignedUserId: assignedUserId || null,
+      owner: nextOwner,
+    } : incident));
+    setMutation({ loading: true, error: "", message: "Updating assignee…" });
+    try {
+      const updated = await socRepository.updateIncidentAssignee(incidentId, assignedUserId);
+      setIncidents((current) => current.map((incident) => (
+        incident.id === incidentId
+          ? { ...incident, assignedUserId: updated.assignedUserId ?? (assignedUserId || null), owner: nextOwner }
+          : incident
+      )));
+      setMutation({ loading: false, error: "", message: "Assignee updated" });
+      return true;
+    } catch (error) {
+      if (previousIncident) {
+        setIncidents((current) => current.map((incident) => (
+          incident.id === incidentId
+            ? { ...incident, assignedUserId: previousIncident.assignedUserId, owner: previousIncident.owner }
+            : incident
+        )));
+      }
+      setMutation({ loading: false, error: error.message || "The assignee could not be updated.", message: "" });
+      return false;
+    } finally {
+      releaseMutation(mutationKey);
+    }
+  }, [canWrite, incidents]);
+
   const createIncident = useCallback(async (incident) => {
     if (rejectReadOnlyMutation()) return null;
     const mutationKey = "create-incident";
@@ -604,6 +640,7 @@ export function SocWorkspaceProvider({ children, user }) {
     deleteNote,
     updateAlertStatus,
     updateIncidentStatus,
+    updateIncidentAssignee,
     createIncident,
     uploadLogFile,
     saveWorkspaceSettings,
@@ -657,6 +694,7 @@ export function SocWorkspaceProvider({ children, user }) {
     unreadNotificationCount,
     updateAlertStatus,
     updateIncidentStatus,
+    updateIncidentAssignee,
     updateNote,
     uploadLogFile,
   ]);

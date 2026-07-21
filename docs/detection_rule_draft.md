@@ -20,6 +20,9 @@ Main files:
 - `rules/brute_force.py` - brute-force login rule.
 - `rules/invalid_user.py` - invalid-user enumeration rule.
 - `rules/sudo_failure.py` - sudo-failure rule.
+- `rules/password_spraying.py` - password-spraying rule (many source IPs against one account).
+- `rules/credential_stuffing.py` - failure-burst-then-success rule (likely account takeover).
+- `rules/port_scan.py` - port-scan rule.
 - `alert_store.py` - stores latest generated alerts for dashboard retrieval.
 
 ## Rule 1: Brute-Force Login
@@ -73,10 +76,15 @@ The upload API serializes alerts with dashboard-friendly fields:
 }
 ```
 
+## Implemented Since Sprint 2
+
+- Password spraying: one account receiving failed logins from many distinct source IPs (`password_spraying`)
+- Credential stuffing success: a failed-login burst from one IP followed by a success from that IP (`credential_stuffing_success`)
+- Port scan: burst of port-scan events from one source IP (`port_scan`)
+
 ## Future Rule Ideas
 
-- Suspicious source IP repeated across multiple users
-- Repeated failed sudo attempts
-- Impossible travel login pattern
+- Impossible travel login pattern (same user, distinct source IPs, short window)
 - High volume of denied firewall events
-- Repeated authentication failures followed by one success
+- Off-hours or first-seen-source-IP login for a known account
+- DNS beaconing / tunneling heuristics

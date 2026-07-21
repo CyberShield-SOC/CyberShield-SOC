@@ -3,7 +3,6 @@ from __future__ import annotations
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,13 +11,15 @@ from app.schemas.auth import (
     CurrentUserResponse,
     LoginRequest,
     LoginResponse,
+    RefreshResponse,
 )
 from app.security import (
     authenticate_user,
-    bearer_scheme,
-    create_access_token,
+    create_refresh_token,
     current_user,
-    revoke_current_session,
+    mint_access_token,
+    revoke_refresh_token,
+    rotate_refresh_token,
 )
 from app.core.config import settings
 
@@ -35,6 +36,29 @@ def user_payload(user: User) -> dict:
         "is_active": user.is_active,
         "role": user.role.name if user.role else None,
     }
+
+
+def _set_refresh_cookies(response: Response, refresh_token: str, *, remembered: bool, ttl_minutes: int) -> None:
+    csrf_token = secrets.token_urlsafe(32)
+    cookie_options = {
+        "secure": settings.auth_cookie_secure,
+        "samesite": "strict",
+        "path": "/",
+    }
+    if remembered:
+        cookie_options["max_age"] = ttl_minutes * 60
+    response.set_cookie(
+        settings.auth_cookie_name,
+        refresh_token,
+        httponly=True,
+        **cookie_options,
+    )
+    response.set_cookie(
+        settings.auth_csrf_cookie_name,
+        csrf_token,
+        httponly=False,
+        **cookie_options,
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -55,32 +79,55 @@ def login(
         if payload.remember_me
         else settings.auth_session_ttl_minutes
     )
-    access_token = create_access_token(db, user, ttl_minutes=ttl_minutes)
-    csrf_token = secrets.token_urlsafe(32)
-    cookie_options = {
-        "secure": settings.auth_cookie_secure,
-        "samesite": "strict",
-        "path": "/",
-    }
-    if payload.remember_me:
-        cookie_options["max_age"] = ttl_minutes * 60
-    response.set_cookie(
-        settings.auth_cookie_name,
-        access_token,
-        httponly=True,
-        **cookie_options,
-    )
-    response.set_cookie(
-        settings.auth_csrf_cookie_name,
-        csrf_token,
-        httponly=False,
-        **cookie_options,
-    )
+    refresh_token = create_refresh_token(db, user, ttl_minutes=ttl_minutes)
+    _set_refresh_cookies(response, refresh_token, remembered=payload.remember_me, ttl_minutes=ttl_minutes)
 
+    access_token, expires_in = mint_access_token(user)
     return {
         "success": True,
         "access_token": access_token,
         "token_type": "bearer",
+        "expires_in": expires_in,
+        "user": user_payload(user),
+    }
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+def refresh(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    raw_token = request.cookies.get(settings.auth_cookie_name)
+    if raw_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    rotated = rotate_refresh_token(db, raw_token)
+    if rotated is None:
+        response.delete_cookie(settings.auth_cookie_name, path="/")
+        response.delete_cookie(settings.auth_csrf_cookie_name, path="/")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    user, new_refresh_token, ttl_minutes, remembered = rotated
+    _set_refresh_cookies(
+        response,
+        new_refresh_token,
+        remembered=remembered,
+        ttl_minutes=ttl_minutes,
+    )
+
+    access_token, expires_in = mint_access_token(user)
+    return {
+        "success": True,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": expires_in,
         "user": user_payload(user),
     }
 
@@ -89,15 +136,17 @@ def login(
 def logout(
     request: Request,
     response: Response,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
-    # Logout is idempotent: stale or already-revoked sessions still have their
-    # browser cookies cleared and receive the same non-enumerating response.
-    try:
-        revoke_current_session(request, credentials, db)
-    except HTTPException:
-        pass
+    # Logout is idempotent: stale or already-revoked refresh tokens still have
+    # their browser cookies cleared and receive the same non-enumerating
+    # response.
+    raw_token = request.cookies.get(settings.auth_cookie_name)
+    if raw_token is not None:
+        try:
+            revoke_refresh_token(db, raw_token)
+        except HTTPException:
+            pass
     response.delete_cookie(settings.auth_cookie_name, path="/")
     response.delete_cookie(settings.auth_csrf_cookie_name, path="/")
     return {"success": True}

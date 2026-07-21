@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { File } from "node:buffer";
 import {
+  alertsToCsv,
   escapeCsvCell,
   eventsToCsv,
   filterEvents,
@@ -60,6 +61,13 @@ test("exports incident history with formula-safe cells", () => {
   assert.match(csv, /"'=unsafe"/);
   assert.match(csv, /"false positive"/);
   assert.match(csv, /"Yugal P\."/);
+});
+
+test("exports alerts with formula-safe cells", () => {
+  const csv = alertsToCsv([{ id: "ALT-1", ruleId: "R-101", ruleName: "brute force login", severity: "high", status: "new", sourceIp: "203.0.113.4", user: "root", firstSeen: "2026-07-17T00:00:00Z", lastSeen: "2026-07-17T00:01:00Z", summary: "=unsafe" }]);
+  assert.match(csv, /^"id","ruleId","ruleName"/);
+  assert.match(csv, /"R-101"/);
+  assert.match(csv, /"'=unsafe"/);
 });
 
 test("formats invalid backend timestamps as a stable fallback", () => {

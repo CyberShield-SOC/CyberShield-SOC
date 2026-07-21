@@ -211,7 +211,7 @@ export default function AlertsPage({ navigate }) {
                     <td><span className="mono">{alert.sourceIp}</span><small>{alert.source}</small></td>
                     <td>{alert.assignee}</td>
                     <td><StatusBadge status={alert.status} /></td>
-                    <td>{formatTimestamp(alert.createdAt)}</td>
+                    <td>{formatTimestamp(alert.observedAt || alert.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -224,7 +224,7 @@ export default function AlertsPage({ navigate }) {
         <aside className="alert-detail-column" aria-label="Scrollable alert details" tabIndex="0">
           {selected ? (
             <>
-              <Panel title={selected.id} subtitle={formatTimestamp(selected.createdAt)} actions={<SeverityBadge severity={selected.severity} />}>
+              <Panel title={selected.id} subtitle={formatTimestamp(selected.observedAt || selected.createdAt)} actions={<SeverityBadge severity={selected.severity} />}>
                 <div className="alert-detail-summary">
                   <h3>{selected.title}</h3>
                   <div className="alert-reason"><span>Reason</span><p>{selected.reason || selected.summary}</p></div>
