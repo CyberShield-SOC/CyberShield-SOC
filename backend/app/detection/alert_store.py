@@ -13,6 +13,15 @@ _RULE_TITLES = {
     "sudo_failure": (
         "Repeated sudo authentication failures"
     ),
+    "password_spraying": (
+        "Possible password spraying"
+    ),
+    "credential_stuffing_success": (
+        "Possible account takeover after credential stuffing"
+    ),
+    "port_scan": (
+        "Possible port scan activity"
+    ),
 }
 
 

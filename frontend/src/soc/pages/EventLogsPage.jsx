@@ -298,6 +298,12 @@ export default function EventLogsPage({ navigate }) {
   if (error) return <ErrorState message={error} onRetry={() => refresh("events")} />;
 
   const failedCount = allEvents.filter((event) => event.status === "failed").length;
+  const unrecognizedCount = allEvents.filter(
+    (event) => event.event === "security_event" || event.status === "unknown",
+  ).length;
+  const parserHealthPct = allEvents.length
+    ? Math.round(((allEvents.length - unrecognizedCount) / allEvents.length) * 1000) / 10
+    : null;
 
   return (
     <>
@@ -359,7 +365,12 @@ export default function EventLogsPage({ navigate }) {
         <StatCard label="Records available" value={allEvents.length.toLocaleString()} trend={`${filteredEvents.length} match time and page filters`} />
         <StatCard label="Sources connected" value={sources.length} trend={sources.join(", ")} />
         <StatCard label="Failed events" value={failedCount} trend="Review authentication failures" tone="critical" />
-        <StatCard label="Parser health" value="99.7%" trend="12 patterns actively normalized" tone="success" />
+        <StatCard
+          label="Parser health"
+          value={parserHealthPct === null ? "—" : `${parserHealthPct}%`}
+          trend={unrecognizedCount ? `${unrecognizedCount.toLocaleString()} events need pattern review` : "All records fully normalized"}
+          tone={unrecognizedCount ? "critical" : "success"}
+        />
       </div>
 
       {(fileResult || fileError) && (
