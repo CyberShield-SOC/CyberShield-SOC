@@ -28,6 +28,7 @@ jobs:
           --health-retries=5
     env:
       DATABASE_URL: postgresql+psycopg://cybershield:cybershield@localhost:5432/cybershield_test
+      JWT_SECRET_KEY: ci-test-only-secret-do-not-use-in-production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
