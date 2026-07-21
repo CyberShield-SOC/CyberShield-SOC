@@ -6,6 +6,15 @@ const FORCE_SAMPLE_MODE = String(import.meta.env?.VITE_USE_MOCK_DATA || "").toLo
 const REQUEST_TIMEOUT_MS = 12_000;
 const CSRF_COOKIE_NAME = "cybershield_csrf";
 const LOGIN_PATHS = new Set(["/auth/login", "/api/auth/login"]);
+// Login/refresh/logout are the only cookie-authenticated auth endpoints left.
+// A 401 from any of them must never itself trigger another refresh attempt
+// (that would recurse) — resource endpoints are the only ones eligible for
+// the silent-refresh-and-retry flow below.
+const NO_INTERCEPT_PATHS = new Set([
+  "/auth/login", "/api/auth/login",
+  "/auth/refresh", "/api/auth/refresh",
+  "/auth/logout", "/api/auth/logout",
+]);
 export const SESSION_EXPIRED_MESSAGE = "Your session expired. Sign in again to continue.";
 
 export const isBackendConfigured = Boolean(API_BASE_URL) && !FORCE_SAMPLE_MODE;
@@ -18,6 +27,29 @@ export class ApiRequestError extends Error {
     this.payload = payload;
     this.status = status;
   }
+}
+
+// In-memory-only JWT access token. Deliberately never persisted to
+// localStorage/sessionStorage: it lives only for the life of the tab, which
+// bounds what an XSS exploit could exfiltrate. A page reload re-derives it
+// from the HttpOnly refresh cookie via authClient.refresh().
+let accessToken = null;
+
+export function getAccessToken() {
+  return accessToken;
+}
+
+export function setAccessToken(token) {
+  accessToken = token || null;
+}
+
+// Registered once by authClient.js at module load, so apiClient.js can
+// trigger a refresh attempt on a stale access token without importing
+// authClient.js directly (that would be circular: authClient imports apiClient).
+let unauthorizedRefreshHandler = null;
+
+export function setUnauthorizedRefreshHandler(handler) {
+  unauthorizedRefreshHandler = typeof handler === "function" ? handler : null;
 }
 
 export function shouldBroadcastUnauthorized(path, status, enabled = true) {
@@ -54,9 +86,12 @@ function defaultFailureMessage(status) {
 /**
  * Central browser API transport.
  *
- * Authentication is carried by the server-issued HttpOnly cookie, not by a
- * JavaScript-readable bearer token. Cookie-authenticated writes also attach
- * the non-secret double-submit CSRF value expected by FastAPI.
+ * Resource requests carry a short-lived JWT access token as an
+ * `Authorization: Bearer` header (kept in memory only, never in a
+ * JS-readable cookie or storage). The two remaining cookie-authenticated
+ * endpoints — /auth/refresh and /auth/logout — still rely on the HttpOnly
+ * refresh cookie and attach the non-secret double-submit CSRF value FastAPI
+ * expects for them.
  */
 export async function apiRequest(path, {
   broadcastUnauthorizedErrors = true,
@@ -65,6 +100,7 @@ export async function apiRequest(path, {
   networkMessage = "The service is unreachable. Check the connection and try again.",
   timeoutMessage = "The request timed out. Please try again.",
   timeoutMs = REQUEST_TIMEOUT_MS,
+  _isRetry = false,
   ...options
 } = {}) {
   const controller = new AbortController();
@@ -76,6 +112,9 @@ export async function apiRequest(path, {
     headers.set("Accept", "application/json");
     if (options.body && !(options.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
+    }
+    if (accessToken) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
     }
     if (!["GET", "HEAD"].includes(method)) {
       const csrfToken = readCookie(CSRF_COOKIE_NAME);
@@ -92,6 +131,28 @@ export async function apiRequest(path, {
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
+      const pathname = String(path || "").split("?", 1)[0];
+      if (
+        response.status === 401
+        && !_isRetry
+        && !NO_INTERCEPT_PATHS.has(pathname)
+        && unauthorizedRefreshHandler
+      ) {
+        const refreshedUser = await unauthorizedRefreshHandler().catch(() => null);
+        if (refreshedUser) {
+          return apiRequest(path, {
+            ...options,
+            broadcastUnauthorizedErrors,
+            errorMessage,
+            errorType: ErrorType,
+            networkMessage,
+            timeoutMessage,
+            timeoutMs,
+            _isRetry: true,
+          });
+        }
+      }
+
       if (shouldBroadcastUnauthorized(path, response.status, broadcastUnauthorizedErrors)) {
         broadcastUnauthorized(path);
       }

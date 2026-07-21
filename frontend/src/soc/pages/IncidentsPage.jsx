@@ -3,6 +3,7 @@ import { BookOpenCheck, CheckCircle2, Download, History, Plus, RefreshCw, Search
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { socRepository } from "../services/socRepository";
 import { downloadIncidentsCsv, formatTimestamp } from "../utils/eventUtils";
 import { validateIncidentDraft } from "../utils/formValidation";
 import { nextIncidentId } from "../utils/recordIds";
@@ -45,6 +46,7 @@ export default function IncidentsPage({ navigate }) {
     selectedIncidentId,
     setSelectedIncidentId,
     updateIncidentStatus,
+    updateIncidentAssignee,
     createIncident: createWorkspaceIncident,
   } = useSocWorkspace();
   const [query, setQuery] = useState("");
@@ -56,6 +58,30 @@ export default function IncidentsPage({ navigate }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
   const [pendingTerminalStatus, setPendingTerminalStatus] = useState(null);
+  const [assignableUsers, setAssignableUsers] = useState([]);
+
+  // A lightweight, role-appropriate directory for assignee pickers — kept
+  // local to this page rather than in the shared workspace context, since
+  // it's only needed here and in the incident detail's reassignment control.
+  useEffect(() => {
+    let active = true;
+    socRepository.getAssignableUsers()
+      .then((users) => { if (active) setAssignableUsers(users); })
+      .catch(() => { if (active) setAssignableUsers([]); });
+    return () => { active = false; };
+  }, []);
+
+  const usersById = useMemo(() => new Map(assignableUsers.map((user) => [user.id, user])), [assignableUsers]);
+
+  function assigneeName(user) {
+    return user.fullName || user.username;
+  }
+
+  function displayOwner(incident) {
+    if (!incident.assignedUserId) return incident.owner || "Unassigned";
+    const user = usersById.get(incident.assignedUserId);
+    return user ? assigneeName(user) : incident.owner;
+  }
 
   // Resolved and false-positive outcomes leave the active queue but remain
   // available through the searchable investigation history.
@@ -64,16 +90,16 @@ export default function IncidentsPage({ navigate }) {
     alert.sourceAlertId && !incidents.some((incident) => incident.sourceAlertId === alert.sourceAlertId)
   ));
   const filtered = useMemo(() => records.filter((incident) => {
-    const text = `${incident.id} ${incident.title} ${incident.owner} ${incident.summary}`.toLowerCase();
+    const text = `${incident.id} ${incident.title} ${incident.owner} ${displayOwner(incident)} ${incident.summary}`.toLowerCase();
     return (!query || text.includes(query.toLowerCase())) && (!priority || incident.priority === priority) && (!status || incident.status === status);
-  }), [records, priority, query, status]);
+  }), [records, priority, query, status, usersById]);
   const historyRecords = useMemo(() => incidents
     .filter((incident) => isTerminalIncidentStatus(incident.status))
     .filter((incident) => {
-      const searchText = `${incident.id} ${incident.title} ${incident.owner} ${incident.priority} ${incident.summary}`.toLowerCase();
+      const searchText = `${incident.id} ${incident.title} ${incident.owner} ${displayOwner(incident)} ${incident.priority} ${incident.summary}`.toLowerCase();
       return !historyQuery || searchText.includes(historyQuery.toLowerCase());
     })
-    .sort((a, b) => new Date(b.completedAt || b.updated) - new Date(a.completedAt || a.updated)), [historyQuery, incidents]);
+    .sort((a, b) => new Date(b.completedAt || b.updated) - new Date(a.completedAt || a.updated)), [historyQuery, incidents, usersById]);
   const pagination = useMemo(() => paginateRecords(filtered, page, PAGE_SIZE), [filtered, page]);
   const pageIncidents = pagination.items;
   const selected = records.find((incident) => incident.id === selectedIncidentId) || null;
@@ -152,6 +178,8 @@ export default function IncidentsPage({ navigate }) {
     const title = String(form.get("title") || "").trim();
     const summary = String(form.get("summary") || "").trim();
     const sourceAlertId = Number(form.get("sourceAlertId")) || null;
+    const assignedUserId = Number(form.get("assignedUserId")) || null;
+    const assignedUser = assignedUserId ? usersById.get(assignedUserId) : null;
     const nextErrors = {
       ...validateIncidentDraft({ title, summary }),
       sourceAlertId: repositoryMode === "api" && !sourceAlertId
@@ -175,7 +203,8 @@ export default function IncidentsPage({ navigate }) {
     const incident = {
       id: nextIncidentId(incidents),
       title,
-      owner: currentActor,
+      owner: assignedUser ? assigneeName(assignedUser) : currentActor,
+      assignedUserId,
       priority: String(form.get("priority") || "medium"),
       status: "open",
       updated: "Just now",
@@ -223,7 +252,7 @@ export default function IncidentsPage({ navigate }) {
                   <tr key={incident.id} className={selected?.id === incident.id ? "selected" : ""} onClick={() => setSelectedIncidentId(incident.id)} tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedIncidentId(incident.id); } }}>
                     <td className="mono">{incident.id}</td>
                     <td><strong>{incident.title}</strong><small>{incident.sla}</small></td>
-                    <td>{incident.owner}</td>
+                    <td>{displayOwner(incident)}</td>
                     <td><SeverityBadge severity={incident.priority} /></td>
                     <td><StatusBadge status={incident.status} /></td>
                     <td>{formatIncidentUpdated(incident.updated)}</td>
@@ -243,11 +272,28 @@ export default function IncidentsPage({ navigate }) {
               <h3>{selected.title}</h3>
               <p>{selected.summary}</p>
               <dl>
-                <div><dt>Assignee</dt><dd>{selected.owner}</dd></div>
                 <div><dt>Response SLA</dt><dd>{selected.sla}</dd></div>
                 <div><dt>Related events</dt><dd>{selected.eventIds.length || "None linked"}</dd></div>
                 <div><dt>Last updated</dt><dd>{formatIncidentUpdated(selected.updated)}</dd></div>
               </dl>
+              <label className="status-control">
+                <span>Assignee</span>
+                <select
+                  value={selected.assignedUserId || ""}
+                  disabled={mutation.loading || !canWrite}
+                  title={!canWrite ? "Viewer access is read-only." : undefined}
+                  onChange={(event) => {
+                    const nextId = Number(event.target.value) || null;
+                    const nextUser = nextId ? usersById.get(nextId) : null;
+                    void updateIncidentAssignee(selected.id, nextId, nextUser ? assigneeName(nextUser) : null);
+                  }}
+                >
+                  <option value="">Unassigned</option>
+                  {assignableUsers.map((user) => (
+                    <option key={user.id} value={user.id}>{assigneeName(user)}{user.role ? ` · ${user.role}` : ""}</option>
+                  ))}
+                </select>
+              </label>
               <label className="status-control"><span>Incident status</span><select value={selected.status} disabled={mutation.loading || !canWrite} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => requestIncidentStatus(selected, event.target.value)}>{INCIDENT_STATUSES.map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
               <div className="incident-evidence-section">
                 <h4>Matched log evidence <span>{selectedEvents.length}</span></h4>
@@ -300,6 +346,15 @@ export default function IncidentsPage({ navigate }) {
               )}
               <label className={createErrors.title ? "has-error" : undefined}>Title<input name="title" maxLength="90" autoFocus aria-invalid={Boolean(createErrors.title)} aria-describedby={createErrors.title ? "incident-title-error" : undefined} onChange={() => { if (createErrors.title) setCreateErrors((current) => ({ ...current, title: undefined })); }} /><ValidationMessage id="incident-title-error">{createErrors.title}</ValidationMessage></label>
               <label>Priority<select name="priority" defaultValue="medium"><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+              <label>
+                Assignee
+                <select name="assignedUserId" defaultValue="">
+                  <option value="">Unassigned</option>
+                  {assignableUsers.map((user) => (
+                    <option key={user.id} value={user.id}>{assigneeName(user)}{user.role ? ` · ${user.role}` : ""}</option>
+                  ))}
+                </select>
+              </label>
               <label className={createErrors.summary ? "has-error" : undefined}>Summary<textarea name="summary" maxLength="500" rows="4" aria-invalid={Boolean(createErrors.summary)} aria-describedby={createErrors.summary ? "incident-summary-error" : undefined} onChange={() => { if (createErrors.summary) setCreateErrors((current) => ({ ...current, summary: undefined })); }} /><ValidationMessage id="incident-summary-error">{createErrors.summary}</ValidationMessage></label>
               <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={mutation.loading} onClick={() => setCreateOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={mutation.loading}>{mutation.loading ? "Creating…" : "Create incident"}</button></div>
             </form>

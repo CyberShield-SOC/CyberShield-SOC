@@ -67,7 +67,7 @@ export function summarizeRuleActivity(ruleId, alerts = []) {
     String(alert?.status || "").toLowerCase(),
   ));
   const timestamps = matches
-    .map((alert) => new Date(alert?.createdAt || alert?.observedAt || "").getTime())
+    .map((alert) => new Date(alert?.observedAt || alert?.createdAt || "").getTime())
     .filter(Number.isFinite);
 
   return {

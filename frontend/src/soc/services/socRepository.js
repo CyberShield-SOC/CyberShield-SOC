@@ -151,6 +151,20 @@ function writeSessionSettings(settings) {
   }
 }
 
+function normalizeAssignableUser(user) {
+  const id = Number(user?.id);
+  const username = String(user?.username || "").trim();
+  if (!Number.isSafeInteger(id) || id <= 0 || !username) {
+    throw new Error("The service returned an invalid assignable user record.");
+  }
+  return {
+    id,
+    username,
+    fullName: String(user?.fullName ?? user?.full_name ?? "").trim(),
+    role: String(user?.role || "").trim(),
+  };
+}
+
 export function normalizeWorkspaceUser(user) {
   const id = Number(user?.id);
   const username = String(user?.username || "").trim();
@@ -313,6 +327,7 @@ function normalizeIncident(incident, alerts = [], latest = null) {
     backendId: incident.id,
     sourceAlertId: incident.source_alert_id,
     title: incident.title,
+    assignedUserId: incident.assigned_user_id || null,
     owner: incident.assigned_user_id ? `User ${incident.assigned_user_id}` : "Unassigned",
     priority: String(incident.priority || "LOW").toLowerCase(),
     status,
@@ -403,6 +418,17 @@ const mockRepository = {
   async getSettings() { await wait(100); return readSessionSettings(); },
   async getUsers() { await wait(100); return readSessionUsers(); },
   async getUserRoles() { await wait(70); return clone(DEFAULT_USER_ROLES); },
+  async getAssignableUsers() {
+    await wait(80);
+    return readSessionUsers()
+      .filter((sessionUser) => sessionUser.isActive)
+      .map((sessionUser) => ({
+        id: sessionUser.id,
+        username: sessionUser.username,
+        fullName: sessionUser.fullName,
+        role: sessionUser.role,
+      }));
+  },
   async saveSettings(settings) { await wait(140); writeSessionSettings(settings); return clone(settings); },
   async saveNotes(notes) { await wait(80); writeSessionNotes(notes); return clone(notes); },
   async deleteNote(noteId) {
@@ -419,6 +445,10 @@ const mockRepository = {
     return { id: incidentId, status, updated, completedAt: terminal ? updated : null, completedBy: null, completedByUserId: null };
   },
   async createIncident(incident) { await wait(120); return clone(incident); },
+  async updateIncidentAssignee(incidentId, assignedUserId) {
+    await wait(100);
+    return { id: incidentId, assignedUserId: assignedUserId || null };
+  },
   async createUser(user) {
     await wait(100);
     const users = readSessionUsers();
@@ -608,6 +638,10 @@ const httpRepository = {
     const payload = await request("/users");
     return responseArray(payload, "users").map(normalizeWorkspaceUser);
   },
+  async getAssignableUsers() {
+    const payload = await request("/users/assignable");
+    return responseArray(payload, "users").map(normalizeAssignableUser);
+  },
   async getUserRoles() {
     const payload = await request("/users/roles");
     return responseArray(payload, "roles").map((role) => ({
@@ -680,6 +714,7 @@ const httpRepository = {
   async createIncident(incident) {
     const alertId = incident.sourceAlertId || backendId(incident.alertId);
     if (!alertId) throw new Error("Select a source alert before creating an incident.");
+    const assignedUserId = Number(incident.assignedUserId) || null;
     const payload = await request("/incidents", {
       method: "POST",
       body: JSON.stringify({
@@ -687,12 +722,20 @@ const httpRepository = {
         title: incident.title,
         description: incident.summary,
         priority: String(incident.priority || "medium").toUpperCase(),
+        ...(assignedUserId ? { assigned_user_id: assignedUserId } : {}),
       }),
     });
     return {
       ...normalizeIncident(payload.incident),
       eventIds: incident.eventIds || [],
     };
+  },
+  async updateIncidentAssignee(incidentId, assignedUserId) {
+    const payload = await request(`/incidents/${requireBackendId(incidentId, "Incident")}`, {
+      method: "PATCH",
+      body: JSON.stringify({ assigned_user_id: assignedUserId ? Number(assignedUserId) : null }),
+    });
+    return normalizeIncident(payload.incident);
   },
   async createUser(user) {
     const payload = await request("/users", {

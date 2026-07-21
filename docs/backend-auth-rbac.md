@@ -2,20 +2,43 @@
 
 ## Authentication Strategy
 
-CyberShield uses database-backed opaque sessions instead of JWTs. `POST
-/auth/login` returns a random token for API clients and also installs it in an
-HttpOnly, SameSite=Strict browser cookie. Only the SHA-256 digest is stored in
-`auth_sessions`, so raw tokens are not persisted. The React application uses
-the cookie session and never stores the returned token.
+CyberShield uses short-lived JWT access tokens backed by a rotating,
+DB-persisted refresh token. `POST /auth/login` returns a signed JWT
+(`access_token`) for the client to send as `Authorization: Bearer <token>` on
+every protected request, and separately installs an opaque refresh token in an
+HttpOnly, SameSite=Strict browser cookie. Only the SHA-256 digest of the
+refresh token is stored in `auth_sessions`; the JWT itself is never persisted
+server-side — it's verified purely by signature and expiry.
 
-Session lifetime is controlled by:
+**Every protected route, including `GET /auth/me`, requires the Bearer
+header.** The refresh cookie by itself no longer grants API access; its only
+purpose is minting new access tokens via `POST /auth/refresh`, which rotates
+it (revokes the presented token, issues a new one) each time it's used.
+
+Token lifetimes are controlled by:
 
 ```text
-AUTH_SESSION_TTL_MINUTES=60
+JWT_SECRET_KEY=<long random value>     # required; signs and verifies access tokens
+JWT_ACCESS_TTL_MINUTES=10              # access token lifetime (default 10)
+AUTH_SESSION_TTL_MINUTES=60            # refresh token lifetime, non-"remember me"
+AUTH_REMEMBER_TTL_DAYS=7               # refresh token lifetime, "remember me"
 ```
 
-Expired, missing, revoked, or invalid tokens return `401 Unauthorized`.
-Authenticated users without the required role return `403 Forbidden`.
+Expired, missing, malformed, or tampered access tokens return `401
+Unauthorized`. Authenticated users without the required role return `403
+Forbidden`.
+
+**Accepted trade-off:** deactivating a user (`PATCH /users/{id}/active`) is an
+instant kill-switch — `current_user()` checks `is_active` on the database on
+every request, independent of the JWT's own expiry. Resetting a user's
+password and the explicit "revoke sessions" action, however, only revoke the
+*refresh* token — they block that user's next `/auth/refresh` call, but any
+already-issued, unexpired access token keeps working until it naturally
+expires (bounded to `JWT_ACCESS_TTL_MINUTES`). This is the standard trade-off
+of short-lived JWTs over fully stateful sessions, deliberately accepted here
+in exchange for stateless, DB-free verification of the access token itself.
+See `backend/tests/test_full_contract.py::test_admin_user_management_lifecycle`
+for the exact behavior this guarantees.
 
 ## Role Matrix
 
@@ -45,8 +68,9 @@ Success:
 ```json
 {
   "success": true,
-  "access_token": "opaque-session-token",
+  "access_token": "<jwt>",
   "token_type": "bearer",
+  "expires_in": 600,
   "user": {
     "id": 4,
     "username": "analyst1",
@@ -58,6 +82,9 @@ Success:
 }
 ```
 
+Also sets the HttpOnly refresh-token cookie and its paired non-secret CSRF
+cookie. `access_token` here is the short-lived JWT — never the refresh token.
+
 Failure:
 
 ```json
@@ -66,17 +93,35 @@ Failure:
 }
 ```
 
+### `POST /auth/refresh`
+
+Reads the refresh cookie (no request body). Requires the matching
+`X-CSRF-Token` header, since this is the browser's only remaining
+cookie-authenticated endpoint besides logout. Rotates the refresh token
+(revokes the presented one, issues and cookies a new one) and returns a fresh
+access token with the same shape as `LoginResponse` minus the login-specific
+fields:
+
+```json
+{
+  "success": true,
+  "access_token": "<new jwt>",
+  "token_type": "bearer",
+  "expires_in": 600,
+  "user": { "...": "..." }
+}
+```
+
+`401` if the cookie is missing, expired, or already revoked (including replay
+of a refresh token that was already rotated away).
+
 ### `GET /auth/me`
 
-Header:
+Header (required — the refresh cookie alone is not sufficient):
 
 ```text
 Authorization: Bearer <access_token>
 ```
-
-Browser clients may omit this header and use the HttpOnly session cookie. A
-cookie-authenticated state-changing request must copy the non-secret CSRF
-cookie into `X-CSRF-Token`.
 
 Success:
 
@@ -96,9 +141,12 @@ Success:
 
 ### `POST /auth/logout`
 
-Revokes the current cookie or bearer session, expires the browser cookies, and
-returns a no-store response. The frontend redirects to login; it has no local
-authentication token to remove.
+Revokes the refresh token found in the cookie (idempotent — a missing or
+already-revoked token still succeeds), expires both browser cookies, and
+returns a no-store response. Does not invalidate any already-issued access
+token; those remain valid until they naturally expire (see the accepted
+trade-off above). The frontend clears its in-memory access token locally
+regardless of the response.
 
 ## Endpoint Protection Inventory
 
@@ -106,8 +154,9 @@ authentication token to remove.
 | --- | --- | --- |
 | `GET /health` | Public | Anyone |
 | `POST /auth/login` | Public | Anyone |
-| `GET /auth/me` | Authenticated | Admin, Analyst, Viewer |
-| `POST /auth/logout` | Authenticated | Admin, Analyst, Viewer |
+| `POST /auth/refresh` | Refresh cookie + CSRF | Anyone with a valid refresh token |
+| `GET /auth/me` | Bearer JWT required | Admin, Analyst, Viewer |
+| `POST /auth/logout` | Refresh cookie + CSRF (idempotent) | Anyone |
 | `GET /alerts` | Role restricted | Admin, Analyst, Viewer |
 | `PATCH /alerts/{alert_id}` | Role restricted | Admin, Analyst |
 | `POST /upload` | Role restricted | Admin, Analyst |
