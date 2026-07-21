@@ -69,6 +69,7 @@ export default function EventLogsPage({ navigate }) {
   const [dataSyncLoading, setDataSyncLoading] = useState(false);
   const [dataSyncError, setDataSyncError] = useState("");
   const [dataSyncMessage, setDataSyncMessage] = useState("");
+  const [isCsvDragActive, setIsCsvDragActive] = useState(false);
   const historyRequestId = useRef(0);
 
   useEffect(() => {
@@ -116,14 +117,12 @@ export default function EventLogsPage({ navigate }) {
     setPage(1);
   }, [filters.query, filters.severity, filters.source, filters.status]);
 
-  async function handleFile(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  async function ingestFile(file, { allowedExtensions } = {}) {
     setFileError("");
     try {
       if (repositoryMode === "api") {
         validateLogFile(file, {
-          allowedExtensions: [".log", ".csv", ".json", ".jsonl"],
+          allowedExtensions: allowedExtensions || [".log", ".csv", ".json", ".jsonl"],
           maxBytes: 10 * 1024 * 1024,
         });
         const result = await uploadLogFile(file);
@@ -139,14 +138,51 @@ export default function EventLogsPage({ navigate }) {
           uploaded: true,
         });
       } else {
+        if (allowedExtensions) validateLogFile(file, { allowedExtensions });
         setFileResult(await inspectLogFile(file));
       }
     } catch (inspectionError) {
       setFileResult(null);
       setFileError(inspectionError.message);
+    }
+  }
+
+  async function handleFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await ingestFile(file);
     } finally {
       event.target.value = "";
     }
+  }
+
+  async function handleCsvFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await ingestFile(file, { allowedExtensions: [".csv"] });
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function handleCsvDragOver(event) {
+    event.preventDefault();
+    if (!mutation.loading && canWrite) setIsCsvDragActive(true);
+  }
+
+  function handleCsvDragLeave() {
+    setIsCsvDragActive(false);
+  }
+
+  async function handleCsvDrop(event) {
+    event.preventDefault();
+    setIsCsvDragActive(false);
+    if (mutation.loading || !canWrite) return;
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    await ingestFile(file, { allowedExtensions: [".csv"] });
   }
 
   async function loadUploadHistory(nextPage = 1, nextQuery = historyQuery) {
@@ -262,6 +298,12 @@ export default function EventLogsPage({ navigate }) {
   if (error) return <ErrorState message={error} onRetry={() => refresh("events")} />;
 
   const failedCount = allEvents.filter((event) => event.status === "failed").length;
+  const unrecognizedCount = allEvents.filter(
+    (event) => event.event === "security_event" || event.status === "unknown",
+  ).length;
+  const parserHealthPct = allEvents.length
+    ? Math.round(((allEvents.length - unrecognizedCount) / allEvents.length) * 1000) / 10
+    : null;
 
   return (
     <>
@@ -323,7 +365,12 @@ export default function EventLogsPage({ navigate }) {
         <StatCard label="Records available" value={allEvents.length.toLocaleString()} trend={`${filteredEvents.length} match time and page filters`} />
         <StatCard label="Sources connected" value={sources.length} trend={sources.join(", ")} />
         <StatCard label="Failed events" value={failedCount} trend="Review authentication failures" tone="critical" />
-        <StatCard label="Parser health" value="99.7%" trend="12 patterns actively normalized" tone="success" />
+        <StatCard
+          label="Parser health"
+          value={parserHealthPct === null ? "—" : `${parserHealthPct}%`}
+          trend={unrecognizedCount ? `${unrecognizedCount.toLocaleString()} events need pattern review` : "All records fully normalized"}
+          tone={unrecognizedCount ? "critical" : "success"}
+        />
       </div>
 
       {(fileResult || fileError) && (
@@ -338,6 +385,37 @@ export default function EventLogsPage({ navigate }) {
             : `${fileResult.records.toLocaleString()} non-empty records · local preview only; no data was uploaded`)}
         </InlineNotice>
       )}
+
+      <Panel
+        title="Upload CSV"
+        subtitle={repositoryMode === "api"
+          ? "Drag a CSV file here or browse to parse, store, and analyze new events."
+          : "Drag a CSV file here to preview it locally. Connect the backend to persist uploads."}
+      >
+        <div
+          className={`csv-dropzone${isCsvDragActive ? " active" : ""}${mutation.loading || !canWrite ? " disabled" : ""}`}
+          onDragOver={handleCsvDragOver}
+          onDragLeave={handleCsvDragLeave}
+          onDrop={handleCsvDrop}
+        >
+          <FileUp size={26} aria-hidden="true" />
+          <strong>Drag &amp; drop a CSV file here</strong>
+          <span>or</span>
+          <label
+            className={`soc-button primary file-button${mutation.loading || !canWrite ? " disabled" : ""}`}
+            title={!canWrite ? "Viewer access is read-only." : undefined}
+          >
+            Browse CSV file
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              disabled={mutation.loading || !canWrite}
+              onChange={handleCsvFile}
+            />
+          </label>
+          <small>Only .csv files are accepted here, up to 10 MB.</small>
+        </div>
+      </Panel>
 
       <section className="filter-bar" aria-label="Event filters">
         <label className="filter-search"><Search size={16} /><span className="sr-only">Search events</span><input type="search" maxLength="200" value={filters.query} onChange={(event) => updateFilter("query", event.target.value)} placeholder="Search logs, IPs, users…" /></label>

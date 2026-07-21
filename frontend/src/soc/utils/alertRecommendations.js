@@ -17,6 +17,16 @@ const RESPONSE_PLAYBOOKS = Object.freeze({
     "Enable or enforce MFA for privileged access.",
     "Audit successful sudo activity and rotate credentials if compromise is suspected.",
   ],
+  credentialStuffing: [
+    "Treat the account as compromised: force a password reset and revoke active sessions immediately.",
+    "Block the source IP and review activity performed after the successful login.",
+    "Confirm MFA is enforced before restoring access to the account.",
+  ],
+  portScan: [
+    "Block the source IP at the network perimeter while validation is in progress.",
+    "Review which services or ports were probed for follow-on exploitation attempts.",
+    "Correlate with other alerts from the same source for broader reconnaissance activity.",
+  ],
   successfulLogin: [
     "Lock the affected account and revoke active sessions.",
     "Investigate the source host and destination system for compromise.",
@@ -64,9 +74,12 @@ export function getAlertRecommendations(alert) {
   const text = alertSearchText(alert);
   if (!text.trim()) return [];
 
-  if (text.includes("r-101") || text.includes("brute_force") || text.includes("brute-force") || text.includes("password spray")) return RESPONSE_PLAYBOOKS.bruteForce;
+  if (text.includes("r-101") || text.includes("brute_force") || text.includes("brute-force")) return RESPONSE_PLAYBOOKS.bruteForce;
   if (text.includes("r-102") || text.includes("invalid_user") || text.includes("invalid user") || text.includes("enumeration")) return RESPONSE_PLAYBOOKS.invalidUser;
   if (text.includes("r-103") || text.includes("sudo_failure") || text.includes("sudo failure")) return RESPONSE_PLAYBOOKS.sudoFailure;
+  if (text.includes("r-104") || text.includes("password_spraying") || text.includes("password spray")) return RESPONSE_PLAYBOOKS.bruteForce;
+  if (text.includes("r-105") || text.includes("credential_stuffing") || text.includes("credential stuffing") || text.includes("account takeover")) return RESPONSE_PLAYBOOKS.credentialStuffing;
+  if (text.includes("r-106") || text.includes("port_scan") || text.includes("port scan")) return RESPONSE_PLAYBOOKS.portScan;
   if (text.includes("successful login") || text.includes("login success") || text.includes("accepted password")) return RESPONSE_PLAYBOOKS.successfulLogin;
   if (text.includes("r-411") || text.includes("powershell") || text.includes("script execution")) return RESPONSE_PLAYBOOKS.powershell;
   if (text.includes("r-620") || text.includes("without mfa") || text.includes("mfa policy")) return RESPONSE_PLAYBOOKS.missingMfa;

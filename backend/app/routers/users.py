@@ -138,6 +138,38 @@ def list_users(user: User = Depends(require_roles("Admin")), db: Session = Depen
     }
 
 
+@router.get("/assignable")
+def list_assignable_users(
+    user: User = Depends(require_roles("Admin", "Analyst")),
+    db: Session = Depends(get_db),
+):
+    """A minimal, low-privilege directory for incident-assignment pickers.
+
+    Unlike GET /users, this is available to Analysts (who can create and
+    manage incidents) as well as Admins — but only exposes the fields a
+    picker needs, not email or active-state details.
+    """
+
+    users = db.scalars(
+        select(User)
+        .options(joinedload(User.role))
+        .where(User.is_active.is_(True))
+        .order_by(User.full_name, User.username)
+    ).all()
+    return {
+        "success": True,
+        "users": [
+            {
+                "id": existing_user.id,
+                "username": existing_user.username,
+                "full_name": existing_user.full_name,
+                "role": existing_user.role.name if existing_user.role else None,
+            }
+            for existing_user in users
+        ],
+    }
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: UserCreate,

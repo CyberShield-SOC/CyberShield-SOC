@@ -14,7 +14,7 @@ function buildConnectors(events) {
     current.count += 1;
     if (event.status === "failed") current.failed += 1;
     if (event.sourceIp && String(event.sourceIp).toLowerCase() !== "unknown") current.ips.add(event.sourceIp);
-    const timestamp = new Date(event.ingestedAt || event.timestamp).getTime();
+    const timestamp = new Date(event.timestamp || event.ingestedAt).getTime();
     if (Number.isFinite(timestamp) && (!current.latest || timestamp > current.latest)) current.latest = timestamp;
     connectors.set(name, current);
   });

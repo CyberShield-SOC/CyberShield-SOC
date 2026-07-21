@@ -39,6 +39,49 @@ function Wait-ForService {
     throw "$Name did not become ready within $TimeoutSeconds seconds. Check its .err.log file."
 }
 
+function Test-DockerEngine {
+    param([Parameter(Mandatory)][string]$DockerExe)
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        & $DockerExe info *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
+function Start-DockerDesktop {
+    param([Parameter(Mandatory)][string]$DockerExe)
+
+    if (Test-DockerEngine -DockerExe $DockerExe) {
+        Write-Host "Docker engine is already running." -ForegroundColor Green
+        return
+    }
+
+    $dockerDesktopExe = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+    if (-not (Test-Path -LiteralPath $dockerDesktopExe)) {
+        throw "Docker engine is not running and Docker Desktop.exe was not found at '$dockerDesktopExe'. Start Docker Desktop manually and re-run this script."
+    }
+
+    Write-Host "Starting Docker Desktop..." -ForegroundColor Cyan
+    Start-Process -FilePath $dockerDesktopExe | Out-Null
+
+    $timeoutSeconds = 120
+    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+    do {
+        if (Test-DockerEngine -DockerExe $DockerExe) {
+            Write-Host "Docker engine is ready." -ForegroundColor Green
+            return
+        }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Docker engine did not become ready within $timeoutSeconds seconds. Open Docker Desktop and check its status."
+}
+
 if (-not (Test-Path -LiteralPath $envPath)) {
     throw "Local configuration is missing. Copy .env.example to .env and replace every replace_me value."
 }
@@ -60,6 +103,7 @@ if (Test-ServiceEndpoint -Uri $backendHealthUrl) {
 }
 else {
     $dockerExe = (Get-Command docker -ErrorAction Stop).Source
+    Start-DockerDesktop -DockerExe $dockerExe
 
     Write-Host "Starting PostgreSQL..." -ForegroundColor Cyan
     & $dockerExe compose --project-directory $PSScriptRoot up -d --wait database
@@ -81,7 +125,7 @@ else {
 
     Start-Process `
         -FilePath $pythonExe `
-        -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "3000") `
+        -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "3000", "--reload") `
         -WorkingDirectory $backendRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $backendRoot "uvicorn.out.log") `
