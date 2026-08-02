@@ -18,6 +18,10 @@ frontend/dist/
 frontend/.vite/
 frontend/*.log
 
+# Locally-trusted mkcert dev certificate/key (machine-specific, regenerate
+# with the commands in frontend/.cert/README.md)
+frontend/.cert/*.pem
+
 # Generated parser and database output
 output/
 postgres-data/
