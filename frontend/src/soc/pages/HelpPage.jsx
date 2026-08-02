@@ -20,7 +20,7 @@ const HELP_TOPICS = [
   {
     category: "Getting started",
     title: "Upload and parse security logs",
-    description: "Import .log, .csv, .json, or .jsonl records and review the normalized events before investigation.",
+    description: "Import .log, .csv, .txt, .json, or .jsonl records and review the normalized events before investigation.",
     route: SOC_ROUTES.eventLogs,
     action: "Open Event Logs",
     icon: Upload,

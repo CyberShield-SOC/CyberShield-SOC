@@ -117,7 +117,7 @@ def build_upload_batch_payload(
 async def upload_log(
     logfile: UploadFile = File(
         ...,
-        description="Security log file (.log, .csv, .json, .jsonl)",
+        description="Security log file (.log, .csv, .txt, .json, .jsonl)",
     ),
     user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
@@ -132,8 +132,8 @@ async def upload_log(
     # loading an unbounded request body into application memory.
     content_bytes = await logfile.read(MAX_FILE_SIZE_BYTES + 1)
 
-    # --- Validate ---
-    validate_log_file(logfile, content_bytes)
+    # --- Validate (also strips any path components from the filename) ---
+    source_filename = validate_log_file(logfile, content_bytes)
 
     # --- Decode ---
     try:
@@ -152,8 +152,6 @@ async def upload_log(
         ) from exc
 
     # --- Parse ---
-    source_filename = logfile.filename or "unknown.log"
-
     parsed = parse_log(
         content_str,
         source_filename,
@@ -419,6 +417,15 @@ def get_accepted_formats(
                     "Comma-separated log exports with header row"
                 ),
                 "example": "access_logs.csv",
+            },
+            {
+                "extension": ".txt",
+                "description": (
+                    "Plain-text log lines, or delimiter-separated exports "
+                    "with a header row (parsed the same way as .csv when "
+                    "delimited content is detected)"
+                ),
+                "example": "access_logs.txt",
             },
             {
                 "extension": ".json",

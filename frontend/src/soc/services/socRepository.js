@@ -83,7 +83,7 @@ export function getRepositoryErrorMessage(status, payload = {}) {
   if (status === 404) return "That record no longer exists. Refresh the workspace and try again.";
   if (status === 409) return "That record already exists or changed. Refresh and try again.";
   if (status === 413) return "The selected file is larger than the upload limit.";
-  if (status === 415) return "Choose a supported .log, .csv, .json, or .jsonl file.";
+  if (status === 415) return "Choose a supported .log, .csv, .txt, .json, or .jsonl file.";
   if (status === 422) return "Some submitted values were invalid. Review the form and try again.";
   if (status >= 500) return "The service is temporarily unavailable. Try again shortly.";
   return `The service could not complete the request (${status}).`;
