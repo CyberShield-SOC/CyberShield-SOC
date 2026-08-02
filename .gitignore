@@ -1,5 +1,6 @@
 # Editors and operating-system metadata
 .idea/
+.tools/
 .DS_Store
 Thumbs.db
 

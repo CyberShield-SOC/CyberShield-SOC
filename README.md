@@ -29,6 +29,8 @@ Install these prerequisites before continuing:
 - Python 3.13
 - Node.js 24 and npm
 
+For the deployment/demo checklist, environment variable reference, migration commands, seeded account details, and verification commands, see [`docs/deployment_and_documentation.md`](docs/deployment_and_documentation.md).
+
 From the repository root, create the local environment file:
 
 ```powershell
@@ -242,6 +244,7 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 - [Frontend architecture](frontend/docs/ARCHITECTURE.md)
 - [Frontend/backend contract](frontend/docs/BACKEND_CONTRACT.md)
 - [Connected local setup](frontend/docs/CONNECTED_BACKEND.md)
+- [Deployment and documentation checklist](docs/deployment_and_documentation.md)
 - [Workflow validation](frontend/docs/WORKFLOW_VALIDATION.md)
 - [Interaction test report](frontend/docs/INTERACTION_TEST_REPORT.md)
 - [Security policy and frontend boundary](SECURITY.md)
