@@ -122,7 +122,7 @@ export default function EventLogsPage({ navigate }) {
     try {
       if (repositoryMode === "api") {
         validateLogFile(file, {
-          allowedExtensions: allowedExtensions || [".log", ".csv", ".json", ".jsonl"],
+          allowedExtensions: allowedExtensions || [".log", ".csv", ".json", ".jsonl", ".txt"],
           maxBytes: 10 * 1024 * 1024,
         });
         const result = await uploadLogFile(file);
@@ -161,7 +161,7 @@ export default function EventLogsPage({ navigate }) {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      await ingestFile(file, { allowedExtensions: [".csv"] });
+      await ingestFile(file, { allowedExtensions: [".csv", ".txt"] });
     } finally {
       event.target.value = "";
     }
@@ -182,7 +182,7 @@ export default function EventLogsPage({ navigate }) {
     if (mutation.loading || !canWrite) return;
     const file = event.dataTransfer.files?.[0];
     if (!file) return;
-    await ingestFile(file, { allowedExtensions: [".csv"] });
+    await ingestFile(file, { allowedExtensions: [".csv", ".txt"] });
   }
 
   async function loadUploadHistory(nextPage = 1, nextQuery = historyQuery) {
@@ -327,7 +327,7 @@ export default function EventLogsPage({ navigate }) {
             <input
               type="file"
               disabled={mutation.loading || !canWrite}
-              accept={repositoryMode === "api" ? ".log,.csv,.json,.jsonl,text/plain,text/csv,application/json,application/x-ndjson" : ".log,.txt,.csv,.json,.jsonl,text/plain,text/csv,application/json,application/x-ndjson"}
+              accept=".log,.csv,.txt,.json,.jsonl,text/plain,text/csv,application/json,application/x-ndjson"
               onChange={handleFile}
             />
           </label>
@@ -387,10 +387,10 @@ export default function EventLogsPage({ navigate }) {
       )}
 
       <Panel
-        title="Upload CSV"
+        title="Upload CSV/TXT"
         subtitle={repositoryMode === "api"
-          ? "Drag a CSV file here or browse to parse, store, and analyze new events."
-          : "Drag a CSV file here to preview it locally. Connect the backend to persist uploads."}
+          ? "Drag a CSV or TXT file here or browse to parse, store, and analyze new events."
+          : "Drag a CSV or TXT file here to preview it locally. Connect the backend to persist uploads."}
       >
         <div
           className={`csv-dropzone${isCsvDragActive ? " active" : ""}${mutation.loading || !canWrite ? " disabled" : ""}`}
@@ -399,21 +399,21 @@ export default function EventLogsPage({ navigate }) {
           onDrop={handleCsvDrop}
         >
           <FileUp size={26} aria-hidden="true" />
-          <strong>Drag &amp; drop a CSV file here</strong>
+          <strong>Drag &amp; drop a CSV or TXT file here</strong>
           <span>or</span>
           <label
             className={`soc-button primary file-button${mutation.loading || !canWrite ? " disabled" : ""}`}
             title={!canWrite ? "Viewer access is read-only." : undefined}
           >
-            Browse CSV file
+            Browse CSV/TXT file
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.txt,text/csv,text/plain"
               disabled={mutation.loading || !canWrite}
               onChange={handleCsvFile}
             />
           </label>
-          <small>Only .csv files are accepted here, up to 10 MB.</small>
+          <small>Only .csv and .txt files are accepted here, up to 10 MB.</small>
         </div>
       </Panel>
 

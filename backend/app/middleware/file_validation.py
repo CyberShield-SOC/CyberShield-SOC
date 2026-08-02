@@ -1,7 +1,9 @@
+import re
+
 from fastapi import UploadFile, HTTPException
 
 # Allowed file extensions and their accepted MIME types
-ALLOWED_EXTENSIONS = {".log", ".csv", ".json", ".jsonl"}
+ALLOWED_EXTENSIONS = {".log", ".csv", ".json", ".jsonl", ".txt"}
 ALLOWED_MIME_TYPES = {
     "text/plain",
     "text/csv",
@@ -13,16 +15,46 @@ ALLOWED_MIME_TYPES = {
     "application/jsonlines",
 }
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_FILENAME_LENGTH = 255
+
+# Anything that isn't a plain filename character. Path separators, drive
+# letters, and NUL/control bytes are stripped so a crafted name like
+# "../../etc/passwd" or "C:\\Windows\\win.ini" can never be interpreted as a
+# path once it reaches storage or a response payload.
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\\/\x00-\x1f<>:"|?*]')
 
 
-def validate_log_file(file: UploadFile, content: bytes) -> None:
+def sanitize_filename(filename: str | None) -> str:
+    """
+    Reduce a client-supplied filename to a safe basename for storage/display.
+
+    Strips directory components (both `/` and `\\` separators so this is safe
+    on POSIX and Windows deployments alike), drops NUL/control and reserved
+    characters, collapses leading dots so the name can't resolve to a hidden
+    file or a `..` traversal segment, and bounds the length to fit the
+    database column.
+    """
+
+    name = (filename or "").strip()
+    # Take only the final path segment, regardless of which separator style
+    # the client used.
+    name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    name = _UNSAFE_FILENAME_CHARS.sub("_", name)
+    name = name.lstrip(".") or "unnamed"
+    return name[:MAX_FILENAME_LENGTH]
+
+
+def validate_log_file(file: UploadFile, content: bytes) -> str:
     """
     Validates the uploaded file against CyberShield SOC rules.
     Raises HTTPException on any violation so FastAPI returns clean JSON.
+    Returns the sanitized filename for the caller to use in storage/response.
     """
+    # --- Filename sanitization ---
+    safe_filename = sanitize_filename(file.filename)
+
     # --- Extension check ---
-    filename = file.filename or ""
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext = "." + safe_filename.rsplit(".", 1)[-1].lower() if "." in safe_filename else ""
 
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -84,3 +116,5 @@ def validate_log_file(file: UploadFile, content: bytes) -> None:
                 "code": "BINARY_FILE",
             },
         )
+
+    return safe_filename

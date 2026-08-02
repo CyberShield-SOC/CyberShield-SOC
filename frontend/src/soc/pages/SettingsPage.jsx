@@ -218,7 +218,7 @@ export default function SettingsPage({ navigate, theme, toggleTheme }) {
           {activeSection === "data" && (
             <Panel title="Data and privacy" subtitle="Current ingestion and persistence capabilities reported by this application build.">
               <CapabilityList items={[
-                ["Accepted event files", ".log, .csv, .json, and .jsonl"],
+                ["Accepted event files", ".log, .csv, .txt, .json, and .jsonl"],
                 ["Maximum upload", "10 MB per file"],
                 ["Event and case storage", repositoryMode === "api" ? "Persistent database" : "Local demo dataset"],
                 ["Retention lifecycle", "Backend policy required", "pending"],

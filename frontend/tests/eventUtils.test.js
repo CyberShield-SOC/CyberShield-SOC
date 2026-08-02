@@ -85,6 +85,8 @@ test("rejects unsupported, empty, and oversized log files before upload", () => 
   assert.equal(validateLogFile({ name: "EVENTS.CSV", size: 512 }, { maxBytes: 10 * 1024 * 1024 }), true);
   assert.equal(validateLogFile({ name: "events.json", size: 512 }), true);
   assert.equal(validateLogFile({ name: "events.JSONL", size: 512 }), true);
+  assert.equal(validateLogFile({ name: "events.txt", size: 512 }), true);
+  assert.equal(validateLogFile({ name: "EVENTS.TXT", size: 512 }), true);
 });
 
 test("inspects supported file content and reports non-empty record counts", async () => {
@@ -96,8 +98,15 @@ test("inspects supported file content and reports non-empty record counts", asyn
 
 test("rejects blank and unsupported file content in the local inspector", async () => {
   const blank = new File([" \n\t\n"], "empty.log", { type: "text/plain" });
-  const text = new File(["event"], "events.txt", { type: "text/plain" });
+  const unsupported = new File(["event"], "events.pdf", { type: "application/pdf" });
 
   await assert.rejects(() => inspectLogFile(blank), /does not contain any log records/);
-  await assert.rejects(() => inspectLogFile(text), /Choose a/);
+  await assert.rejects(() => inspectLogFile(unsupported), /Choose a/);
+});
+
+test("inspects .txt files the same way as other supported log formats", async () => {
+  const txt = new File(["event one\nevent two\n"], "events.txt", { type: "text/plain" });
+  const result = await inspectLogFile(txt);
+
+  assert.deepEqual(result, { name: "events.txt", records: 2, size: txt.size });
 });

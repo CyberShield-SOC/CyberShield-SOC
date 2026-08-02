@@ -52,3 +52,14 @@ test("maps API failures to bounded actionable messages", () => {
   assert.match(getRepositoryErrorMessage(422), /submitted values were invalid/i);
   assert.match(getRepositoryErrorMessage(503), /temporarily unavailable/i);
 });
+
+test("the generic 415 fallback message lists every backend-accepted extension, including .txt", () => {
+  // Regression guard: this fallback only shows when the backend response has
+  // no detail.error, but it must still name every extension /upload actually
+  // accepts (backend/app/middleware/file_validation.py's ALLOWED_EXTENSIONS)
+  // so it doesn't quietly go stale the next time that list changes.
+  const message = getRepositoryErrorMessage(415, {});
+  for (const extension of [".log", ".csv", ".txt", ".json", ".jsonl"]) {
+    assert.ok(message.includes(extension), `expected fallback 415 message to mention ${extension}`);
+  }
+});

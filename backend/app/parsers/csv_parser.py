@@ -3,11 +3,11 @@ import io
 from app.parsers.field_normalizer import CORE_FIELDS, first_ip, normalize_entry
 
 
-def parse_csv_log(content: str, lines: list[str]) -> dict:
+def parse_csv_log(content: str, lines: list[str], delimiter: str = ",") -> dict:
     entries = []
     skipped = []
 
-    reader = csv.DictReader(io.StringIO(content))
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
 
     if not reader.fieldnames:
         return {
@@ -23,6 +23,19 @@ def parse_csv_log(content: str, lines: list[str]) -> dict:
     for idx, row in enumerate(reader):
         line_number = idx + 2  # offset for header row
         try:
+            # csv.DictReader silently pads a short row with None (restval) or
+            # bundles extra values into a None-keyed list (restkey). Either
+            # shape means the row's columns no longer line up with the
+            # header, so treat it as malformed instead of letting values
+            # shift into the wrong field.
+            if None in row:
+                raise ValueError(
+                    f"Row has more fields than the {len(fields)}-column header."
+                )
+            if any(row.get(name) is None for name in reader.fieldnames):
+                raise ValueError(
+                    f"Row has fewer fields than the {len(fields)}-column header."
+                )
             row_data = {
                 fields[i]: _coerce(v)
                 for i, (k, v) in enumerate(row.items())

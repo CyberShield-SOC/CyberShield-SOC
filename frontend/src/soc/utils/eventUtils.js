@@ -110,7 +110,7 @@ export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
 
 export function validateLogFile(
   file,
-  { allowedExtensions = [".log", ".csv", ".json", ".jsonl"], maxBytes = 10 * 1024 * 1024 } = {},
+  { allowedExtensions = [".log", ".csv", ".json", ".jsonl", ".txt"], maxBytes = 10 * 1024 * 1024 } = {},
 ) {
   if (!file || typeof file.name !== "string") {
     throw new Error("Choose a valid log file.");

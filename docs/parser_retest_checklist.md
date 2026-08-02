@@ -13,13 +13,16 @@ Use this checklist after parser, upload, or detection changes.
 
 - Upload `.log` file and confirm HTTP `200`.
 - Upload `.csv` file and confirm HTTP `200`.
-- Upload unsupported file such as `.txt` and confirm HTTP `415`.
+- Upload `.txt` file and confirm HTTP `200`.
+- Upload unsupported file such as `.pdf` and confirm HTTP `415`.
 - Upload empty `.log` file and confirm validation error.
 - Upload non-UTF-8 file and confirm encoding error.
 
 ## Parser Tests
 
 - `.csv` file returns parser format `csv`.
+- `.txt` file with delimited, headered content returns parser format `csv`.
+- `.txt` file with free-form log lines returns parser format `syslog`/`apache_combined`/`generic` (same auto-detection as `.log`).
 - `.log` syslog sample returns parser format `syslog`.
 - Apache-style log sample returns parser format `apache_combined`.
 - Generic log sample returns parser format `generic`.
