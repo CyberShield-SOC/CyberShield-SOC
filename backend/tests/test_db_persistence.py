@@ -326,21 +326,17 @@ def test_second_incident_for_the_same_alert_is_rejected_at_the_database_level(db
 
 # ── Orphaned records: Alerts/Logs are intentionally decoupled by design ─────
 
-def test_alert_can_exist_without_any_matching_log_rows():
+def test_alert_can_exist_without_any_matching_log_rows(db_session):
     """Alert.upload_id and Log.upload_id are correlated by convention only --
     there is no foreign key between them, so an alert with no matching log
     rows (e.g. logs purged separately) is valid, not an orphan-record bug."""
 
-    from app.db.session import SessionLocal
-
-    with SessionLocal() as db:
-        alert = make_alert(db, "no-matching-logs")
-        db.commit()
-        matching_logs = db.scalar(
-            select(Log).where(Log.upload_id == alert.upload_id)
-        )
-        assert matching_logs is None  # no error, no crash -- valid by design
-        db.rollback()
+    alert = make_alert(db_session, "no-matching-logs")
+    db_session.commit()
+    matching_logs = db_session.scalar(
+        select(Log).where(Log.upload_id == alert.upload_id)
+    )
+    assert matching_logs is None  # no error, no crash -- valid by design
 
 
 # ── Transaction rollback on partial failure ──────────────────────────────────
