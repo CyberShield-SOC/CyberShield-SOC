@@ -10,6 +10,10 @@ from app.detection.rules.base import BaseRule
 class SudoFailureRule(BaseRule):
     """Fires when the same user (or IP) has >= threshold sudo failures within window_seconds."""
 
+    name = "sudo_failure"
+    description = "One subject has repeated failed privilege-escalation attempts."
+    severity = "MEDIUM"
+
     def __init__(self, threshold: int = 3, window_seconds: int = 300):
         self.threshold = threshold
         self.window_seconds = window_seconds
@@ -47,8 +51,8 @@ class SudoFailureRule(BaseRule):
                     matched = list(window)
                     sample = matched[0][0]
                     alerts.append(Alert(
-                        rule="sudo_failure",
-                        severity="MEDIUM",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=sample.ip_address,
                         username=sample.username,
                         count=len(matched),

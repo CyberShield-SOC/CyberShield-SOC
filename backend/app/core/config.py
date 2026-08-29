@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = Field(default="HS256", min_length=1, max_length=20)
     jwt_access_ttl_minutes: int = Field(default=10, ge=1, le=60)
+    detection_rule_config: dict[str, Any] = Field(default_factory=dict)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.routers import alerts, auth, incidents, notes, upload, users
+from app.routers import alerts, auth, detection, incidents, notes, upload, users
 
 app = FastAPI(
     title="CyberShield SOC",
@@ -83,12 +83,14 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(upload.router)
 app.include_router(alerts.router)
+app.include_router(detection.router)
 app.include_router(incidents.router)
 app.include_router(notes.router)
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
+app.include_router(detection.router, prefix="/api")
 app.include_router(incidents.router, prefix="/api")
 app.include_router(notes.router, prefix="/api")
 

@@ -16,6 +16,10 @@ class CredentialStuffingRule(BaseRule):
     correctly right after a burst represents a probable account takeover.
     """
 
+    name = "credential_stuffing_success"
+    description = "A failed-login burst from one IP is followed by a successful login."
+    severity = "HIGH"
+
     def __init__(
         self,
         fail_threshold: int = 5,
@@ -65,8 +69,8 @@ class CredentialStuffingRule(BaseRule):
                 # rec.status == "SUCCESS"
                 if burst_end_ts is not None and (ts - burst_end_ts).total_seconds() <= self.success_window_seconds:
                     alerts.append(Alert(
-                        rule="credential_stuffing_success",
-                        severity="HIGH",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=ip,
                         username=rec.username,
                         count=len(burst_records) + 1,

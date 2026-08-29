@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LogRecord(BaseModel):
@@ -29,3 +29,22 @@ class Alert(BaseModel):
     last_seen: Optional[str] = None
     description: str
     matched_line_numbers: list[int]
+
+
+class RuleConfig(BaseModel):
+    """Configurable Detection Engine v2 thresholds for a rule."""
+
+    threshold: int | None = Field(default=None, ge=1)
+    fail_threshold: int | None = Field(default=None, ge=1)
+    window_seconds: int | None = Field(default=None, ge=1)
+    success_window_seconds: int | None = Field(default=None, ge=1)
+    enabled: bool = True
+
+
+class RuleMetadata(BaseModel):
+    """Machine-readable Detection Engine v2 rule interface description."""
+
+    name: str
+    description: str
+    severity: str
+    config: RuleConfig

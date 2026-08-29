@@ -15,6 +15,10 @@ class PasswordSprayingRule(BaseRule):
     times to stay under per-IP thresholds.
     """
 
+    name = "password_spraying"
+    description = "One username receives failed logins from many source IPs."
+    severity = "HIGH"
+
     def __init__(self, threshold: int = 5, window_seconds: int = 600):
         self.threshold = threshold
         self.window_seconds = window_seconds
@@ -51,8 +55,8 @@ class PasswordSprayingRule(BaseRule):
                 if len(distinct_ips) >= self.threshold:
                     matched = list(window)
                     alerts.append(Alert(
-                        rule="password_spraying",
-                        severity="HIGH",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=matched[-1][0].ip_address,
                         username=username,
                         count=len(distinct_ips),
