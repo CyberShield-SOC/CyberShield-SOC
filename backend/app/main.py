@@ -104,7 +104,7 @@ def health():
     return {
         "status": "ok",
         "service": "CyberShield SOC",
-        "sprint": "1 - Log Upload & Parsing",
+        "sprint": "4 - Stabilization & Gate Review Readiness",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
