@@ -16,6 +16,13 @@ from app.db.session import engine, get_db
 from app.main import app
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "no_db: skip the autouse database dependency override for pure unit tests",
+    )
+
+
 @pytest.fixture
 def test_session_factory() -> Generator[sessionmaker[Session], None, None]:
     """Keep route-level commits inside an outer transaction we always undo."""
@@ -41,9 +48,14 @@ def test_session_factory() -> Generator[sessionmaker[Session], None, None]:
 
 
 @pytest.fixture(autouse=True)
-def isolate_route_database(test_session_factory: sessionmaker[Session]):
+def isolate_route_database(request):
     """Route every API dependency through the rollback-only test connection."""
 
+    if request.node.get_closest_marker("no_db"):
+        yield
+        return
+
+    test_session_factory = request.getfixturevalue("test_session_factory")
     previous_override = app.dependency_overrides.get(get_db)
 
     def override_get_db():

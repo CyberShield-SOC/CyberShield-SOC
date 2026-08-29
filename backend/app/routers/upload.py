@@ -1,6 +1,4 @@
 import uuid
-from datetime import datetime, timezone
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -15,6 +13,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.detection import DetectionEngine
 from app.detection.alert_store import serialize_alert
@@ -22,6 +21,7 @@ from app.detection.models import LogRecord
 from app.middleware.file_validation import MAX_FILE_SIZE_BYTES, validate_log_file
 from app.models.alert import Alert
 from app.models.log import Log
+from app.models.upload_batch import UploadBatch
 from app.models.user import User
 from app.parsers.log_parser import parse_log
 from app.repositories.alert_repository import (
@@ -31,10 +31,14 @@ from app.repositories.alert_repository import (
 from app.repositories.log_repository import (
     create_logs_from_parse_result,
 )
+from app.repositories.upload_batch_repository import (
+    create_upload_batch,
+    serialize_upload_batch,
+)
 from app.security import require_roles
 
 
-_engine = DetectionEngine()
+_engine = DetectionEngine.from_config(settings.detection_rule_config)
 
 router = APIRouter(tags=["Upload"])
 
@@ -78,6 +82,10 @@ def build_upload_batch_payload(
 ) -> dict | None:
     """Load one persisted upload batch using the dashboard response shape."""
 
+    batch = db.get(UploadBatch, upload_id)
+    if batch is None:
+        return None
+
     stored_logs = list(
         db.scalars(
             select(Log)
@@ -85,8 +93,6 @@ def build_upload_batch_payload(
             .order_by(Log.line_number.asc())
         ).all()
     )
-    if not stored_logs:
-        return None
 
     stored_alerts = list(
         db.scalars(
@@ -95,19 +101,10 @@ def build_upload_batch_payload(
             .order_by(Alert.created_at.asc(), Alert.id.asc())
         ).all()
     )
-    first_log = stored_logs[0]
-    uploaded_at = max(log.ingested_at for log in stored_logs)
 
     return {
         "success": True,
-        "upload": {
-            "upload_id": str(upload_id),
-            "filename": first_log.source_filename,
-            "format": first_log.source_format,
-            "uploaded_at": uploaded_at.isoformat(),
-            "stored_entries": len(stored_logs),
-            "stored_alerts": len(stored_alerts),
-        },
+        "upload": serialize_upload_batch(batch),
         "logs": [serialize_log_for_dashboard(log) for log in stored_logs],
         "alerts": [serialize_alert_record(alert) for alert in stored_alerts],
     }
@@ -205,6 +202,20 @@ async def upload_log(
             serialized_alerts=serialized_alerts,
         )
 
+        batch = create_upload_batch(
+            db,
+            upload_id=upload_id,
+            source_filename=source_filename,
+            source_format=str(parsed["format"]),
+            mime_type=logfile.content_type,
+            size_bytes=len(content_bytes),
+            total_lines=int(parsed["total_lines"]),
+            parsed_entries=len(parsed["entries"]),
+            skipped_lines=len(parsed["skipped_lines"]),
+            stored_entries=len(saved_logs),
+            stored_alerts=len(saved_alerts),
+        )
+
         db.commit()
 
         response_alerts = [
@@ -231,15 +242,7 @@ async def upload_log(
         status_code=200,
         content={
             "success": True,
-            "upload": {
-                "upload_id": str(upload_id),
-                "filename": source_filename,
-                "mime_type": logfile.content_type,
-                "size_bytes": len(content_bytes),
-                "uploaded_at": datetime.now(
-                    timezone.utc
-                ).isoformat(),
-            },
+            "upload": serialize_upload_batch(batch),
             "parsing": {
                 "format": parsed["format"],
                 "total_lines": parsed["total_lines"],
@@ -267,10 +270,10 @@ def get_latest_upload(
     """
 
     latest_upload_id = db.scalar(
-        select(Log.upload_id)
+        select(UploadBatch.upload_id)
         .order_by(
-            Log.ingested_at.desc(),
-            Log.id.desc(),
+            UploadBatch.uploaded_at.desc(),
+            UploadBatch.upload_id.desc(),
         )
         .limit(1)
     )
@@ -308,65 +311,34 @@ def get_upload_history(
         )
         pattern = f"%{escaped}%"
         search_filter = or_(
-            Log.source_filename.ilike(pattern, escape="\\"),
-            Log.source_format.ilike(pattern, escape="\\"),
+            UploadBatch.source_filename.ilike(pattern, escape="\\"),
+            UploadBatch.source_format.ilike(pattern, escape="\\"),
         )
 
-    total_statement = select(func.count(func.distinct(Log.upload_id)))
+    total_statement = select(func.count(UploadBatch.upload_id))
     if search_filter is not None:
         total_statement = total_statement.where(search_filter)
     total = int(db.scalar(total_statement) or 0)
-    alert_counts = (
-        select(
-            Alert.upload_id.label("upload_id"),
-            func.count(Alert.id).label("stored_alerts"),
-        )
-        .group_by(Alert.upload_id)
-        .subquery()
-    )
-    uploaded_at = func.max(Log.ingested_at).label("uploaded_at")
     statement = (
         select(
-            Log.upload_id,
-            Log.source_filename,
-            Log.source_format,
-            uploaded_at,
-            func.count(Log.id).label("stored_entries"),
-            func.coalesce(alert_counts.c.stored_alerts, 0).label("stored_alerts"),
-        )
-        .outerjoin(
-            alert_counts,
-            alert_counts.c.upload_id == Log.upload_id,
+            UploadBatch,
         )
     )
     if search_filter is not None:
         statement = statement.where(search_filter)
     statement = (
         statement
-        .group_by(
-            Log.upload_id,
-            Log.source_filename,
-            Log.source_format,
-            alert_counts.c.stored_alerts,
-        )
-        .order_by(uploaded_at.desc(), Log.upload_id.desc())
+        .order_by(UploadBatch.uploaded_at.desc(), UploadBatch.upload_id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    rows = db.execute(statement).all()
+    batches = list(db.scalars(statement).all())
 
     return {
         "success": True,
         "uploads": [
-            {
-                "upload_id": str(row.upload_id),
-                "filename": row.source_filename,
-                "format": row.source_format,
-                "uploaded_at": row.uploaded_at.isoformat(),
-                "stored_entries": int(row.stored_entries or 0),
-                "stored_alerts": int(row.stored_alerts or 0),
-            }
-            for row in rows
+            serialize_upload_batch(batch)
+            for batch in batches
         ],
         "pagination": {
             "page": page,

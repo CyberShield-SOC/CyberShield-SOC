@@ -10,6 +10,10 @@ from app.detection.rules.base import BaseRule
 class BruteForceLoginRule(BaseRule):
     """Fires when one IP has >= threshold failed logins within window_seconds."""
 
+    name = "brute_force_login"
+    description = "One source IP has repeated failed login attempts in a short window."
+    severity = "HIGH"
+
     def __init__(self, threshold: int = 5, window_seconds: int = 60):
         self.threshold = threshold
         self.window_seconds = window_seconds
@@ -44,8 +48,8 @@ class BruteForceLoginRule(BaseRule):
                 if len(window) >= self.threshold:
                     matched = list(window)
                     alerts.append(Alert(
-                        rule="brute_force_login",
-                        severity="HIGH",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=ip,
                         username=matched[0][0].username,
                         count=len(matched),

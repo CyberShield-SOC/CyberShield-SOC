@@ -10,6 +10,10 @@ from app.detection.rules.base import BaseRule
 class PortScanRule(BaseRule):
     """Fires when one source IP generates >= threshold port-scan events within window_seconds."""
 
+    name = "port_scan"
+    description = "One source IP generates repeated port-scan events in a short window."
+    severity = "MEDIUM"
+
     def __init__(self, threshold: int = 10, window_seconds: int = 60):
         self.threshold = threshold
         self.window_seconds = window_seconds
@@ -43,8 +47,8 @@ class PortScanRule(BaseRule):
                 if len(window) >= self.threshold:
                     matched = list(window)
                     alerts.append(Alert(
-                        rule="port_scan",
-                        severity="MEDIUM",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=ip,
                         username=matched[0][0].username,
                         count=len(matched),

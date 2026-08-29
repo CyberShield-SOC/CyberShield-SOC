@@ -10,6 +10,10 @@ from app.detection.rules.base import BaseRule
 class InvalidUserRule(BaseRule):
     """Fires when one IP tries >= threshold distinct usernames with failed logins within window_seconds."""
 
+    name = "invalid_user_enumeration"
+    description = "One source IP tries several distinct usernames within a window."
+    severity = "MEDIUM"
+
     def __init__(self, threshold: int = 3, window_seconds: int = 600):
         self.threshold = threshold
         self.window_seconds = window_seconds
@@ -46,8 +50,8 @@ class InvalidUserRule(BaseRule):
                 if len(distinct_users) >= self.threshold:
                     matched = list(window)
                     alerts.append(Alert(
-                        rule="invalid_user_enumeration",
-                        severity="MEDIUM",
+                        rule=self.name,
+                        severity=self.severity,
                         source_ip=ip,
                         count=len(distinct_users),
                         time_window_seconds=self.window_seconds,
