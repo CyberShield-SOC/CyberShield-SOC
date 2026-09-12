@@ -1,0 +1,6 @@
+timestamp,ip_address,username,event_type,status
+2026-09-12T10:00:00Z,203.0.113.10,kapil_demo,login_attempt,SUCCESS
+2026-09-12T10:01:00Z,198.51.100.10,kapil_demo,login_attempt,SUCCESS
+2026-09-12T10:02:00Z,192.0.2.10,kapil_demo,login_attempt,SUCCESS
+2026-09-12T11:00:00Z,203.0.113.20,admin_demo,login_attempt,SUCCESS
+2026-09-12T11:00:45Z,203.0.113.20,admin_demo,privilege_escalation,SUCCESS
