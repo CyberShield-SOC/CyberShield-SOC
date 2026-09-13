@@ -62,6 +62,16 @@ const RESPONSE_PLAYBOOKS = Object.freeze({
     "Preserve proxy, endpoint, and identity evidence for the transfer window.",
     "Determine what data left the environment and notify the response lead.",
   ],
+  multiIpAccess: [
+    "Confirm the access pattern with the account owner.",
+    "Force a password reset if the additional source IPs are not recognized.",
+    "Revoke active sessions from unexpected source IPs.",
+  ],
+  sudoAfterLogin: [
+    "Confirm the privilege escalation was authorized by the account owner.",
+    "Review commands run immediately after the escalation for unauthorized changes.",
+    "Rotate the account's credentials if the escalation was not authorized.",
+  ],
 });
 
 function alertSearchText(alert) {
@@ -80,6 +90,8 @@ export function getAlertRecommendations(alert) {
   if (text.includes("r-104") || text.includes("password_spraying") || text.includes("password spray")) return RESPONSE_PLAYBOOKS.bruteForce;
   if (text.includes("r-105") || text.includes("credential_stuffing") || text.includes("credential stuffing") || text.includes("account takeover")) return RESPONSE_PLAYBOOKS.credentialStuffing;
   if (text.includes("r-106") || text.includes("port_scan") || text.includes("port scan")) return RESPONSE_PLAYBOOKS.portScan;
+  if (text.includes("r-107") || text.includes("multi_ip_successful_login") || text.includes("multi-ip")) return RESPONSE_PLAYBOOKS.multiIpAccess;
+  if (text.includes("r-108") || text.includes("sudo_after_login") || text.includes("sudo after login")) return RESPONSE_PLAYBOOKS.sudoAfterLogin;
   if (text.includes("successful login") || text.includes("login success") || text.includes("accepted password")) return RESPONSE_PLAYBOOKS.successfulLogin;
   if (text.includes("r-411") || text.includes("powershell") || text.includes("script execution")) return RESPONSE_PLAYBOOKS.powershell;
   if (text.includes("r-620") || text.includes("without mfa") || text.includes("mfa policy")) return RESPONSE_PLAYBOOKS.missingMfa;

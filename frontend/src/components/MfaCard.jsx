@@ -1,15 +1,28 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, Fingerprint } from "lucide-react";
 import { isCompleteOtp, sanitizeOtp } from "../utils/authValidation";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 
 const OTP_LENGTH = 6;
+const RESEND_COOLDOWN_SECONDS = 60;
 
-export function MfaCard({ email, onBack, onVerified }) {
+export function MfaCard({ email, onBack, onResend, onVerified }) {
   const [digits, setDigits] = useState(() => Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState("");
   const [resendStatus, setResendStatus] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const inputs = useRef([]);
+
+  // The backend starts its own resend cooldown the moment the first code is
+  // sent (at login), so the timer here starts immediately too rather than
+  // waiting for a first "Resend" click.
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timeoutId = window.setTimeout(() => setCooldown((current) => current - 1), 1000);
+    return () => window.clearTimeout(timeoutId);
+  }, [cooldown]);
 
   function updateDigits(startIndex, value) {
     const incomingDigits = sanitizeOtp(value).slice(0, OTP_LENGTH - startIndex);
@@ -28,8 +41,9 @@ export function MfaCard({ email, onBack, onVerified }) {
     inputs.current[nextIndex]?.focus();
   }
 
-  function submitCode(event) {
+  async function submitCode(event) {
     event.preventDefault();
+    if (submitting) return;
 
     if (!isCompleteOtp(digits)) {
       setError("Enter the complete six-digit verification code.");
@@ -38,9 +52,35 @@ export function MfaCard({ email, onBack, onVerified }) {
       return;
     }
 
-    // Frontend-only until the backend exposes challenge verification. The
-    // server must become authoritative before this can enforce real MFA.
-    onVerified();
+    setError("");
+    setSubmitting(true);
+    try {
+      await onVerified(digits.join(""));
+    } catch (verifyError) {
+      setError(verifyError.message || "The verification code could not be checked. Please try again.");
+      setDigits(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitResend() {
+    if (resending || cooldown > 0) return;
+    setResendStatus("");
+    setError("");
+    setResending(true);
+    try {
+      const message = await onResend();
+      setResendStatus(message || "A new verification code has been sent.");
+      setDigits(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch (resendError) {
+      setResendStatus(resendError.message || "The verification code could not be resent. Please try again.");
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -79,6 +119,7 @@ export function MfaCard({ email, onBack, onVerified }) {
             maxLength={1}
             value={digit}
             required
+            disabled={submitting}
             onPaste={(event) => {
               event.preventDefault();
               updateDigits(index, event.clipboardData.getData("text"));
@@ -116,17 +157,18 @@ export function MfaCard({ email, onBack, onVerified }) {
         </p>
       )}
 
-      <button className="primary-button auth-primary-action" type="submit">
-        Verify identity <ArrowRight size={17} aria-hidden="true" />
+      <button className="primary-button auth-primary-action" type="submit" disabled={submitting}>
+        {submitting ? "Verifying…" : "Verify identity"} <ArrowRight size={17} aria-hidden="true" />
       </button>
       <div className="mfa-footer">
         <span>Didn&apos;t receive a code?</span>
         <button
           className="text-link"
           type="button"
-          onClick={() => setResendStatus("Code delivery will be available when MFA is connected.")}
+          disabled={resending || cooldown > 0}
+          onClick={submitResend}
         >
-          Resend code
+          {resending ? "Sending…" : cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
         </button>
       </div>
       {resendStatus && (

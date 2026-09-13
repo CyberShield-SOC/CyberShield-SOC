@@ -1,3 +1,17 @@
+export function derivePortActivity(events) {
+  const ports = new Map();
+  (Array.isArray(events) ? events : []).forEach((event) => {
+    const port = event?.port;
+    if (port) {
+      if (!ports.has(port)) ports.set(port, { port, count: 0 });
+      ports.get(port).count++;
+    }
+  });
+  return [...ports.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
+
 export function deriveTelemetryReadiness(events, now = Date.now()) {
   const records = Array.isArray(events) ? events : [];
   const ingestionTimes = records

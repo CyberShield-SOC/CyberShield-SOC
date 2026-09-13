@@ -115,6 +115,37 @@ Seeded roles:
 
 The initial Admin account is created only when `CYBERSHIELD_ADMIN_PASSWORD` is set and no user exists with `CYBERSHIELD_ADMIN_USERNAME`.
 
+## Railway Deployment
+
+`railway.json` and `nixpacks.toml` at the repository root configure a single
+Railway service that builds the frontend, installs backend dependencies, runs
+migrations, and starts the API (which also serves the built frontend from
+`frontend/dist` — see `app/main.py`). No separate frontend service or CORS
+configuration is required for this combined deployment.
+
+To deploy:
+
+1. Create a new Railway project from this repository.
+2. Add a Railway PostgreSQL plugin to the project.
+3. Set `DATABASE_URL` to the plugin's connection string, but change its
+   scheme from `postgresql://` to `postgresql+psycopg://` — SQLAlchemy needs
+   the explicit driver suffix to use the installed `psycopg` (v3) driver.
+4. Set the required environment variables from the table above directly in
+   the Railway service (`JWT_SECRET_KEY`, `OTP_SECRET`,
+   `CYBERSHIELD_ADMIN_PASSWORD`, and any two-factor-email variables you use —
+   `RESEND_API_KEY`/`RESEND_FROM_EMAIL`). Generate secrets locally with the
+   `secrets.token_urlsafe(64)` commands above; never commit them.
+5. Set `AUTH_COOKIE_SECURE=true` (Railway serves over HTTPS).
+6. Only set `CORS_ALLOWED_ORIGINS` if you deploy the frontend as a separate
+   Railway service instead of using the combined build above.
+7. Deploy. Railway provides `PORT` automatically; the configured start
+   command (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`) and
+   `/health` healthcheck path do not need to be changed.
+
+This project has not been deployed to a live Railway environment from this
+workspace — verify the first deploy against Railway's own build logs before
+treating it as a production gate.
+
 ## Automated Verification
 
 Backend checks:

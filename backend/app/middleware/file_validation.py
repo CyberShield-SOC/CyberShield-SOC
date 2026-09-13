@@ -14,7 +14,7 @@ ALLOWED_MIME_TYPES = {
     "application/x-ndjson",
     "application/jsonlines",
 }
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILENAME_LENGTH = 255
 
 # Anything that isn't a plain filename character. Path separators, drive

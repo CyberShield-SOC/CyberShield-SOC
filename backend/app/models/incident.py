@@ -14,6 +14,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -137,6 +138,13 @@ class Incident(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    response_playbook: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
     )
 
     source_alert: Mapped[Alert] = relationship()

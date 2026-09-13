@@ -38,6 +38,7 @@ class Log(Base):
         Index("ix_logs_username", "username"),
         Index("ix_logs_event_type", "event_type"),
         Index("ix_logs_status", "status"),
+        Index("ix_logs_port", "port"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -78,6 +79,11 @@ class Log(Base):
 
     username: Mapped[str | None] = mapped_column(
         String(100),
+        nullable=True,
+    )
+
+    port: Mapped[int | None] = mapped_column(
+        Integer,
         nullable=True,
     )
 

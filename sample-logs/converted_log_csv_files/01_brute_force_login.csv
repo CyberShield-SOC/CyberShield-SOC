@@ -1,0 +1,6 @@
+﻿source_file,line_number,month,day,time,host,service,pid,event_type,status,username,source_ip,source_port,protocol,logname,uid,euid,tty,ruser,rhost,raw_message
+01_brute_force_login.log,1,Jul,14,10:00:01,server01,sshd,3001,login_failure,failed,root,203.0.113.40,50001,ssh2,,,,,,,Jul 14 10:00:01 server01 sshd[3001]: Failed password for root from 203.0.113.40 port 50001 ssh2
+01_brute_force_login.log,2,Jul,14,10:00:08,server01,sshd,3002,login_failure,failed,root,203.0.113.40,50002,ssh2,,,,,,,Jul 14 10:00:08 server01 sshd[3002]: Failed password for root from 203.0.113.40 port 50002 ssh2
+01_brute_force_login.log,3,Jul,14,10:00:15,server01,sshd,3003,login_failure,failed,root,203.0.113.40,50003,ssh2,,,,,,,Jul 14 10:00:15 server01 sshd[3003]: Failed password for root from 203.0.113.40 port 50003 ssh2
+01_brute_force_login.log,4,Jul,14,10:00:22,server01,sshd,3004,login_failure,failed,root,203.0.113.40,50004,ssh2,,,,,,,Jul 14 10:00:22 server01 sshd[3004]: Failed password for root from 203.0.113.40 port 50004 ssh2
+01_brute_force_login.log,5,Jul,14,10:00:29,server01,sshd,3005,login_failure,failed,root,203.0.113.40,50005,ssh2,,,,,,,Jul 14 10:00:29 server01 sshd[3005]: Failed password for root from 203.0.113.40 port 50005 ssh2

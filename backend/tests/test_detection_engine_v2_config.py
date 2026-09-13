@@ -3,8 +3,12 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -13,7 +17,10 @@ from app.detection.models import LogRecord, RuleConfig
 from app.main import app
 from app.models.role import Role
 from app.models.user import User
-from app.security import current_user
+from app.repositories.detection_rule_setting_repository import effective_rule_configs
+from app.security import current_user, hash_password
+
+client = TestClient(app)
 
 
 _BASE = datetime(2026, 6, 14, 2, 11, 0, tzinfo=timezone.utc)
@@ -85,3 +92,98 @@ def test_detection_rules_endpoint_exposes_active_rule_metadata():
     payload = response.json()
     assert payload["success"] is True
     assert "brute_force_login" in {rule["name"] for rule in payload["rules"]}
+
+
+# ── Sprint 5: persisted rule overrides ────────────────────────────────────────
+
+def _ensure_role(db: Session, name: str) -> Role:
+    role = db.scalar(select(Role).where(Role.name == name))
+    if role is None:
+        role = Role(name=name, description=f"{name} test role")
+        db.add(role)
+        db.flush()
+    return role
+
+
+def _persist_user(db: Session, role_name: str) -> User:
+    role = _ensure_role(db, role_name)
+    suffix = uuid4().hex[:8]
+    user = User(
+        username=f"rule-config-{suffix}",
+        email=f"rule-config-{suffix}@example.test",
+        full_name="Rule Config Tester",
+        password_hash=hash_password("RuleConfigPassphrase-42!"),
+        role_id=role.id,
+    )
+    db.add(user)
+    db.flush()
+    db.refresh(user)
+    user.role = role
+    return user
+
+
+@pytest.mark.db
+def test_effective_rule_configs_merges_env_then_db_override(db_session: Session):
+    user = _persist_user(db_session, "Admin")
+    from app.repositories.detection_rule_setting_repository import upsert_rule_setting
+
+    upsert_rule_setting(
+        db_session,
+        rule_name="brute_force_login",
+        updates={"threshold": 9},
+        updated_by=user.id,
+    )
+    db_session.commit()
+
+    configs = effective_rule_configs(
+        db_session,
+        {"brute_force_login": {"window_seconds": 45}},
+    )
+
+    assert configs["brute_force_login"].threshold == 9
+    assert configs["brute_force_login"].window_seconds == 45
+    assert configs["brute_force_login"].enabled is True
+
+
+@pytest.mark.db
+def test_patch_detection_rule_persists_and_get_reflects_it(db_session: Session):
+    user = _persist_user(db_session, "Admin")
+    app.dependency_overrides[current_user] = lambda: user
+    try:
+        patch_response = client.patch(
+            "/detection/rules/port_scan",
+            json={"enabled": False, "threshold": 25},
+        )
+        assert patch_response.status_code == 200
+        assert patch_response.json()["rule"]["config"]["enabled"] is False
+        assert patch_response.json()["rule"]["config"]["threshold"] == 25
+
+        get_response = client.get("/detection/rules")
+        assert get_response.status_code == 200
+        rule = next(r for r in get_response.json()["rules"] if r["name"] == "port_scan")
+        assert rule["config"]["enabled"] is False
+        assert rule["config"]["threshold"] == 25
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+@pytest.mark.db
+def test_patch_detection_rule_rejects_unknown_rule_name(db_session: Session):
+    user = _persist_user(db_session, "Admin")
+    app.dependency_overrides[current_user] = lambda: user
+    try:
+        response = client.patch("/detection/rules/not_a_real_rule", json={"enabled": False})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+@pytest.mark.db
+def test_patch_detection_rule_requires_write_role(db_session: Session):
+    user = _persist_user(db_session, "Viewer")
+    app.dependency_overrides[current_user] = lambda: user
+    try:
+        response = client.patch("/detection/rules/port_scan", json={"enabled": False})
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user, None)

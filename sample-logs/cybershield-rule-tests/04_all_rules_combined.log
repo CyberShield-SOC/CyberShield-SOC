@@ -1,0 +1,12 @@
+Jul 14 11:00:01 server01 sshd[4001]: Failed password for root from 203.0.113.50 port 52001 ssh2
+Jul 14 11:00:08 server01 sshd[4002]: Failed password for root from 203.0.113.50 port 52002 ssh2
+Jul 14 11:00:15 server01 sshd[4003]: Failed password for root from 203.0.113.50 port 52003 ssh2
+Jul 14 11:00:22 server01 sshd[4004]: Failed password for root from 203.0.113.50 port 52004 ssh2
+Jul 14 11:00:29 server01 sshd[4005]: Failed password for root from 203.0.113.50 port 52005 ssh2
+Jul 14 11:10:01 server02 sshd[4101]: Failed password for invalid user oracle from 198.51.100.88 port 53001 ssh2
+Jul 14 11:10:11 server02 sshd[4102]: Failed password for invalid user postgres from 198.51.100.88 port 53002 ssh2
+Jul 14 11:10:21 server02 sshd[4103]: Failed password for invalid user backup from 198.51.100.88 port 53003 ssh2
+Jul 14 11:20:01 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=mrivera uid=1003 euid=0 tty=/dev/pts/2 ruser=mrivera rhost= user=mrivera
+Jul 14 11:20:31 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=mrivera uid=1003 euid=0 tty=/dev/pts/2 ruser=mrivera rhost= user=mrivera
+Jul 14 11:21:01 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=mrivera uid=1003 euid=0 tty=/dev/pts/2 ruser=mrivera rhost= user=mrivera
+Jul 14 11:30:01 server04 sshd[4201]: Accepted password for analyst from 10.0.0.25 port 54001 ssh2

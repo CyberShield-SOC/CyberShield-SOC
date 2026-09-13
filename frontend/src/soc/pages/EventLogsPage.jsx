@@ -8,6 +8,7 @@ import {
   filterEvents,
   formatTimestamp,
   inspectLogFile,
+  MAX_UPLOAD_BYTES,
   validateLogFile,
 } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
@@ -123,7 +124,7 @@ export default function EventLogsPage({ navigate }) {
       if (repositoryMode === "api") {
         validateLogFile(file, {
           allowedExtensions: allowedExtensions || [".log", ".csv", ".json", ".jsonl", ".txt"],
-          maxBytes: 10 * 1024 * 1024,
+          maxBytes: MAX_UPLOAD_BYTES,
         });
         const result = await uploadLogFile(file);
         setSelectedUploadBatch(null);
@@ -413,7 +414,7 @@ export default function EventLogsPage({ navigate }) {
               onChange={handleCsvFile}
             />
           </label>
-          <small>Only .csv and .txt files are accepted here, up to 10 MB.</small>
+          <small>Only .csv and .txt files are accepted here, up to {MAX_UPLOAD_BYTES / (1024 * 1024)} MB.</small>
         </div>
       </Panel>
 

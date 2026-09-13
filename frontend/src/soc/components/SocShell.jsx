@@ -17,6 +17,8 @@ import {
   Menu,
   Moon,
   Network,
+  Pause,
+  Play,
   RefreshCw,
   Search,
   Settings,
@@ -76,6 +78,8 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
   const {
     activeAlertCount,
     apiHealth,
+    autoRefresh,
+    setAutoRefresh,
     dashboard,
     globalTimeRange,
     openIncidentCount,
@@ -97,6 +101,8 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     setSelectedAlertId,
     setSelectedIncidentId,
   } = useSocWorkspace();
+  // Child routes stay attached to their parent navigation item.
+  const navigationRoute = route === SOC_ROUTES.ruleBuilder ? SOC_ROUTES.threatDetection : route;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState("all");
@@ -191,9 +197,9 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
                 <button
                   type="button"
                   key={itemRoute}
-                  className={route === itemRoute ? "active" : ""}
+                  className={navigationRoute === itemRoute ? "active" : ""}
                   onClick={() => navigate(itemRoute)}
-                  aria-current={route === itemRoute ? "page" : undefined}
+                  aria-current={navigationRoute === itemRoute ? "page" : undefined}
                   aria-label={badgeValue > 0 ? `${label}, ${badgeValue} ${badgeDescription}` : undefined}
                 >
                   <Icon size={17} strokeWidth={1.8} aria-hidden="true" />
@@ -234,9 +240,18 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
           <button className="soc-icon-button menu-button" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
             <Menu size={19} />
           </button>
-          <strong className="soc-route-title">{ROUTE_LABELS[route] || "CyberShield SOC"}</strong>
+          <strong className="soc-route-title">{ROUTE_LABELS[navigationRoute] || "CyberShield SOC"}</strong>
           <span className="live-pill"><i />{dashboard?.liveRateLabel || `Live · ${Number(dashboard?.liveRate || 0).toLocaleString()} events/min`}</span>
           <div className="soc-topbar-spacer" />
+          <button
+            className={`soc-icon-button auto-refresh-toggle ${autoRefresh ? "active" : ""}`}
+            type="button"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            aria-label={autoRefresh ? "Pause auto-refresh" : "Start auto-refresh"}
+            title="Auto-refresh"
+          >
+            {autoRefresh ? <Pause size={17} /> : <Play size={17} />}
+          </button>
           <label className="time-control">
             <span className="sr-only">Global time range</span>
             <select value={globalTimeRange} onChange={(event) => setGlobalTimeRange(event.target.value)}>

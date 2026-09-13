@@ -14,6 +14,7 @@ class LogRecord(BaseModel):
     username: Optional[str] = None
     event_type: Optional[str] = None
     status: Optional[str] = None
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
 
 
 class Alert(BaseModel):

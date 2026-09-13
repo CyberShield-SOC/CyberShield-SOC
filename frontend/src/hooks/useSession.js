@@ -44,12 +44,25 @@ export function useSession() {
     };
   }, []);
 
+  // Verifies credentials and starts the two-factor step. Deliberately does
+  // NOT set serverSession to "authenticated" — no session exists until
+  // completeTwoFactor() succeeds. Returns { requiresTwoFactor, email }.
   const signIn = useCallback(async (credentials) => {
     if (!isBackendConfigured) return null;
+    return authClient.login(credentials);
+  }, []);
+
+  const completeTwoFactor = useCallback(async (code) => {
+    if (!isBackendConfigured) return null;
     sessionVersionRef.current += 1;
-    const user = await authClient.login(credentials);
+    const user = await authClient.verifyTwoFactor(code);
     setServerSession({ status: "authenticated", user, expired: false });
     return user;
+  }, []);
+
+  const resendTwoFactorCode = useCallback(async () => {
+    if (!isBackendConfigured) return "";
+    return authClient.resendTwoFactor();
   }, []);
 
   const beginDemoSession = useCallback(() => {
@@ -79,6 +92,8 @@ export function useSession() {
       expiresAt: demo.expiresAt,
       user: null,
       signIn,
+      completeTwoFactor,
+      resendTwoFactorCode,
       beginDemoSession,
       signOut,
     };
@@ -92,6 +107,8 @@ export function useSession() {
     expiresAt: null,
     user: serverSession.user,
     signIn,
+    completeTwoFactor,
+    resendTwoFactorCode,
     beginDemoSession,
     signOut,
   };

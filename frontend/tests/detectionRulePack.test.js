@@ -6,9 +6,9 @@ import {
   summarizeRuleActivity,
 } from "../src/soc/data/detectionRulePack.js";
 
-test("catalogs the six rules registered by the backend detection engine", () => {
+test("catalogs the eight rules registered by the backend detection engine", () => {
   assert.deepEqual(CURRENT_DETECTION_RULE_IDS, [
-    "R-101", "R-102", "R-103", "R-104", "R-105", "R-106",
+    "R-101", "R-102", "R-103", "R-104", "R-105", "R-106", "R-107", "R-108",
   ]);
   assert.equal(CURRENT_DETECTION_RULES["R-101"].engineKey, "brute_force_login");
   assert.match(CURRENT_DETECTION_RULES["R-101"].criteria, /5 failed login attempts.+60 seconds/i);
@@ -22,6 +22,10 @@ test("catalogs the six rules registered by the backend detection engine", () => 
   assert.match(CURRENT_DETECTION_RULES["R-105"].criteria, /5 failed login attempts.+60 seconds.+120 seconds/i);
   assert.equal(CURRENT_DETECTION_RULES["R-106"].engineKey, "port_scan");
   assert.match(CURRENT_DETECTION_RULES["R-106"].criteria, /10 scan events.+60 seconds/i);
+  assert.equal(CURRENT_DETECTION_RULES["R-107"].engineKey, "multi_ip_successful_login");
+  assert.match(CURRENT_DETECTION_RULES["R-107"].criteria, /3 distinct source IPs.+300 seconds/i);
+  assert.equal(CURRENT_DETECTION_RULES["R-108"].engineKey, "sudo_after_login");
+  assert.match(CURRENT_DETECTION_RULES["R-108"].criteria, /120 seconds/i);
 });
 
 test("summarizes active and terminal alert activity without accepting invalid dates", () => {

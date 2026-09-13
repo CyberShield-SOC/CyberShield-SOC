@@ -1,0 +1,4 @@
+﻿source_file,line_number,month,day,time,host,service,pid,event_type,status,username,source_ip,source_port,protocol,logname,uid,euid,tty,ruser,rhost,raw_message
+02_username_enumeration.log,1,Jul,14,10:10:01,server02,sshd,3101,invalid_user,failed,oracle,198.51.100.77,51001,ssh2,,,,,,,Jul 14 10:10:01 server02 sshd[3101]: Failed password for invalid user oracle from 198.51.100.77 port 51001 ssh2
+02_username_enumeration.log,2,Jul,14,10:10:11,server02,sshd,3102,invalid_user,failed,postgres,198.51.100.77,51002,ssh2,,,,,,,Jul 14 10:10:11 server02 sshd[3102]: Failed password for invalid user postgres from 198.51.100.77 port 51002 ssh2
+02_username_enumeration.log,3,Jul,14,10:10:21,server02,sshd,3103,invalid_user,failed,backup,198.51.100.77,51003,ssh2,,,,,,,Jul 14 10:10:21 server02 sshd[3103]: Failed password for invalid user backup from 198.51.100.77 port 51003 ssh2

@@ -10,6 +10,9 @@ from app.repositories.note_repository import (
 )
 
 
+pytestmark = pytest.mark.no_db
+
+
 def test_create_note_rejects_sixth_incident_note():
     db = MagicMock()
     db.scalar.side_effect = [SimpleNamespace(id=9), 5]

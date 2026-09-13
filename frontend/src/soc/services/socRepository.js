@@ -7,6 +7,8 @@ import {
   securityEvents,
   workspaceSettings,
 } from "../data/mockData.js";
+import { TEST_DELAY_MS, TEST_RESULT } from "../data/ruleBuilderMockData.js";
+import { CURRENT_DETECTION_RULES } from "../data/detectionRulePack.js";
 import { restoreStoredNotes, restoreStoredSettings } from "../utils/storageValidation.js";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
@@ -15,6 +17,9 @@ import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
 const USERS_STORAGE_KEY = "cybershield-session-users";
+const CUSTOM_RULES_STORAGE_KEY = "cybershield-session-custom-rules";
+const BUILT_IN_RULES_STORAGE_KEY = "cybershield-session-built-in-rules";
+const CUSTOM_RULE_NUMBER_BASE = 108; // R-101..R-108 are the built-in rules
 const SEVERITY_RISK = Object.freeze({ critical: 96, high: 82, medium: 58, low: 30, info: 10 });
 const RULE_IDS = Object.freeze({
   brute_force_login: "R-101",
@@ -23,6 +28,8 @@ const RULE_IDS = Object.freeze({
   password_spraying: "R-104",
   credential_stuffing_success: "R-105",
   port_scan: "R-106",
+  multi_ip_successful_login: "R-107",
+  sudo_after_login: "R-108",
 });
 let apiNotesSnapshot = new Map();
 const runApiReadOnce = createInFlightDeduper();
@@ -72,6 +79,16 @@ function safeValidationDetail(payload) {
     return detail.error.slice(0, 240);
   }
   if (typeof detail === "string") return detail.slice(0, 240);
+  if (Array.isArray(detail)) {
+    // FastAPI's default Pydantic validation-error shape: a list of
+    // {msg: "Value error, <message>", ...}. Strip Pydantic's prefix so a
+    // policy rejection (e.g. from backend/app/validation/passwords.py)
+    // reads as a plain sentence instead of a generic 422 fallback.
+    const messages = detail
+      .map((item) => String(item?.msg || "").replace(/^value error,\s*/i, "").trim())
+      .filter(Boolean);
+    if (messages.length) return messages.join(" ").slice(0, 240);
+  }
   return "";
 }
 
@@ -204,6 +221,48 @@ function writeSessionUsers(users) {
   }
 }
 
+function readSessionCustomRules() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(CUSTOM_RULES_STORAGE_KEY) || "null");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionCustomRules(rules) {
+  try {
+    window.sessionStorage.setItem(CUSTOM_RULES_STORAGE_KEY, JSON.stringify(rules));
+  } catch {
+    // The current in-memory result remains usable if browser storage is blocked.
+  }
+}
+
+function nextMockRuleId(rules) {
+  const highest = rules.reduce((max, rule) => {
+    const match = String(rule.rule_id || "").match(/^R-(\d+)$/);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, CUSTOM_RULE_NUMBER_BASE);
+  return `R-${highest + 1}`;
+}
+
+function readSessionBuiltInRuleOverrides() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(BUILT_IN_RULES_STORAGE_KEY) || "null");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSessionBuiltInRuleOverrides(overrides) {
+  try {
+    window.sessionStorage.setItem(BUILT_IN_RULES_STORAGE_KEY, JSON.stringify(overrides));
+  } catch {
+    // The current in-memory result remains usable if browser storage is blocked.
+  }
+}
+
 async function request(path, options = {}) {
   const payload = await apiRequest(path, {
     ...options,
@@ -278,6 +337,27 @@ function normalizeEvent(log, alerts = []) {
   };
 }
 
+/**
+ * Shape reserved for a future ML anomaly-detection result attached to an
+ * alert: { score: 0-100, label: string, explanation: string,
+ * contributingFactors: string[] }. Returns null when the source has none of
+ * these fields, which every UI reader must treat as "no ML insight yet".
+ */
+function normalizeMlInsight(source) {
+  if (!source || typeof source !== "object") return null;
+  const score = Number(source.score ?? source.anomaly_score);
+  const explanation = String(source.explanation || "").trim();
+  if (!Number.isFinite(score) && !explanation) return null;
+  return {
+    score: Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null,
+    label: String(source.label || source.verdict || "").trim(),
+    explanation,
+    contributingFactors: Array.isArray(source.contributing_factors || source.contributingFactors)
+      ? (source.contributing_factors || source.contributingFactors).map(String)
+      : [],
+  };
+}
+
 function normalizeAlert(alert, latest = null) {
   const latestLogs = latest?.logs || [];
   const matchedLogs = latest?.upload?.upload_id === alert.upload_id
@@ -311,10 +391,70 @@ function normalizeAlert(alert, latest = null) {
     ruleName: String(alert.rule || "Detection rule").replaceAll("_", " "),
     summary: alert.description || "Security rule triggered.",
     reason: alert.reason || alert.description || "Security rule triggered.",
+    playbook: alert.response_playbook || alert.playbook || null,
+    actionResults: alert.action_results || alert.actionResults || {},
+    // Placeholder for a future ML anomaly-detection integration: no backend
+    // field populates this today, so it normalizes to null and every reader
+    // must treat it as optional. See docs/backend_data_requirements_for_ml.md.
+    mlInsight: normalizeMlInsight(alert.ml_insight || alert.mlInsight),
     assignee: "Unassigned",
     evidenceIds: matchedLogs.map(evidenceId),
     countryCode: alert.country_code || alert.geo?.country_code || "",
     country: alert.country || alert.country_name || alert.geo?.country || "",
+  };
+}
+
+function normalizeBuiltInRule(rule) {
+  const config = rule?.config || {};
+  return {
+    engineKey: String(rule?.name || ""),
+    id: RULE_IDS[rule?.name] || String(rule?.name || ""),
+    description: rule?.description || "",
+    severity: String(rule?.severity || "MEDIUM").toLowerCase(),
+    enabled: config.enabled !== false,
+    threshold: config.threshold ?? null,
+    failThreshold: config.fail_threshold ?? null,
+    windowSeconds: config.window_seconds ?? null,
+    successWindowSeconds: config.success_window_seconds ?? null,
+  };
+}
+
+function normalizeCustomRule(rule) {
+  return {
+    id: String(rule.rule_id || rule.ruleId || ""),
+    backendId: rule.id,
+    name: rule.name,
+    category: rule.category,
+    severity: String(rule.severity || "medium").toLowerCase(),
+    tactic: rule.tactic || "",
+    conditions: (rule.conditions || []).map((condition) => ({
+      field: condition.field,
+      operator: condition.operator,
+      value: condition.value,
+    })),
+    groupBy: rule.group_by || rule.groupBy || "none",
+    windowSeconds: Number(rule.window_seconds ?? rule.windowSeconds) || 600,
+    actions: rule.actions || {},
+    status: String(rule.status || "draft").toLowerCase(),
+    dsl: rule.dsl || "",
+    executable: rule.executable !== false,
+    createdAt: rule.created_at || rule.createdAt || "",
+    updatedAt: rule.updated_at || rule.updatedAt || "",
+  };
+}
+
+function customRuleApiPayload(rule) {
+  return {
+    name: rule.name,
+    category: rule.category,
+    severity: rule.severity,
+    tactic: rule.tactic || null,
+    conditions: rule.conditions,
+    group_by: rule.groupBy || "none",
+    window_seconds: rule.windowSeconds,
+    actions: rule.actions || {},
+    ...(rule.status ? { status: rule.status.toUpperCase() } : {}),
+    ...(rule.dsl ? { dsl: rule.dsl } : {}),
   };
 }
 
@@ -340,6 +480,7 @@ function normalizeIncident(incident, alerts = [], latest = null) {
     completedBy: completedByUserId ? `User ${completedByUserId}` : null,
     sla: terminal ? "Completed" : "Within target",
     summary: incident.description,
+    playbook: incident.response_playbook || incident.playbook || normalizedAlert?.playbook || null,
     eventIds: normalizedAlert?.evidenceIds || [],
   };
 }
@@ -550,6 +691,110 @@ const mockRepository = {
   },
   async uploadLog() { throw new Error("Uploads require the connected backend."); },
   async runAiAnalysis({ subject }) { await wait(760); return { ...clone(aiAnalysisSeed), subject: subject || aiAnalysisSeed.subject }; },
+  async getCustomRules() {
+    await wait(100);
+    const rules = readSessionCustomRules();
+    return {
+      rules: rules.map(normalizeCustomRule),
+      nextRuleId: nextMockRuleId(rules),
+    };
+  },
+  async getDetectionRules() {
+    await wait(80);
+    const overrides = readSessionBuiltInRuleOverrides();
+    return Object.values(CURRENT_DETECTION_RULES).map((rule) => normalizeBuiltInRule({
+      name: rule.engineKey,
+      description: rule.description,
+      severity: rule.severity.toUpperCase(),
+      config: {
+        enabled: true,
+        threshold: null,
+        fail_threshold: null,
+        window_seconds: null,
+        success_window_seconds: null,
+        ...overrides[rule.engineKey],
+      },
+    }));
+  },
+  async updateDetectionRule(engineKey, updates) {
+    await wait(120);
+    const rule = Object.values(CURRENT_DETECTION_RULES).find((item) => item.engineKey === engineKey);
+    if (!rule) throw new Error("That detection rule no longer exists.");
+    const overrides = readSessionBuiltInRuleOverrides();
+    const current = overrides[engineKey] || {};
+    const next = { ...current };
+    if (typeof updates.enabled === "boolean") next.enabled = updates.enabled;
+    if (updates.threshold != null) next.threshold = Number(updates.threshold);
+    if (updates.failThreshold != null) next.fail_threshold = Number(updates.failThreshold);
+    if (updates.windowSeconds != null) next.window_seconds = Number(updates.windowSeconds);
+    if (updates.successWindowSeconds != null) next.success_window_seconds = Number(updates.successWindowSeconds);
+    overrides[engineKey] = next;
+    writeSessionBuiltInRuleOverrides(overrides);
+    return normalizeBuiltInRule({
+      name: engineKey,
+      description: rule?.description || "",
+      severity: (rule?.severity || "medium").toUpperCase(),
+      config: {
+        enabled: true,
+        threshold: null,
+        fail_threshold: null,
+        window_seconds: null,
+        success_window_seconds: null,
+        ...next,
+      },
+    });
+  },
+  async createCustomRule(rule) {
+    await wait(150);
+    const rules = readSessionCustomRules();
+    const now = new Date().toISOString();
+    const created = {
+      id: Math.max(0, ...rules.map((item) => item.id)) + 1,
+      rule_id: nextMockRuleId(rules),
+      ...customRuleApiPayload(rule),
+      status: (rule.status || "draft").toUpperCase(),
+      severity: String(rule.severity || "medium").toUpperCase(),
+      created_at: now,
+      updated_at: now,
+    };
+    writeSessionCustomRules([created, ...rules]);
+    return normalizeCustomRule(created);
+  },
+  async updateCustomRule(backendId, updates) {
+    await wait(120);
+    const rules = readSessionCustomRules();
+    const target = rules.find((item) => item.id === backendId);
+    if (!target) throw new Error("That custom rule no longer exists.");
+    Object.assign(target, {
+      ...(updates.status ? { status: updates.status.toUpperCase() } : {}),
+      ...(updates.name ? { name: updates.name } : {}),
+      updated_at: new Date().toISOString(),
+    });
+    writeSessionCustomRules(rules);
+    return normalizeCustomRule(target);
+  },
+  async deleteCustomRule(backendId) {
+    await wait(100);
+    writeSessionCustomRules(readSessionCustomRules().filter((item) => item.id !== backendId));
+    return { success: true };
+  },
+  async testCustomRule() {
+    await wait(TEST_DELAY_MS);
+    return {
+      sampledCount: 4200,
+      matchCount: TEST_RESULT.matchCount,
+      alertCount: TEST_RESULT.matchCount,
+      matches: TEST_RESULT.matches.map((match) => ({
+        timestamp: match.time,
+        ipAddress: match.ipAddress,
+        username: match.username,
+        eventType: match.eventType,
+        status: "FAILED",
+        port: null,
+      })),
+      noise: { label: "LOW", alertsPerDay: 0.4 },
+    };
+  },
 };
 
 const readLatestUpload = () => runApiReadOnce("latest-upload", () => request("/upload/latest"));
@@ -809,6 +1054,74 @@ const httpRepository = {
   async runAiAnalysis({ subject }) {
     await wait(420);
     return { ...clone(aiAnalysisSeed), subject: subject || aiAnalysisSeed.subject };
+  },
+  async getCustomRules() {
+    const payload = await request("/custom-rules");
+    return {
+      rules: responseArray(payload, "rules").map(normalizeCustomRule),
+      nextRuleId: payload.next_rule_id || "R-109",
+    };
+  },
+  async getDetectionRules() {
+    const payload = await request("/detection/rules");
+    return responseArray(payload, "rules").map(normalizeBuiltInRule);
+  },
+  async updateDetectionRule(engineKey, updates) {
+    const body = {};
+    if (typeof updates.enabled === "boolean") body.enabled = updates.enabled;
+    if (updates.threshold != null) body.threshold = Number(updates.threshold);
+    if (updates.failThreshold != null) body.fail_threshold = Number(updates.failThreshold);
+    if (updates.windowSeconds != null) body.window_seconds = Number(updates.windowSeconds);
+    if (updates.successWindowSeconds != null) body.success_window_seconds = Number(updates.successWindowSeconds);
+    const payload = await request(`/detection/rules/${encodeURIComponent(engineKey)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    return normalizeBuiltInRule(payload.rule);
+  },
+  async createCustomRule(rule) {
+    const payload = await request("/custom-rules", {
+      method: "POST",
+      body: JSON.stringify(customRuleApiPayload(rule)),
+    });
+    return normalizeCustomRule(payload.rule);
+  },
+  async updateCustomRule(ruleId, updates) {
+    const numericId = requireBackendId(ruleId, "Custom rule");
+    const body = {};
+    if (updates.status) body.status = updates.status.toUpperCase();
+    if (updates.name) body.name = updates.name;
+    const payload = await request(`/custom-rules/${numericId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    return normalizeCustomRule(payload.rule);
+  },
+  async deleteCustomRule(ruleId) {
+    return request(`/custom-rules/${requireBackendId(ruleId, "Custom rule")}`, { method: "DELETE" });
+  },
+  async testCustomRule(rule) {
+    const payload = await request("/custom-rules/test", {
+      method: "POST",
+      body: JSON.stringify(customRuleApiPayload(rule)),
+    });
+    return {
+      sampledCount: payload.sampled_count,
+      matchCount: payload.match_count,
+      alertCount: payload.alert_count,
+      matches: (payload.matches || []).map((match) => ({
+        timestamp: match.timestamp,
+        ipAddress: match.ip_address,
+        username: match.username,
+        eventType: match.event_type,
+        status: match.status,
+        port: match.port,
+      })),
+      noise: {
+        label: payload.noise?.label || "LOW",
+        alertsPerDay: Number(payload.noise?.alerts_per_day) || 0,
+      },
+    };
   },
 };
 

@@ -82,6 +82,7 @@ def create_incident_from_alert(
         description=description or alert.description,
         priority=(priority or alert.severity).upper(),
         status="OPEN",
+        response_playbook=dict(alert.response_playbook or {}),
     )
 
     # Escalating an alert into an incident updates the alert lifecycle.
@@ -244,6 +245,8 @@ def serialize_incident_record(
             if incident.closed_at
             else None
         ),
+        "response_playbook": incident.response_playbook,
+        "playbook": incident.response_playbook,
         "created_at": incident.created_at.isoformat(),
         "updated_at": incident.updated_at.isoformat(),
     }

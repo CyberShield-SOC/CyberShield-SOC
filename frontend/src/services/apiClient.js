@@ -5,13 +5,23 @@ const API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL ?? DEFAULT_API_BA
 const FORCE_SAMPLE_MODE = String(import.meta.env?.VITE_USE_MOCK_DATA || "").toLowerCase() === "true";
 const REQUEST_TIMEOUT_MS = 12_000;
 const CSRF_COOKIE_NAME = "cybershield_csrf";
-const LOGIN_PATHS = new Set(["/auth/login", "/api/auth/login"]);
-// Login/refresh/logout are the only cookie-authenticated auth endpoints left.
+// Pre-session lifecycle endpoints: a 401 from any of these is a normal,
+// expected outcome (wrong password, wrong/expired/used OTP), never "your
+// session expired" — that message only makes sense once a session existed.
+const LOGIN_PATHS = new Set([
+  "/auth/login", "/api/auth/login",
+  "/auth/2fa/verify", "/api/auth/2fa/verify",
+  "/auth/2fa/resend", "/api/auth/2fa/resend",
+]);
+// Login/2fa/refresh/logout are the only cookie-authenticated auth endpoints.
 // A 401 from any of them must never itself trigger another refresh attempt
-// (that would recurse) — resource endpoints are the only ones eligible for
-// the silent-refresh-and-retry flow below.
+// (that would recurse, and could even swap in an unrelated stale session) —
+// resource endpoints are the only ones eligible for the silent-refresh-and-
+// retry flow below.
 const NO_INTERCEPT_PATHS = new Set([
   "/auth/login", "/api/auth/login",
+  "/auth/2fa/verify", "/api/auth/2fa/verify",
+  "/auth/2fa/resend", "/api/auth/2fa/resend",
   "/auth/refresh", "/api/auth/refresh",
   "/auth/logout", "/api/auth/logout",
 ]);

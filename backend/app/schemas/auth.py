@@ -29,6 +29,26 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
 
+class TwoFactorRequiredResponse(BaseModel):
+    """Returned by /auth/login in place of tokens until the OTP is verified."""
+
+    success: bool
+    requiresTwoFactor: bool = True
+    email: str
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    # Deliberately not constrained to \d{6} here: a malformed code should
+    # fail with the same friendly "Invalid verification code" message as a
+    # wrong-but-well-formed one, not a generic schema-validation error.
+    code: str = Field(min_length=1, max_length=32)
+
+
+class TwoFactorResendResponse(BaseModel):
+    success: bool
+    message: str
+
+
 class RefreshResponse(BaseModel):
     success: bool
     access_token: str

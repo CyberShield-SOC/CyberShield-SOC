@@ -82,7 +82,7 @@ The startup task runs `start.ps1`, which:
 1. Validates the local `.env`, backend virtual environment, and frontend dependencies.
 2. Starts the PostgreSQL container and waits for it to become healthy.
 3. Applies Alembic database migrations and creates the configured initial Admin when needed.
-4. Starts FastAPI on `http://127.0.0.1:3000` and Vite on `https://127.0.0.1:5173` (self-signed local certificate — accept the one-time browser warning).
+4. Starts FastAPI on `http://127.0.0.1:3000` and Vite on `http://127.0.0.1:5173`.
 5. Opens the application in the browser.
 
 The VS Code startup task is currently Windows-specific. On macOS or Linux, start PostgreSQL and prepare the database from the repository root:
@@ -108,8 +108,11 @@ To verify the local PostgreSQL-backed backend on Windows:
 docker compose up -d --wait database
 cd backend
 .\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe scripts\check_db.py
 .\.venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider
 ```
+
+Backend tests require the configured PostgreSQL database and current Alembic schema. They fail fast with setup instructions when PostgreSQL is unavailable or stale; PostgreSQL-specific schema types are never replaced with an SQLite fallback.
 
 ## Run the Parser
 
@@ -134,7 +137,7 @@ python main.py
 
 Open:
 
-- Frontend dashboard: `https://localhost:5173` (with Vite dev server running; accept the self-signed certificate warning once)
+- Frontend dashboard: `http://localhost:5173` (with Vite dev server running)
 - API docs: `http://localhost:3000/docs`
 - Health check: `http://localhost:3000/health`
 
@@ -148,7 +151,7 @@ npm install
 npm run dev
 ```
 
-Then open `https://localhost:5173` in your browser (accept the one-time self-signed certificate warning). The Vite development server proxies `/api` requests to the FastAPI service on port `3000`.
+Then open `http://localhost:5173` in your browser. The Vite development server proxies `/api` requests to the FastAPI service on port `3000`.
 
 Connected authentication requires PostgreSQL and FastAPI to be running. The complete startup task described above starts the database, applies migrations, seeds the initial Admin, and launches both application servers.
 
@@ -208,7 +211,7 @@ Returns backend service health.
 | Parsed JSON response | Yes |
 | Error handling for unsupported, empty, large, or bad files | Yes |
 | Basic fields: timestamp, IP address, username, event type, status | Yes |
-| Simple table display | Yes, React dashboard at `https://localhost:5173` |
+| Simple table display | Yes, React dashboard at `http://localhost:5173` |
 
 ## Output
 
@@ -280,5 +283,4 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 | Paul Truong | Frontend Developer |
 | Samin Rijal | Backend Developer |
 | Marvellous Obasanya | Cybersecurity / Detection Lead |
-| Kapil Khanal | ML / DevOps / Testing Lead |
-
+| Ka!pil Khanal | ML / DevOps / Testing Lead |

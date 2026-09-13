@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -35,6 +36,35 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_pending_login_token() -> str:
+    """Opaque token identifying one in-progress login attempt across the
+    two-factor step. Only its digest (token_digest) is ever persisted; the
+    raw value lives solely in a short-lived HttpOnly cookie."""
+
+    return secrets.token_urlsafe(32)
+
+
+def generate_otp_code() -> str:
+    """Cryptographically secure random 6-digit code, "000000"-"999999"."""
+
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp_code(code: str) -> str:
+    """Keyed HMAC-SHA256 of an OTP code. The plaintext code is never stored;
+    only this digest is, so a database read alone can never recover it."""
+
+    return hmac.new(
+        settings.otp_secret.encode("utf-8"),
+        code.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_otp_code(code: str, otp_hash: str) -> bool:
+    return hmac.compare_digest(hash_otp_code(code), otp_hash)
 
 
 def create_refresh_token(

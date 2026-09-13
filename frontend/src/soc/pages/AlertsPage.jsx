@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, BookOpenCheck, CheckCircle2, MessageSquareText, RefreshCw, Save, Search, ShieldPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { formatTimestamp } from "../utils/eventUtils";
@@ -30,6 +30,53 @@ function formatAlertTimeRange(alert) {
   const end = formatTimestamp(alert.lastSeen || alert.firstSeen || alert.observedAt || alert.createdAt);
   if (start === end) return `${start} · single observation`;
   return `${start} – ${end}`;
+}
+
+function minutesLabel(seconds) {
+  const minutes = Math.round(Number(seconds) / 60);
+  return minutes >= 60 ? `${Math.round(minutes / 60)}h` : `${minutes}m`;
+}
+
+/** Maps a rule's actions.<key> outcome (set by the backend after the alert
+ * fired) to an icon, tone, and human-readable line for the alert detail rail. */
+function describeActionResult(key, result) {
+  if (!result || typeof result !== "object") return null;
+
+  if (key === "notify_slack") {
+    if (result.status === "sent") {
+      return { tone: "ok", icon: Send, text: `Slack notification sent${result.status_code ? ` (HTTP ${result.status_code})` : ""}.` };
+    }
+    if (result.status === "skipped") {
+      return { tone: "muted", icon: Send, text: "Slack notification skipped — no webhook configured." };
+    }
+    return { tone: "error", icon: AlertTriangle, text: `Slack notification failed${result.error ? `: ${result.error}` : "."}` };
+  }
+
+  if (key === "auto_incident") {
+    if (result.status === "created") {
+      return { tone: "ok", icon: ShieldPlus, text: `Auto-created incident #${result.incident_id}.` };
+    }
+    if (result.status === "already_exists") {
+      return { tone: "muted", icon: ShieldPlus, text: `Incident #${result.incident_id} already exists for this alert.` };
+    }
+    if (result.status === "threshold_not_met") {
+      return {
+        tone: "muted",
+        icon: Clock3,
+        text: `Auto-incident threshold not met (needs ${result.threshold_count} events within ${minutesLabel(result.threshold_window_seconds)}).`,
+      };
+    }
+    return null;
+  }
+
+  if (key === "suggest_playbook") {
+    if (result.status === "linked") {
+      return { tone: "ok", icon: BookOpenCheck, text: `Playbook ${result.playbook_id} linked.` };
+    }
+    return null;
+  }
+
+  return null;
 }
 
 export default function AlertsPage({ navigate }) {
@@ -258,9 +305,47 @@ export default function AlertsPage({ navigate }) {
                 <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.eventLogs)}>Open complete event log <ArrowUpRight size={13} /></button>
               </Panel>
 
-              <Panel title="Recommended response actions" subtitle={recommendations.length ? `${recommendations.length} actions for this alert type` : "No predefined playbook available"}>
+              <Panel
+                title="Recommended response actions"
+                subtitle={selected.playbook?.id ? `${selected.playbook.id} · ${selected.playbook.title}` : recommendations.length ? `${recommendations.length} actions for this alert type` : "No predefined playbook available"}
+              >
+                {selected.playbook?.route && <button className="soc-text-button" type="button" onClick={() => navigate(selected.playbook.route)}>Open linked playbook <ArrowUpRight size={13} /></button>}
                 {recommendations.length ? <ol className="alert-recommendations">{recommendations.map((recommendation) => <li key={recommendation}><CheckCircle2 size={15} /><span>{recommendation}</span></li>)}</ol> : <p className="empty-inline">No automated response recommendation is available. Refer the alert to the assigned analyst and follow the approved response playbook.</p>}
               </Panel>
+
+              {Boolean(selected.actionResults && Object.keys(selected.actionResults).length) && (
+                <Panel title="Rule actions" subtitle="What ran automatically when this alert fired">
+                  <ul className="alert-action-results">
+                    {Object.entries(selected.actionResults).map(([key, result]) => {
+                      const described = describeActionResult(key, result);
+                      if (!described) return null;
+                      const Icon = described.icon;
+                      return (
+                        <li key={key} data-state={described.tone}>
+                          <Icon size={14} aria-hidden="true" />
+                          <span>{described.text}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Panel>
+              )}
+
+              {/* Placeholder for a future ML anomaly-detection integration.
+                  No backend field populates selected.mlInsight today, so
+                  this panel never renders yet — it is ready to surface a
+                  model's score and explanation the moment one exists. */}
+              {Boolean(selected.mlInsight) && (
+                <Panel title="ML anomaly insight" subtitle={selected.mlInsight.label || "Model-generated assessment"}>
+                  {selected.mlInsight.score !== null && <RiskMeter value={selected.mlInsight.score} />}
+                  {selected.mlInsight.explanation && <p className="alert-reason">{selected.mlInsight.explanation}</p>}
+                  {Boolean(selected.mlInsight.contributingFactors.length) && (
+                    <ul className="alert-recommendations">
+                      {selected.mlInsight.contributingFactors.map((factor) => <li key={factor}><CheckCircle2 size={15} /><span>{factor}</span></li>)}
+                    </ul>
+                  )}
+                </Panel>
+              )}
 
               <Panel title="Detection rule" subtitle={rule ? `${rule.id} · version ${rule.version}` : selected.ruleId}>
                 {rule ? <div className="rule-detail"><div className="rule-title-row"><h3>{rule.name}</h3><StatusBadge status={rule.status} /></div><p>{rule.description}</p><dl><div><dt>ATT&CK</dt><dd>{rule.technique}</dd></div><div><dt>Owner</dt><dd>{rule.owner}</dd></div><div><dt>Updated</dt><dd>{rule.lastUpdated}</dd></div></dl><code>{rule.query}</code></div> : <p className="empty-inline">Detection-rule details are not available for this alert.</p>}

@@ -5,6 +5,9 @@ from app.models.incident import Incident
 from app.schemas.incident import IncidentUpdate
 
 
+pytestmark = pytest.mark.no_db
+
+
 def test_incident_status_contract_includes_false_positive_and_rejects_closed():
     assert IncidentUpdate(status="FALSE_POSITIVE").status == "FALSE_POSITIVE"
     with pytest.raises(ValidationError):

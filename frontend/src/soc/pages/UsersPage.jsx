@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { KeyRound, LogOut, Plus, RefreshCw, Save, Search, ShieldCheck, UserRoundCog, X } from "lucide-react";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
+import { PasswordFieldGroup, PasswordInput, PasswordMatchStatus } from "../components/PasswordField";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
+import { isPasswordPolicyMet, passwordsMatch, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 import {
   normalizeNewWorkspaceUser,
   normalizeWorkspaceUserUpdate,
@@ -111,6 +113,8 @@ export default function UsersPage() {
     || draft.isActive !== selected.isActive
   );
   const selectedRole = roles.find((role) => role.name === draft.role);
+  const isNewPasswordReady = isPasswordPolicyMet(newUser.password) && passwordsMatch(newUser.password, newUser.confirmPassword);
+  const isResetPasswordReady = isPasswordPolicyMet(passwordDraft.password) && passwordsMatch(passwordDraft.password, passwordDraft.confirmPassword);
 
   async function saveUser(event) {
     event.preventDefault();
@@ -300,9 +304,31 @@ export default function UsersPage() {
               <label>Username <input value={newUser.username} maxLength="50" autoComplete="username" required aria-invalid={Boolean(newUserErrors.username)} onChange={(event) => setNewUser((current) => ({ ...current, username: event.target.value }))} /><span className="soc-field-error">{newUserErrors.username}</span></label>
               <label>Email <input type="email" value={newUser.email} maxLength="254" autoComplete="email" required aria-invalid={Boolean(newUserErrors.email)} onChange={(event) => setNewUser((current) => ({ ...current, email: event.target.value }))} /><span className="soc-field-error">{newUserErrors.email}</span></label>
               <label>Workspace role <select value={newUser.role} aria-invalid={Boolean(newUserErrors.role)} onChange={(event) => setNewUser((current) => ({ ...current, role: event.target.value }))}>{roles.map((role) => <option key={role.id} value={role.name}>{role.name}</option>)}</select><span className="soc-field-error">{newUserErrors.role}</span></label>
-              <label>Temporary password <input type="password" value={newUser.password} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(newUserErrors.password)} onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))} /><span className="soc-field-error">{newUserErrors.password}</span></label>
-              <label>Confirm password <input type="password" value={newUser.confirmPassword} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(newUserErrors.confirmPassword)} onChange={(event) => setNewUser((current) => ({ ...current, confirmPassword: event.target.value }))} /><span className="soc-field-error">{newUserErrors.confirmPassword}</span></label>
-              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setCreateOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving}>{saving ? <span className="soc-spinner small" /> : <Plus size={15} />}{saving ? "Creating…" : "Create user"}</button></div>
+              <label>Temporary password
+                <PasswordFieldGroup
+                  value={newUser.password}
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  autoComplete="new-password"
+                  required
+                  error={newUserErrors.password}
+                  onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))}
+                />
+                <span className="soc-field-error">{newUserErrors.password}</span>
+              </label>
+              <label>Confirm password
+                <PasswordInput
+                  value={newUser.confirmPassword}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  autoComplete="new-password"
+                  required
+                  error={newUserErrors.confirmPassword}
+                  onChange={(event) => setNewUser((current) => ({ ...current, confirmPassword: event.target.value }))}
+                />
+                <PasswordMatchStatus password={newUser.password} confirmPassword={newUser.confirmPassword} />
+                <span className="soc-field-error">{newUserErrors.confirmPassword}</span>
+              </label>
+              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setCreateOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving || !isNewPasswordReady} title={!isNewPasswordReady ? "Complete every password requirement before creating this account" : undefined}>{saving ? <span className="soc-spinner small" /> : <Plus size={15} />}{saving ? "Creating…" : "Create user"}</button></div>
             </form>
           </section>
         </div>
@@ -317,9 +343,31 @@ export default function UsersPage() {
             </header>
             {isCurrentUser && <InlineNotice tone="warning" title="You are resetting your own password">After the reset, this session will close and you must sign in with the new password.</InlineNotice>}
             <form onSubmit={resetPassword} noValidate>
-              <label>New temporary password<input type="password" value={passwordDraft.password} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(passwordErrors.password)} onChange={(event) => setPasswordDraft((current) => ({ ...current, password: event.target.value }))} /><span className="soc-field-error">{passwordErrors.password}</span></label>
-              <label>Confirm password<input type="password" value={passwordDraft.confirmPassword} minLength="12" maxLength="256" autoComplete="new-password" required aria-invalid={Boolean(passwordErrors.confirmPassword)} onChange={(event) => setPasswordDraft((current) => ({ ...current, confirmPassword: event.target.value }))} /><span className="soc-field-error">{passwordErrors.confirmPassword}</span></label>
-              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setPasswordOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving}>{saving ? <span className="soc-spinner small" /> : <KeyRound size={15} />}{saving ? "Resetting…" : "Reset password"}</button></div>
+              <label>New temporary password
+                <PasswordFieldGroup
+                  value={passwordDraft.password}
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  autoComplete="new-password"
+                  required
+                  error={passwordErrors.password}
+                  onChange={(event) => setPasswordDraft((current) => ({ ...current, password: event.target.value }))}
+                />
+                <span className="soc-field-error">{passwordErrors.password}</span>
+              </label>
+              <label>Confirm password
+                <PasswordInput
+                  value={passwordDraft.confirmPassword}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  autoComplete="new-password"
+                  required
+                  error={passwordErrors.confirmPassword}
+                  onChange={(event) => setPasswordDraft((current) => ({ ...current, confirmPassword: event.target.value }))}
+                />
+                <PasswordMatchStatus password={passwordDraft.password} confirmPassword={passwordDraft.confirmPassword} />
+                <span className="soc-field-error">{passwordErrors.confirmPassword}</span>
+              </label>
+              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setPasswordOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving || !isResetPasswordReady} title={!isResetPasswordReady ? "Complete every password requirement before resetting this password" : undefined}>{saving ? <span className="soc-spinner small" /> : <KeyRound size={15} />}{saving ? "Resetting…" : "Reset password"}</button></div>
             </form>
           </section>
         </div>

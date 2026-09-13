@@ -34,6 +34,8 @@ export default function App() {
     expiresAt,
     user,
     signIn,
+    completeTwoFactor,
+    resendTwoFactorCode,
     beginDemoSession,
     signOut,
   } = useSession();
@@ -102,34 +104,41 @@ export default function App() {
   }
 
   async function submitCredentials(credentials) {
-    setEmail(credentials.email);
     setAuthNotice("");
     if (sessionMode === "api") {
-      // The current API validates the primary credentials but does not yet
-      // expose an MFA challenge endpoint. Keep the MFA screen in the flow so
-      // the UI is ready for that contract without treating it as a server-side
-      // security boundary.
-      await signIn(credentials);
+      // signIn() only verifies credentials and starts the email OTP step —
+      // no session exists yet. The account's own (masked) email comes back
+      // from the server rather than trusting whatever the user typed.
+      const pending = await signIn(credentials);
+      showMfa(pending?.email || credentials.email);
+      return;
     }
     showMfa(credentials.email);
   }
 
   async function returnFromMfa() {
-    // Connected login currently creates the server session before the visual
-    // MFA step. Revoke that provisional session when the user goes back.
-    if (sessionMode === "api") await signOut();
+    // api mode never created a session at the credentials step (only a
+    // pending-verification cookie the backend already scopes to 2FA), so
+    // there is nothing to revoke here — going back just returns to sign-in.
     setMfaPending(false);
     navigate(AUTH_ROUTES.login);
   }
 
-  function completeMfa() {
-    if (!mfaPending && sessionStatus !== "authenticated") {
-      navigate(AUTH_ROUTES.login);
-      return;
+  async function verifyMfaCode(code) {
+    if (sessionMode === "api") {
+      // Throws with a friendly message on a wrong/expired/locked-out code;
+      // MfaCard displays it. Only on success does a real session exist.
+      await completeTwoFactor(code);
+    } else {
+      beginDemoSession();
     }
-    if (sessionMode === "demo") beginDemoSession();
     setMfaPending(false);
     navigate(intendedRoute);
+  }
+
+  async function resendMfaCode() {
+    if (sessionMode === "api") return resendTwoFactorCode();
+    return "A new verification code has been sent.";
   }
 
   function renderAuthView() {
@@ -139,7 +148,8 @@ export default function App() {
           <MfaCard
             email={email}
             onBack={returnFromMfa}
-            onVerified={completeMfa}
+            onVerified={verifyMfaCode}
+            onResend={resendMfaCode}
           />
         );
       case AUTH_ROUTES.logoutSuccess:

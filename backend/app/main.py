@@ -12,13 +12,19 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.routers import alerts, auth, detection, incidents, notes, upload, users
+from app.routers import alerts, auth, custom_rules, detection, incidents, notes, upload, users
 
 app = FastAPI(
     title="CyberShield SOC",
     description="Log Upload & Parsing API",
     version="1.0.0",
 )
+
+_EXTRA_CORS_ORIGINS = [
+    origin.strip()
+    for origin in settings.cors_allowed_origins.split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +33,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "https://localhost:5173",
         "https://127.0.0.1:5173",
+        *_EXTRA_CORS_ORIGINS,
     ],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     # Keep the browser contract explicit: credentialed requests may send JSON,
@@ -86,6 +93,7 @@ app.include_router(alerts.router)
 app.include_router(detection.router)
 app.include_router(incidents.router)
 app.include_router(notes.router)
+app.include_router(custom_rules.router)
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
@@ -93,6 +101,7 @@ app.include_router(alerts.router, prefix="/api")
 app.include_router(detection.router, prefix="/api")
 app.include_router(incidents.router, prefix="/api")
 app.include_router(notes.router, prefix="/api")
+app.include_router(custom_rules.router, prefix="/api")
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 

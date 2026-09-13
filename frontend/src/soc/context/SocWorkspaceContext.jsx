@@ -40,7 +40,10 @@ const RESOURCE_LOADERS = Object.freeze({
   incidents: () => socRepository.getIncidents(),
   notes: () => socRepository.getNotes(),
   settings: () => socRepository.getSettings(),
+  customRules: () => socRepository.getCustomRules(),
 });
+
+const INITIAL_CUSTOM_RULES = Object.freeze({ rules: Object.freeze([]), nextRuleId: "R-109" });
 
 const INITIAL_RESOURCE_STATE = Object.freeze(
   Object.fromEntries(
@@ -60,10 +63,12 @@ export function SocWorkspaceProvider({ children, user }) {
   const [incidents, setIncidents] = useState([]);
   const [notes, setNotes] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [customRules, setCustomRules] = useState(INITIAL_CUSTOM_RULES);
   const [resources, setResources] = useState(INITIAL_RESOURCE_STATE);
   const [mutation, setMutation] = useState({ loading: false, error: "", message: "" });
   const [notificationState, setNotificationState] = useState(readNotificationState);
   const [globalTimeRange, setGlobalTimeRangeState] = useState("24h");
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [trackingIncidentId, setTrackingIncidentId] = useState(null);
   // Keep explicit investigation selections stable while route components
   // mount and unmount. They reset with the workspace provider on sign-out.
@@ -122,6 +127,7 @@ export function SocWorkspaceProvider({ children, user }) {
     incidents: setIncidents,
     notes: setNotes,
     settings: setSettings,
+    customRules: setCustomRules,
   }), []);
 
   const refresh = useCallback(async (key) => {
@@ -184,15 +190,21 @@ export function SocWorkspaceProvider({ children, user }) {
     // Background tabs should not create avoidable polling traffic. Refresh as
     // soon as the workspace becomes visible, then resume the normal cadence.
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refresh("health");
+      if (document.visibilityState === "visible") {
+        if (autoRefresh) {
+          refreshAll();
+        } else {
+          refresh("health");
+        }
+      }
     };
-    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    const intervalId = window.setInterval(refreshWhenVisible, autoRefresh ? 30_000 : 60_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [refresh]);
+  }, [refresh, refreshAll, autoRefresh]);
 
   const commitNotes = useCallback(async (updater, successMessage) => {
     if (rejectReadOnlyMutation()) return false;
@@ -426,6 +438,72 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite]);
 
+  const createCustomRule = useCallback(async (rule) => {
+    if (rejectReadOnlyMutation()) return null;
+    const mutationKey = "create-custom-rule";
+    if (!acquireMutation(mutationKey)) return null;
+    setMutation({ loading: true, error: "", message: "Saving custom rule…" });
+    try {
+      const created = await socRepository.createCustomRule(rule);
+      setCustomRules((current) => ({
+        rules: [created, ...current.rules],
+        nextRuleId: current.nextRuleId,
+      }));
+      refresh("customRules");
+      setMutation({ loading: false, error: "", message: `${created.id} saved` });
+      return created;
+    } catch (error) {
+      setMutation({ loading: false, error: error.message || "The custom rule could not be saved.", message: "" });
+      return null;
+    } finally {
+      releaseMutation(mutationKey);
+    }
+  }, [canWrite, refresh]);
+
+  const updateCustomRuleStatus = useCallback(async (backendId, status) => {
+    if (rejectReadOnlyMutation()) return null;
+    const mutationKey = `update-custom-rule-${backendId}`;
+    if (!acquireMutation(mutationKey)) return null;
+    setMutation({ loading: true, error: "", message: "Updating custom rule…" });
+    try {
+      const updated = await socRepository.updateCustomRule(backendId, { status });
+      setCustomRules((current) => ({
+        rules: current.rules.map((rule) => (rule.backendId === backendId ? updated : rule)),
+        nextRuleId: current.nextRuleId,
+      }));
+      setMutation({ loading: false, error: "", message: `${updated.id} updated` });
+      return updated;
+    } catch (error) {
+      setMutation({ loading: false, error: error.message || "The custom rule could not be updated.", message: "" });
+      return null;
+    } finally {
+      releaseMutation(mutationKey);
+    }
+  }, [canWrite]);
+
+  const deleteCustomRule = useCallback(async (backendId) => {
+    if (rejectReadOnlyMutation()) return false;
+    const mutationKey = `delete-custom-rule-${backendId}`;
+    if (!acquireMutation(mutationKey)) return false;
+    setMutation({ loading: true, error: "", message: "Deleting custom rule…" });
+    try {
+      await socRepository.deleteCustomRule(backendId);
+      setCustomRules((current) => ({
+        rules: current.rules.filter((rule) => rule.backendId !== backendId),
+        nextRuleId: current.nextRuleId,
+      }));
+      setMutation({ loading: false, error: "", message: "Custom rule deleted" });
+      return true;
+    } catch (error) {
+      setMutation({ loading: false, error: error.message || "The custom rule could not be deleted.", message: "" });
+      return false;
+    } finally {
+      releaseMutation(mutationKey);
+    }
+  }, [canWrite]);
+
+  const testCustomRule = useCallback((rule) => socRepository.testCustomRule(rule), []);
+
   const uploadLogFile = useCallback(async (file) => {
     if (rejectReadOnlyMutation()) {
       throw new Error("Your Viewer role has read-only access.");
@@ -608,10 +686,14 @@ export function SocWorkspaceProvider({ children, user }) {
     notes,
     settings,
     detectionRules,
+    customRules: customRules.rules,
+    nextCustomRuleId: customRules.nextRuleId,
     resources,
     mutation,
     globalTimeRange,
     setGlobalTimeRange,
+    autoRefresh,
+    setAutoRefresh,
     timeFilteredEvents,
     timeFilteredIngestedEvents,
     timeFilteredAlerts,
@@ -642,6 +724,10 @@ export function SocWorkspaceProvider({ children, user }) {
     updateIncidentStatus,
     updateIncidentAssignee,
     createIncident,
+    createCustomRule,
+    updateCustomRuleStatus,
+    deleteCustomRule,
+    testCustomRule,
     uploadLogFile,
     saveWorkspaceSettings,
     markNotificationRead,
@@ -660,11 +746,17 @@ export function SocWorkspaceProvider({ children, user }) {
     user,
     currentActor,
     createIncident,
+    createCustomRule,
+    updateCustomRuleStatus,
+    deleteCustomRule,
+    testCustomRule,
+    customRules,
     dashboard,
     deleteNote,
     displayIncidents,
     events,
     globalTimeRange,
+    autoRefresh,
     incidents,
     settings,
     clearAllNotifications,
