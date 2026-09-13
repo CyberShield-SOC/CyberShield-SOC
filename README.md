@@ -11,7 +11,7 @@ CyberShield SOC is a full security-operations platform: a FastAPI backend that i
 The `DetectionEngine` (`backend/app/detection/engine.py`) runs every enabled rule against each uploaded batch of parsed log entries. Rules are configurable per-deployment (`DETECTION_RULE_CONFIG`) and, for the built-in set below, also live-configurable by an Admin/Analyst through `GET`/`PATCH /detection/rules` without a restart. Analysts can additionally author custom rules at runtime through the Rule Builder (`POST/PATCH/DELETE /custom-rules`), which run alongside these built-ins.
 
 | Rule | Severity | Detects |
-|---|---|---|
+| --- | --- | --- |
 | `brute_force_login` | High | Repeated failed login attempts from one source IP in a short window |
 | `invalid_user_enumeration` | Medium | One source IP trying several distinct usernames — account enumeration |
 | `sudo_failure` | Medium | Repeated failed privilege-escalation (sudo) attempts by one user or source |
@@ -206,7 +206,7 @@ Returns backend service health.
 ### Full endpoint list
 
 | Area | Endpoints |
-|---|---|
+| --- | --- |
 | Auth | `POST /auth/login`, `/auth/2fa/verify`, `/auth/2fa/resend`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` |
 | Users | `GET/POST /users`, `PATCH /users/{id}`, role/active/password management |
 | Upload | `POST /upload`, `GET /upload/latest`, `/upload/history`, `/upload/batches/{id}`, `/upload/formats` |
@@ -278,7 +278,7 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 ## Team Members
 
 | Name | Role |
-|------|------|
+| --- | --- |
 | Yugal Limbu | Project Manager / Documentation Lead |
 | Marvellous Obasanya | Scrum Master |
 | Paul Truong | Frontend Developer |
