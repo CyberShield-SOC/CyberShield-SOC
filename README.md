@@ -2,24 +2,26 @@
 
 AI-Powered Log Monitoring and Threat Detection Platform
 
-## Sprint 1 Scope
+## Overview
 
-This Sprint 1 prototype focuses on log ingestion and parsing. It includes a parser workflow for raw authentication/security logs and a FastAPI backend for uploading `.log` or `.csv` files, validating them, parsing basic fields, and returning structured JSON.
+CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, email-based two-factor verification, and role-based access control (Admin, Analyst, Viewer).
 
-## Sprint 1 Deliverables Included
+## Detection Rules
 
-- Python parser script (`parser/log_parser.py`)
-- Sample security log dataset (`sample-logs/auth.log`)
-- Parsed JSON output (`output/parsed_logs.json`)
-- Parsed CSV output (`output/parsed_logs.csv`)
-- Backend FastAPI upload API (`backend/`)
-- File validation for `.log` and `.csv`
-- JSON response with parsed log entries
-- Setup documentation
-- Parser design documentation
-- GitHub submission guide
-- Kapil Khanal contribution report
-- Sprint 1 deliverables summary
+The `DetectionEngine` (`backend/app/detection/engine.py`) runs every enabled rule against each uploaded batch of parsed log entries. Rules are configurable per-deployment (`DETECTION_RULE_CONFIG`) and, for the built-in set below, also live-configurable by an Admin/Analyst through `GET`/`PATCH /detection/rules` without a restart. Analysts can additionally author custom rules at runtime through the Rule Builder (`POST/PATCH/DELETE /custom-rules`), which run alongside these built-ins.
+
+| Rule | Severity | Detects |
+|---|---|---|
+| `brute_force_login` | High | Repeated failed login attempts from one source IP in a short window |
+| `invalid_user_enumeration` | Medium | One source IP trying several distinct usernames — account enumeration |
+| `sudo_failure` | Medium | Repeated failed privilege-escalation (sudo) attempts by one user or source |
+| `password_spraying` | High | One account receiving failed logins from many distinct source IPs |
+| `credential_stuffing_success` | High | A failed-login burst from one IP immediately followed by a successful login — likely takeover |
+| `port_scan` | Medium | A burst of port-scan events from one source IP |
+| `multi_ip_successful_login` | Medium | One account with successful logins from several distinct source IPs in a short window — shared/compromised credential use |
+| `sudo_after_login` | Medium | A successful login immediately followed by successful privilege escalation for the same account |
+
+Sample normal and suspicious log fixtures for each rule live under `sample-logs/cybershield-rule-tests/` and `sample-logs/kk_normal.csv` / `sample-logs/kk_suspicious.csv`, exercised by `backend/tests/test_detection.py` and `backend/tests/test_kapil_sprint5_rules.py`.
 
 ## One-time local setup
 
@@ -114,7 +116,9 @@ cd backend
 
 Backend tests require the configured PostgreSQL database and current Alembic schema. They fail fast with setup instructions when PostgreSQL is unavailable or stale; PostgreSQL-specific schema types are never replaced with an SQLite fallback.
 
-## Run the Parser
+## Run the Standalone Parser Script
+
+`parser/log_parser.py` is a legacy standalone CLI utility kept for quick, dependency-free parsing of a single log file outside the running application. The live backend uses its own parser (`backend/app/parsers/`), not this script.
 
 ```bash
 python parser/log_parser.py sample-logs/auth.log
@@ -183,10 +187,10 @@ Request:
 
 - Content type: `multipart/form-data`
 - Field name: `logfile`
-- Accepted extensions: `.log`, `.csv`
-- Max size: 10 MB
+- Accepted extensions: `.log`, `.csv`, `.txt`, `.json`, `.jsonl`
+- Max size: 50 MB
 
-The project also supports `POST /api/upload` for frontend/API routing.
+Every route is also served under an `/api` prefix (e.g. `POST /api/upload`) for frontend/API routing.
 
 Authentication and RBAC backend handoff details are documented in
 [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md).
@@ -199,26 +203,22 @@ Returns accepted upload formats.
 
 Returns backend service health.
 
-## Backend Coverage
+### Full endpoint list
 
-| Sprint 1 requirement | Included |
+| Area | Endpoints |
 |---|---|
-| Backend project setup | Yes |
-| `POST /upload` endpoint | Yes |
-| `.log` and `.csv` file validation | Yes |
-| Uploaded file reading | Yes |
-| Parser handoff | Yes |
-| Parsed JSON response | Yes |
-| Error handling for unsupported, empty, large, or bad files | Yes |
-| Basic fields: timestamp, IP address, username, event type, status | Yes |
-| Simple table display | Yes, React dashboard at `http://localhost:5173` |
+| Auth | `POST /auth/login`, `/auth/2fa/verify`, `/auth/2fa/resend`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` |
+| Users | `GET/POST /users`, `PATCH /users/{id}`, role/active/password management |
+| Upload | `POST /upload`, `GET /upload/latest`, `/upload/history`, `/upload/batches/{id}`, `/upload/formats` |
+| Detection | `GET /detection/rules`, `PATCH /detection/rules/{name}` |
+| Custom rules | `GET/POST /custom-rules`, `PATCH/DELETE /custom-rules/{id}`, `POST /custom-rules/test` |
+| Alerts / Incidents / Notes | `GET/PATCH /alerts`, `GET/POST/PATCH /incidents`, `GET/POST/PATCH/DELETE /notes` |
+
+Full request/response contracts and RBAC rules are in [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md) and the backend test suite (`backend/tests/`).
 
 ## Output
 
-The parser workflow generates:
-
-- `output/parsed_logs.json`
-- `output/parsed_logs.csv`
+The standalone parser script writes `output/parsed_logs_sprint2.json` and `output/parsed_logs_sprint2.csv`.
 
 The backend API returns JSON containing:
 
@@ -283,4 +283,4 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 | Marvellous Obasanya | Scrum Master |
 | Paul Truong | Frontend Developer |
 | Samin Rijal | Backend Developer |
-| Ka!pil Khanal | ML / DevOps / Testing Lead |
+| Kapil Khanal | ML / DevOps / Testing Lead |
