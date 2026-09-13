@@ -1,8 +1,5 @@
 providers = ["python", "node"]
 
-[phases.setup]
-nixPkgs = ["python313", "nodejs_20"]
-
 [phases.install]
 cmds = [
   "python -m pip install -r backend/requirements.txt",
@@ -10,7 +7,9 @@ cmds = [
 ]
 
 [phases.build]
-cmds = ["npm --prefix frontend run build"]
+cmds = [
+  "npm --prefix frontend run build"
+]
 
 [start]
 cmd = "cd backend && python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
