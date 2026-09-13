@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
+from app.dispatch.otp_email import get_otp_email_sender
 from app.main import app
 from app.models.role import Role
 from app.models.user import User
@@ -31,6 +32,42 @@ def csrf_headers() -> dict[str, str]:
 
     token = client.cookies.get(settings.auth_csrf_cookie_name)
     return {"X-CSRF-Token": token} if token else {}
+
+
+def login_with_otp(*, username: str, password: str, remember_me: bool = False):
+    """
+    Drive the full two-step login (credentials -> email OTP -> verify),
+    capturing the OTP via a dependency override on the email sender instead
+    of a real Resend call. See test_jwt_refresh.py's copy of this helper for
+    the full rationale; kept duplicated rather than shared to avoid coupling
+    these two independent test modules to each other.
+    """
+
+    captured: dict[str, str] = {}
+
+    def fake_sender(*, to_email: str, code: str) -> None:
+        captured["code"] = code
+
+    app.dependency_overrides[get_otp_email_sender] = lambda: fake_sender
+    try:
+        pending = client.post(
+            "/auth/login",
+            json={"username": username, "password": password, "remember_me": remember_me},
+        )
+        if pending.status_code != 200:
+            return pending
+        assert pending.json()["requiresTwoFactor"] is True
+        # A stale session cookie from an earlier login in the same test can
+        # still be on the shared client's jar, which would make
+        # verify_browser_csrf demand a matching header (see main.py) even
+        # though this pending login hasn't set a session cookie of its own.
+        return client.post(
+            "/auth/2fa/verify",
+            json={"code": captured["code"]},
+            headers=csrf_headers(),
+        )
+    finally:
+        app.dependency_overrides.pop(get_otp_email_sender, None)
 
 
 def fake_user(role_name: str) -> User:
@@ -164,10 +201,7 @@ def test_cookie_and_bearer_login_lifecycle(db_session: Session):
         "/auth/login",
         json={"username": username, "password": "incorrect", "remember_me": False},
     )
-    login = client.post(
-        "/auth/login",
-        json={"username": user.email.upper(), "password": password, "remember_me": True},
-    )
+    login = login_with_otp(username=user.email.upper(), password=password, remember_me=True)
 
     assert rejected.status_code == 401
     assert rejected.json()["detail"] == "Invalid username or password"
@@ -283,10 +317,7 @@ def test_admin_user_management_lifecycle():
     # cookie in the shared client's cookie jar, independent of the Admin
     # `current_user` override used for the admin actions below (login and
     # refresh never depend on `current_user`).
-    managed_login = client.post(
-        "/auth/login",
-        json={"username": updated_email, "password": payload["password"], "remember_me": False},
-    )
+    managed_login = login_with_otp(username=updated_email, password=payload["password"])
     assert managed_login.status_code == 200
     old_token = managed_login.json()["access_token"]
 
@@ -346,9 +377,6 @@ def test_admin_user_management_lifecycle():
         "/auth/login",
         json={"username": updated_email, "password": payload["password"], "remember_me": False},
     )
-    new_password = client.post(
-        "/auth/login",
-        json={"username": updated_email, "password": "ReplacementPassphrase-42!", "remember_me": False},
-    )
+    new_password = login_with_otp(username=updated_email, password="ReplacementPassphrase-42!")
     assert old_password.status_code == 401
     assert new_password.status_code == 200

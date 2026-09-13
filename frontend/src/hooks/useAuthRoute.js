@@ -16,6 +16,7 @@ export const SOC_ROUTES = Object.freeze({
   dashboard: "dashboard",
   eventLogs: "event-logs",
   threatDetection: "threat-detection",
+  ruleBuilder: "threat-detection/rules/new",
   alerts: "alerts",
   incidents: "incidents",
   incidentTracking: "incident-tracking",

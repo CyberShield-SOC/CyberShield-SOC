@@ -1,4 +1,5 @@
 import { normalizeEmail, validateEmail } from "../../utils/authValidation.js";
+import { isPasswordPolicyMet, PASSWORD_MAX_LENGTH } from "./passwordPolicy.js";
 
 const WORKSPACE_ROLES = new Set(["Admin", "Analyst", "Viewer"]);
 
@@ -19,16 +20,30 @@ function validateWorkspaceIdentity({ email, fullName, role, username }) {
   return errors;
 }
 
-/** Validate an Admin-created account before its password ever reaches the API. */
-export function validateNewWorkspaceUser({ confirmPassword, email, fullName, password, role, username }) {
-  const errors = validateWorkspaceIdentity({ email, fullName, role, username });
+/** Password-only checks shared by account creation and password reset. */
+function validateWorkspacePasswordFields({ confirmPassword, password }) {
+  const errors = {};
+  const value = String(password || "");
 
-  if (String(password || "").length < 12) errors.password = "Use a password with at least 12 characters.";
-  else if (String(password).length > 256) errors.password = "Password must be 256 characters or fewer.";
+  if (value.length > PASSWORD_MAX_LENGTH) {
+    errors.password = `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer.`;
+  } else if (!isPasswordPolicyMet(value)) {
+    // The live checklist above the field spells out exactly which rule is
+    // unmet; this is only the fallback message for the submit-time gate.
+    errors.password = "Password does not meet all of the requirements listed below.";
+  }
 
   if (password !== confirmPassword) errors.confirmPassword = "Passwords do not match.";
 
   return errors;
+}
+
+/** Validate an Admin-created account before its password ever reaches the API. */
+export function validateNewWorkspaceUser({ confirmPassword, email, fullName, password, role, username }) {
+  return {
+    ...validateWorkspaceIdentity({ email, fullName, role, username }),
+    ...validateWorkspacePasswordFields({ confirmPassword, password }),
+  };
 }
 
 /** Validate identity and access fields without mixing them with password handling. */
@@ -37,11 +52,7 @@ export function validateWorkspaceUserUpdate(values) {
 }
 
 export function validateWorkspacePassword({ confirmPassword, password }) {
-  const errors = {};
-  if (String(password || "").length < 12) errors.password = "Use a password with at least 12 characters.";
-  else if (String(password).length > 256) errors.password = "Password must be 256 characters or fewer.";
-  if (password !== confirmPassword) errors.confirmPassword = "Passwords do not match.";
-  return errors;
+  return validateWorkspacePasswordFields({ confirmPassword, password });
 }
 
 export function normalizeNewWorkspaceUser({ email, fullName, password, role, username }) {

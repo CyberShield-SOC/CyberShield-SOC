@@ -8,6 +8,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,18 +19,24 @@ from app.db.session import get_db
 from app.detection import DetectionEngine
 from app.detection.alert_store import serialize_alert
 from app.detection.models import LogRecord
+from app.detection.rules.custom_condition import CustomConditionRule
 from app.middleware.file_validation import MAX_FILE_SIZE_BYTES, validate_log_file
 from app.models.alert import Alert
 from app.models.log import Log
 from app.models.upload_batch import UploadBatch
 from app.models.user import User
 from app.parsers.log_parser import parse_log
+from app.repositories.blocked_ip_repository import auto_block_from_alerts
 from app.repositories.alert_repository import (
     create_alerts_from_detection,
     serialize_alert_record,
 )
+from app.repositories.custom_rule_action_repository import apply_custom_rule_actions
+from app.repositories.custom_rule_repository import list_enabled_custom_rules
+from app.repositories.detection_rule_setting_repository import effective_rule_configs
 from app.repositories.log_repository import (
     create_logs_from_parse_result,
+    port_from_parsed_data,
 )
 from app.repositories.upload_batch_repository import (
     create_upload_batch,
@@ -37,8 +44,6 @@ from app.repositories.upload_batch_repository import (
 )
 from app.security import require_roles
 
-
-_engine = DetectionEngine.from_config(settings.detection_rule_config)
 
 router = APIRouter(tags=["Upload"])
 
@@ -72,6 +77,7 @@ def serialize_log_for_dashboard(log: Log) -> dict:
         "event": log.event_type or "Log Entry",
         "status": (log.status or "UNKNOWN").upper(),
         "severity": (log.severity or "INFO").upper(),
+        "port": log.port,
         "raw_message": log.raw_message,
     }
 
@@ -110,27 +116,22 @@ def build_upload_batch_payload(
     }
 
 
-@router.post("/upload")
-async def upload_log(
-    logfile: UploadFile = File(
-        ...,
-        description="Security log file (.log, .csv, .txt, .json, .jsonl)",
-    ),
-    user: User = Depends(require_roles("Admin", "Analyst")),
-    db: Session = Depends(get_db),
-):
+def _run_upload_pipeline(
+    db: Session,
+    *,
+    content_bytes: bytes,
+    source_filename: str,
+    mime_type: str | None,
+) -> dict:
     """
-    Accept a security log file, validate it, parse it,
-    run detection rules, and store logs and alerts.
+    Decode, parse, run detection, and persist one uploaded file.
+
+    This is CPU-bound (decode + regex parsing + rule evaluation over
+    potentially hundreds of thousands of lines) and makes synchronous DB
+    calls throughout, so the route handler runs it via run_in_threadpool
+    instead of inline on the async event loop — otherwise a single large
+    upload would stall every other concurrent request until it finished.
     """
-
-    # --- Read file content ---
-    # Read one byte past the limit so oversized files are rejected without
-    # loading an unbounded request body into application memory.
-    content_bytes = await logfile.read(MAX_FILE_SIZE_BYTES + 1)
-
-    # --- Validate (also strips any path components from the filename) ---
-    source_filename = validate_log_file(logfile, content_bytes)
 
     # --- Decode ---
     try:
@@ -176,16 +177,38 @@ async def upload_log(
             username=entry["parsed"].get("username") or None,
             event_type=entry["parsed"].get("event_type"),
             status=entry["parsed"].get("status"),
+            port=port_from_parsed_data(entry["parsed"]),
         )
         for entry in parsed["entries"]
     ]
 
-    alerts = _engine.run(records)
+    configs = effective_rule_configs(db, settings.detection_rule_config)
+    engine = DetectionEngine.from_config({name: config.model_dump() for name, config in configs.items()})
+    alerts = engine.run(records)
 
-    serialized_alerts = [
-        serialize_alert(alert)
-        for alert in alerts
-    ]
+    enabled_custom_rules = list_enabled_custom_rules(db)
+    custom_rule_titles: dict[str, str] = {}
+    for custom_rule in enabled_custom_rules:
+        if not custom_rule.actions.get("create_alert", False):
+            continue
+        runner = CustomConditionRule(
+            rule_id=custom_rule.rule_id,
+            display_name=custom_rule.name,
+            severity=custom_rule.severity,
+            conditions=custom_rule.conditions,
+            group_by=custom_rule.group_by,
+            window_seconds=custom_rule.window_seconds,
+        )
+        custom_rule_titles[custom_rule.rule_id] = custom_rule.name
+        alerts.extend(runner.analyze(records))
+
+    def _serialize(alert):
+        data = serialize_alert(alert)
+        if alert.rule in custom_rule_titles:
+            data["title"] = custom_rule_titles[alert.rule]
+        return data
+
+    serialized_alerts = [_serialize(alert) for alert in alerts]
 
     # --- Store logs and alerts in one transaction ---
     try:
@@ -202,12 +225,23 @@ async def upload_log(
             serialized_alerts=serialized_alerts,
         )
 
+        active_defense_summary = auto_block_from_alerts(db, saved_alerts)
+        # This whole pipeline already runs off the event loop (see
+        # upload_log below), so the Slack dispatch inside
+        # apply_custom_rule_actions can stay a plain call here.
+        custom_rule_action_summary = apply_custom_rule_actions(
+            db,
+            alerts=saved_alerts,
+            custom_rules=enabled_custom_rules,
+            slack_webhook_url=settings.slack_webhook_url,
+        )
+
         batch = create_upload_batch(
             db,
             upload_id=upload_id,
             source_filename=source_filename,
             source_format=str(parsed["format"]),
-            mime_type=logfile.content_type,
+            mime_type=mime_type,
             size_bytes=len(content_bytes),
             total_lines=int(parsed["total_lines"]),
             parsed_entries=len(parsed["entries"]),
@@ -238,25 +272,57 @@ async def upload_log(
         ) from exc
 
     # --- Build response ---
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "upload": serialize_upload_batch(batch),
-            "parsing": {
-                "format": parsed["format"],
-                "total_lines": parsed["total_lines"],
-                "parsed_entries": len(parsed["entries"]),
-                "stored_entries": len(saved_logs),
-                "stored_alerts": len(saved_alerts),
-                "skipped_lines": len(parsed["skipped_lines"]),
-                "fields": parsed["fields"],
-            },
-            "entries": parsed["entries"],
-            "skipped_lines": parsed["skipped_lines"],
-            "alerts": response_alerts,
+    return {
+        "success": True,
+        "upload": serialize_upload_batch(batch),
+        "parsing": {
+            "format": parsed["format"],
+            "total_lines": parsed["total_lines"],
+            "parsed_entries": len(parsed["entries"]),
+            "stored_entries": len(saved_logs),
+            "stored_alerts": len(saved_alerts),
+            "skipped_lines": len(parsed["skipped_lines"]),
+            "fields": parsed["fields"],
         },
+        "entries": parsed["entries"],
+        "skipped_lines": parsed["skipped_lines"],
+        "alerts": response_alerts,
+        "active_defense": active_defense_summary,
+        "custom_rule_actions": custom_rule_action_summary,
+    }
+
+
+@router.post("/upload")
+async def upload_log(
+    logfile: UploadFile = File(
+        ...,
+        description="Security log file (.log, .csv, .txt, .json, .jsonl)",
+    ),
+    user: User = Depends(require_roles("Admin", "Analyst")),
+    db: Session = Depends(get_db),
+):
+    """
+    Accept a security log file, validate it, parse it,
+    run detection rules, and store logs and alerts.
+    """
+
+    # --- Read file content ---
+    # Read one byte past the limit so oversized files are rejected without
+    # loading an unbounded request body into application memory.
+    content_bytes = await logfile.read(MAX_FILE_SIZE_BYTES + 1)
+
+    # --- Validate (also strips any path components from the filename) ---
+    source_filename = validate_log_file(logfile, content_bytes)
+
+    payload = await run_in_threadpool(
+        _run_upload_pipeline,
+        db,
+        content_bytes=content_bytes,
+        source_filename=source_filename,
+        mime_type=logfile.content_type,
     )
+
+    return JSONResponse(status_code=200, content=payload)
 
 
 @router.get("/upload/latest")
@@ -374,7 +440,7 @@ def get_accepted_formats(
     return {
         "success": True,
         "field_name": "logfile",
-        "max_file_size_mb": 10,
+        "max_file_size_mb": MAX_FILE_SIZE_BYTES // 1024 // 1024,
         "accepted_formats": [
             {
                 "extension": ".log",

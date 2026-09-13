@@ -22,6 +22,7 @@ import {
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import {
   deriveAnalystWorkload,
+  derivePortActivity,
   deriveTelemetryReadiness,
   deriveThreatAnalysis,
 } from "../utils/dashboardMetrics";
@@ -126,6 +127,8 @@ export default function DashboardPage({ navigate }) {
     .filter((alert, index, list) => list.findIndex((item) => item.sourceIp === alert.sourceIp) === index)
     .slice(0, 5);
   const sourceActivity = summarizeSourceActivity(events);
+  const portActivity = derivePortActivity(events);
+  const maxPortCount = Math.max(1, ...portActivity.map((p) => p.count));
   const maxSourceCount = Math.max(1, ...sourceActivity.map((source) => source.count));
   const threatAnalysis = deriveThreatAnalysis(alerts, events);
   const {
@@ -278,6 +281,29 @@ export default function DashboardPage({ navigate }) {
             View all event sources <ArrowRight size={13} />
           </button>
         </Panel>
+
+        <Panel className="dashboard-port-panel" title="Port Monitoring" subtitle={`Most active destination ports · ${rangeLabel.toLowerCase()}`}>
+          {portActivity.length ? (
+            <ol className="dashboard-source-list">
+              {portActivity.map((port) => (
+                <li key={port.port}>
+                  <div>
+                    <span className="dashboard-source-identity">
+                      <strong>Port {port.port}</strong>
+                    </span>
+                    <span>{port.count.toLocaleString()}</span>
+                  </div>
+                  <div className="dashboard-source-track" aria-label={`Port ${port.port}: ${port.count} events`}>
+                    <span style={{ width: `${(port.count / maxPortCount) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="empty-inline">No port data available in this time range.</p>
+          )}
+        </Panel>
+
         <Panel
           className="dashboard-severity-volume-panel"
           title="Alert volume by severity"

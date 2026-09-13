@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
+from app.dispatch.otp_email import get_otp_email_sender
 from app.main import app
 from app.models.role import Role
 from app.models.user import User
@@ -37,6 +38,7 @@ def clean_client():
     client.cookies.clear()
     yield
     client.cookies.clear()
+    app.dependency_overrides.pop(get_otp_email_sender, None)
 
 
 def csrf_headers() -> dict[str, str]:
@@ -51,6 +53,44 @@ def ensure_role(db: Session, name: str) -> Role:
         db.add(role)
         db.flush()
     return role
+
+
+def login_with_otp(*, username: str, password: str, remember_me: bool = False):
+    """
+    Drive the full two-step login (credentials -> email OTP -> verify).
+
+    Captures the OTP via a dependency override on the email sender instead
+    of a real Resend call — the same override-for-testing pattern this
+    codebase already uses for `current_user` — so no network access or API
+    key is needed in tests, and the plaintext code never appears in any
+    response body.
+    """
+
+    captured: dict[str, str] = {}
+
+    def fake_sender(*, to_email: str, code: str) -> None:
+        captured["code"] = code
+
+    app.dependency_overrides[get_otp_email_sender] = lambda: fake_sender
+    try:
+        pending = client.post(
+            "/auth/login",
+            json={"username": username, "password": password, "remember_me": remember_me},
+        )
+        if pending.status_code != 200:
+            return pending
+        assert pending.json()["requiresTwoFactor"] is True
+        # A stale session cookie from an earlier login in the same test can
+        # still be on the shared client's jar, which would make
+        # verify_browser_csrf demand a matching header (see main.py) even
+        # though this pending login hasn't set a session cookie of its own.
+        return client.post(
+            "/auth/2fa/verify",
+            json={"code": captured["code"]},
+            headers=csrf_headers(),
+        )
+    finally:
+        app.dependency_overrides.pop(get_otp_email_sender, None)
 
 
 def create_and_login(db_session: Session, *, role_name: str = "Analyst") -> tuple[User, dict]:
@@ -68,10 +108,7 @@ def create_and_login(db_session: Session, *, role_name: str = "Analyst") -> tupl
     db_session.add(user)
     db_session.commit()
 
-    login = client.post(
-        "/auth/login",
-        json={"username": username, "password": password, "remember_me": False},
-    )
+    login = login_with_otp(username=username, password=password)
     assert login.status_code == 200
     return user, login.json()
 

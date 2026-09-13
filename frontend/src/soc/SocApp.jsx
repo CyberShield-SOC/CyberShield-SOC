@@ -7,6 +7,7 @@ import { SocWorkspaceProvider } from "./context/SocWorkspaceContext";
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const EventLogsPage = lazy(() => import("./pages/EventLogsPage"));
 const ThreatDetectionPage = lazy(() => import("./pages/ThreatDetectionPage"));
+const RuleBuilderPage = lazy(() => import("./pages/RuleBuilderPage"));
 const AlertsPage = lazy(() => import("./pages/AlertsPage"));
 const IncidentsPage = lazy(() => import("./pages/IncidentsPage"));
 const IncidentTrackingPage = lazy(() => import("./pages/IncidentTrackingPage"));
@@ -26,7 +27,9 @@ function RouteView({ navigate, route, theme, toggleTheme }) {
     case SOC_ROUTES.eventLogs:
       return <EventLogsPage navigate={navigate} />;
     case SOC_ROUTES.threatDetection:
-      return <ThreatDetectionPage />;
+      return <ThreatDetectionPage navigate={navigate} />;
+    case SOC_ROUTES.ruleBuilder:
+      return <RuleBuilderPage navigate={navigate} />;
     case SOC_ROUTES.alerts:
       return <AlertsPage navigate={navigate} />;
     case SOC_ROUTES.incidents:

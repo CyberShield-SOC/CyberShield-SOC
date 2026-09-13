@@ -780,7 +780,7 @@
 .dashboard-summary-card:hover .dashboard-summary-arrow,
 .dashboard-summary-card:focus-visible .dashboard-summary-arrow { opacity: 1; transform: translateX(0); }
 
-.dashboard-analytics-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(270px, .95fr) minmax(235px, .9fr); gap: 16px; margin-bottom: 16px; }
+.dashboard-analytics-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, .85fr) minmax(210px, .75fr) minmax(210px, .75fr); gap: 16px; margin-bottom: 16px; }
 .dashboard-analytics-grid .soc-panel { min-height: 282px; }
 .dashboard-analytics-grid .soc-panel-body { min-height: 220px; }
 .dashboard-analytics-grid .soc-panel-header h2,
@@ -1158,6 +1158,22 @@
 .rule-logic-block code { color: var(--soc-accent); font-size: 10px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; }
 .rule-response-block p { margin: 0; color: var(--soc-text-muted); font-size: 10.5px; line-height: 1.55; }
 .detection-rule-detail > .soc-notice { margin-top: 12px; }
+.rule-custom-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.built-in-rule-config { flex-direction: column; align-items: stretch; }
+.rule-threshold-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 4px; }
+.rule-threshold-form label { display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; color: var(--soc-text-muted); }
+.rule-threshold-form input { width: 110px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--soc-border); background: var(--soc-surface); color: var(--soc-text); font-size: 11px; }
+.rule-threshold-form-actions { display: flex; gap: 8px; }
+
+.alert-action-results { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.alert-action-results li { display: flex; align-items: flex-start; gap: 8px; font-size: 10.8px; line-height: 1.4; }
+.alert-action-results li svg { flex: 0 0 auto; margin-top: 1px; }
+.alert-action-results li[data-state="ok"] { color: var(--state-ok); }
+.alert-action-results li[data-state="error"] { color: var(--severity-critical); }
+.alert-action-results li[data-state="muted"] { color: var(--soc-text-muted); }
+.alert-action-results li span { color: var(--soc-text); }
+.alert-action-results li[data-state="muted"] span,
+.alert-action-results li[data-state="error"] span { color: inherit; }
 .detail-placeholder { display: grid; min-height: 390px; place-items: center; align-content: center; gap: 7px; color: var(--soc-text-muted); text-align: center; }
 .detail-placeholder strong { color: var(--soc-text); }
 .detail-placeholder span { max-width: 210px; font-size: 10.5px; line-height: 1.5; }
@@ -1200,6 +1216,32 @@
 .soc-modal textarea,
 .note-form textarea { width: 100%; padding: 9px 10px; color: var(--soc-text); background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 6px; resize: vertical; }
 .soc-modal input[type="password"] { -webkit-text-security: disc; font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; font-weight: 400; letter-spacing: .14em; line-height: 1; }
+
+.password-field-group { display: grid; gap: 8px; }
+.password-input-shell { position: relative; display: block; }
+.password-input-shell input { padding-right: 34px; }
+.password-toggle-button { position: absolute; top: 50%; right: 4px; display: grid; place-items: center; width: 26px; height: 26px; color: var(--soc-text-muted); background: transparent; border: none; border-radius: 5px; transform: translateY(-50%); cursor: pointer; }
+.password-toggle-button:hover { color: var(--soc-accent); background: var(--soc-accent-tint); }
+.password-toggle-button:focus-visible { outline: 2px solid var(--soc-focus-ring, var(--soc-accent)); outline-offset: 1px; }
+.password-requirements-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.password-requirements-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 9.6px; font-weight: 500; line-height: 1.4; }
+.password-requirements-list li svg { flex: 0 0 auto; margin-top: 1px; }
+.password-requirements-list li[data-state="met"] { color: var(--state-ok); }
+.password-requirements-list li[data-state="unmet"] { color: var(--soc-text-muted); }
+.password-strength-meter { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.password-strength-track { height: 5px; flex: 1; overflow: hidden; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 99px; }
+.password-strength-track span { display: block; height: 100%; width: 33%; background: var(--severity-critical); border-radius: inherit; transition: width 160ms ease-out, background-color 160ms ease-out; }
+.password-strength-meter[data-strength="weak"] .password-strength-track span { width: 33%; background: var(--severity-critical); }
+.password-strength-meter[data-strength="medium"] .password-strength-track span { width: 66%; background: var(--severity-medium); }
+.password-strength-meter[data-strength="strong"] .password-strength-track span { width: 100%; background: var(--state-ok); }
+.password-strength-meter strong { font-size: 9.6px; font-weight: 700; }
+.password-strength-meter[data-strength="weak"] strong { color: var(--severity-critical); }
+.password-strength-meter[data-strength="medium"] strong { color: var(--severity-medium); }
+.password-strength-meter[data-strength="strong"] strong { color: var(--state-ok); }
+.password-match-status { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 9.6px; font-weight: 600; }
+.password-match-status svg { flex: 0 0 auto; }
+.password-match-status[data-state="met"] { color: var(--state-ok); }
+.password-match-status[data-state="unmet"] { color: var(--severity-critical); }
 .soc-modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .create-user-modal { width: min(560px, 100%); }
 .soc-modal .soc-field-error { min-height: 0; margin: -1px 0 0; color: var(--severity-critical); font-size: 9.5px; line-height: 1.35; }

@@ -1,0 +1,4 @@
+﻿source_file,line_number,month,day,time,host,service,pid,event_type,status,username,source_ip,source_port,protocol,logname,uid,euid,tty,ruser,rhost,raw_message
+03_sudo_failure.log,1,Jul,14,10:20:01,server03,sudo,,sudo_failure,failed,jdoe,,,,jdoe,1001,0,/dev/pts/0,jdoe,,Jul 14 10:20:01 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=jdoe uid=1001 euid=0 tty=/dev/pts/0 ruser=jdoe rhost= user=jdoe
+03_sudo_failure.log,2,Jul,14,10:20:31,server03,sudo,,sudo_failure,failed,jdoe,,,,jdoe,1001,0,/dev/pts/0,jdoe,,Jul 14 10:20:31 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=jdoe uid=1001 euid=0 tty=/dev/pts/0 ruser=jdoe rhost= user=jdoe
+03_sudo_failure.log,3,Jul,14,10:21:01,server03,sudo,,sudo_failure,failed,jdoe,,,,jdoe,1001,0,/dev/pts/0,jdoe,,Jul 14 10:21:01 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=jdoe uid=1001 euid=0 tty=/dev/pts/0 ruser=jdoe rhost= user=jdoe

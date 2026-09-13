@@ -14,6 +14,7 @@ import {
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { validateWorkspaceSettings } from "../utils/formValidation";
+import { MAX_UPLOAD_BYTES } from "../utils/eventUtils";
 import { ErrorState, InlineNotice, LoadingState, PageHeader, Panel, ValidationMessage } from "../components/Ui";
 
 const SECTIONS = [
@@ -219,7 +220,7 @@ export default function SettingsPage({ navigate, theme, toggleTheme }) {
             <Panel title="Data and privacy" subtitle="Current ingestion and persistence capabilities reported by this application build.">
               <CapabilityList items={[
                 ["Accepted event files", ".log, .csv, .txt, .json, and .jsonl"],
-                ["Maximum upload", "10 MB per file"],
+                ["Maximum upload", `${MAX_UPLOAD_BYTES / (1024 * 1024)} MB per file`],
                 ["Event and case storage", repositoryMode === "api" ? "Persistent database" : "Local demo dataset"],
                 ["Retention lifecycle", "Backend policy required", "pending"],
                 ["Field-level masking", "Backend policy required", "pending"],

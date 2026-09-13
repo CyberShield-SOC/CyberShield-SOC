@@ -1,5 +1,12 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.validation import (
+    email_errors,
+    normalize_email,
+    password_context_errors,
+    password_policy_errors,
+)
+
 
 SUPPORTED_ROLE_PATTERN = "^(Admin|Analyst|Viewer)$"
 
@@ -12,11 +19,18 @@ def _normalize_username(value: str) -> str:
 
 
 def _normalize_email(value: str) -> str:
-    normalized = value.strip().lower()
-    local, separator, domain = normalized.partition("@")
-    if not separator or not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
-        raise ValueError("Enter a valid email address.")
+    normalized = normalize_email(value)
+    errors = email_errors(normalized)
+    if errors:
+        raise ValueError(" ".join(errors))
     return normalized
+
+
+def _validate_password_policy(value: str) -> str:
+    errors = password_policy_errors(value)
+    if errors:
+        raise ValueError(" ".join(errors))
+    return value
 
 
 def _normalize_full_name(value: str | None) -> str | None:
@@ -29,7 +43,7 @@ def _normalize_full_name(value: str | None) -> str | None:
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     email: str = Field(min_length=3, max_length=255)
-    password: str = Field(min_length=12, max_length=256)
+    password: str = Field(min_length=1, max_length=256)
     role: str = Field(pattern=SUPPORTED_ROLE_PATTERN)
     full_name: str | None = Field(default=None, max_length=100)
 
@@ -43,10 +57,24 @@ class UserCreate(BaseModel):
     def normalize_email(cls, value: str) -> str:
         return _normalize_email(value)
 
+    @field_validator("password")
+    @classmethod
+    def enforce_password_policy(cls, value: str) -> str:
+        return _validate_password_policy(value)
+
     @field_validator("full_name")
     @classmethod
     def normalize_full_name(cls, value: str | None) -> str | None:
         return _normalize_full_name(value)
+
+    @model_validator(mode="after")
+    def reject_identity_derived_password(self):
+        errors = password_context_errors(
+            self.password, username=self.username, email=self.email
+        )
+        if errors:
+            raise ValueError(" ".join(errors))
+        return self
 
 
 class UserUpdate(BaseModel):
@@ -86,7 +114,12 @@ class UserUpdate(BaseModel):
 class UserPasswordReset(BaseModel):
     """A write-only replacement password. It is never serialized back to clients."""
 
-    new_password: str = Field(min_length=12, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("new_password")
+    @classmethod
+    def enforce_password_policy(cls, value: str) -> str:
+        return _validate_password_policy(value)
 
 
 class UserRoleUpdate(BaseModel):

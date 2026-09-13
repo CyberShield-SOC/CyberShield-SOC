@@ -6,6 +6,9 @@ from app.schemas.incident import IncidentCreate
 from app.schemas.user import UserCreate, UserPasswordReset, UserUpdate
 
 
+pytestmark = pytest.mark.no_db
+
+
 def test_login_normalizes_identifier_and_limits_password_size():
     payload = LoginRequest(username="  analyst@cybershield.io  ", password="valid")
     assert payload.username == "analyst@cybershield.io"

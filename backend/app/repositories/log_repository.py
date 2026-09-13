@@ -4,9 +4,21 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.log import Log
+
+
+def list_recent_logs(db: Session, *, limit: int = 5000) -> list[Log]:
+    """Return the most recently ingested logs, for rule-test dry runs."""
+
+    statement = (
+        select(Log)
+        .order_by(Log.ingested_at.desc(), Log.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement).all())
 
 
 def parse_event_timestamp(value: Any) -> datetime | None:
@@ -52,6 +64,35 @@ def optional_text(value: Any) -> str | None:
     return cleaned or None
 
 
+def parse_port(value: Any) -> int | None:
+    """Extract a valid integer port (1-65535) or return None."""
+    if value is None:
+        return None
+    try:
+        port = int(str(value).strip())
+        if 1 <= port <= 65535:
+            return port
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def port_from_parsed_data(parsed_data: dict) -> int | None:
+    """
+    Extract the destination port from a parser's field name variants.
+
+    Shared by create_logs_from_parse_result (below) and the /upload route's
+    LogRecord construction so the persisted Log.port always agrees with the
+    port the detection engine and custom rules evaluate for the same event.
+    """
+    return parse_port(
+        parsed_data.get("destination_port")
+        or parsed_data.get("dest_port")
+        or parsed_data.get("dport")
+        or parsed_data.get("server_port")
+        or parsed_data.get("port")
+    )
+
 def create_logs_from_parse_result(
     db: Session,
     *,
@@ -94,6 +135,7 @@ def create_logs_from_parse_result(
             username=optional_text(
                 parsed_data.get("username")
             ),
+            port=port_from_parsed_data(parsed_data),
             event_type=(
                 optional_text(parsed_data.get("event_type"))
                 or "security_event"

@@ -9,6 +9,8 @@ from sqlalchemy import select
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.main import app
 from app.models.role import Role
+from app.models.custom_rule import CustomRule
+from app.models.incident import Incident
 from app.models.user import User
 from app.security import current_user
 
@@ -82,6 +84,59 @@ def test_upload_formats():
     assert ".csv" in extensions
     assert ".json" in extensions
     assert ".jsonl" in extensions
+
+
+def test_upload_applies_custom_rule_auto_incident_and_playbook(db_session):
+    from io import BytesIO
+
+    rule = CustomRule(
+        rule_id=f"R-{uuid4().int % 100000}",
+        name="Repeated failed admin login",
+        category="threat_hunting",
+        severity="HIGH",
+        tactic="TA0010",
+        conditions=[
+            {"field": "status", "operator": "equals", "value": "FAILED"},
+            {"field": "username", "operator": "equals", "value": "admin"},
+        ],
+        group_by="ip_address",
+        window_seconds=3600,
+        actions={
+            "create_alert": True,
+            "auto_incident": True,
+            "suggest_playbook": True,
+            "notify_slack": True,
+        },
+        status="ENABLED",
+    )
+    db_session.add(rule)
+    db_session.commit()
+
+    csv_log = (
+        b"timestamp,ip_address,username,event_type,status\n"
+        b"2026-06-14T02:00:00Z,203.0.113.4,admin,login_attempt,FAILED\n"
+        b"2026-06-14T02:10:00Z,203.0.113.4,admin,login_attempt,FAILED\n"
+        b"2026-06-14T02:20:00Z,203.0.113.4,admin,login_attempt,FAILED\n"
+    )
+
+    response = client.post(
+        "/upload",
+        files={"logfile": ("custom-rule.csv", BytesIO(csv_log), "text/csv")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    custom_alert = next(alert for alert in payload["alerts"] if alert["rule"] == rule.rule_id)
+    assert custom_alert["status"] == "ESCALATED"
+    assert custom_alert["response_playbook"]["id"] == "PB-02"
+    assert custom_alert["action_results"]["notify_slack"]["status"] == "skipped"
+    assert payload["custom_rule_actions"]["auto_incidents_created"] == 1
+
+    incident = db_session.scalar(
+        select(Incident).where(Incident.source_alert_id == custom_alert["id"])
+    )
+    assert incident is not None
+    assert incident.response_playbook["rule_id"] == rule.rule_id
 
 
 def test_upload_history_lists_every_persisted_batch():

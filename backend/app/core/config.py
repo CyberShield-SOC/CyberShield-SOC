@@ -25,7 +25,25 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = Field(default="HS256", min_length=1, max_length=20)
     jwt_access_ttl_minutes: int = Field(default=10, ge=1, le=60)
+    password_min_length: int = Field(default=12, ge=8, le=128)
+    email_verify_deliverability: bool = False
+    slack_webhook_url: str | None = None
     detection_rule_config: dict[str, Any] = Field(default_factory=dict)
+    # Comma-separated extra browser origins allowed to call the API — added
+    # to the built-in localhost dev origins, never replacing them. Needed
+    # only when the frontend is deployed on a different origin than the API
+    # (e.g. Railway services deployed separately); a combined deployment
+    # that serves the built frontend from this same FastAPI app needs none.
+    cors_allowed_origins: str = ""
+
+    # Email one-time-passcode two-factor step (see app/routers/auth.py).
+    resend_api_key: str | None = None
+    resend_from_email: str = Field(default="CyberShield <onboarding@resend.dev>", min_length=3)
+    otp_secret: str = Field(min_length=16)
+    otp_expiry_minutes: int = Field(default=5, ge=1, le=30)
+    otp_max_attempts: int = Field(default=5, ge=1, le=10)
+    otp_resend_cooldown_seconds: int = Field(default=60, ge=10, le=600)
+    otp_pending_cookie_name: str = Field(default="cybershield_2fa_pending", min_length=1, max_length=100)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

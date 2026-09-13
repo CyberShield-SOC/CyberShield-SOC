@@ -1,0 +1,8 @@
+Jul 14 12:00:01 server01 sshd[5001]: Failed password for root from 203.0.113.60 port 55001 ssh2
+Jul 14 12:00:10 server01 sshd[5002]: Failed password for root from 203.0.113.60 port 55002 ssh2
+Jul 14 12:05:01 server02 sshd[5101]: Failed password for invalid user oracle from 198.51.100.99 port 56001 ssh2
+Jul 14 12:05:11 server02 sshd[5102]: Failed password for invalid user postgres from 198.51.100.99 port 56002 ssh2
+Jul 14 12:10:01 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=asmith uid=1002 euid=0 tty=/dev/pts/1 ruser=asmith rhost= user=asmith
+Jul 14 12:10:31 server03 sudo: pam_unix(sudo:auth): authentication failure; logname=asmith uid=1002 euid=0 tty=/dev/pts/1 ruser=asmith rhost= user=asmith
+Jul 14 12:15:01 server04 sshd[5201]: Accepted password for analyst from 10.0.0.30 port 57001 ssh2
+Jul 14 12:15:20 server04 sshd[5201]: Connection closed by 10.0.0.30 port 57001

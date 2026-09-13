@@ -1,5 +1,10 @@
 const SPREADSHEET_FORMULA_PREFIX = /^[=+\-@]/;
 
+// Mirrors backend/app/middleware/file_validation.py's MAX_FILE_SIZE_BYTES —
+// keep both in sync so a large file fails fast client-side instead of only
+// after a full upload round-trip.
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 export function filterEvents(events, filters) {
   const query = String(filters.query || "").trim().toLowerCase();
 
@@ -110,7 +115,7 @@ export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
 
 export function validateLogFile(
   file,
-  { allowedExtensions = [".log", ".csv", ".json", ".jsonl", ".txt"], maxBytes = 10 * 1024 * 1024 } = {},
+  { allowedExtensions = [".log", ".csv", ".json", ".jsonl", ".txt"], maxBytes = MAX_UPLOAD_BYTES } = {},
 ) {
   if (!file || typeof file.name !== "string") {
     throw new Error("Choose a valid log file.");

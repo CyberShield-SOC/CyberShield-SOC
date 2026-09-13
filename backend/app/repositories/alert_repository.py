@@ -109,6 +109,12 @@ def create_alerts_from_detection(
             ),
             description=str(description),
             matched_line_numbers=matched_lines,
+            response_playbook=dict(
+                alert_data.get("response_playbook") or {}
+            ),
+            action_results=dict(
+                alert_data.get("action_results") or {}
+            ),
         )
 
         records.append(record)
@@ -218,6 +224,9 @@ def serialize_alert_record(alert: Alert) -> dict:
         "description": alert.description,
         "reason": alert.description,
         "matched_line_numbers": alert.matched_line_numbers,
+        "response_playbook": alert.response_playbook,
+        "playbook": alert.response_playbook,
+        "action_results": alert.action_results,
         "created_at": alert.created_at.isoformat(),
         "updated_at": alert.updated_at.isoformat(),
     }

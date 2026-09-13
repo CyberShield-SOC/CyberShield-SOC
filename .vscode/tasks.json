@@ -76,6 +76,8 @@
       "type": "shell",
       "command": ".\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider",
       "options": { "cwd": "${workspaceFolder}/backend" },
+      "dependsOn": ["Start Database", "Apply Database Migrations"],
+      "dependsOrder": "sequence",
       "group": "test",
       "problemMatcher": []
     }

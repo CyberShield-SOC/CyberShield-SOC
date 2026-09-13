@@ -59,7 +59,43 @@ test("rejects malformed successful authentication responses", () => {
   }), AuthRequestError);
 });
 
-test("login stores the JWT access token in memory for later requests", async () => {
+test("login starts a pending two-factor step without minting an access token", async () => {
+  await withMockedFetch(
+    async () => new Response(
+      JSON.stringify({
+        success: true,
+        requiresTwoFactor: true,
+        email: VALID_USER.email,
+      }),
+      { headers: { "Content-Type": "application/json" }, status: 200 },
+    ),
+    async () => {
+      setAccessToken(null);
+      const result = await authClient.login({ email: VALID_USER.email, password: "correct-horse" });
+      assert.equal(result.requiresTwoFactor, true);
+      assert.equal(result.email, VALID_USER.email);
+      assert.equal(getAccessToken(), null);
+    },
+  );
+});
+
+test("login rejects a response that never starts the two-factor step", async () => {
+  await withMockedFetch(
+    async () => new Response(
+      JSON.stringify({ success: true, access_token: "skip-2fa" }),
+      { headers: { "Content-Type": "application/json" }, status: 200 },
+    ),
+    async () => {
+      setAccessToken(null);
+      await assert.rejects(
+        authClient.login({ email: VALID_USER.email, password: "correct-horse" }),
+        AuthRequestError,
+      );
+    },
+  );
+});
+
+test("verifyTwoFactor stores the JWT access token in memory for later requests", async () => {
   await withMockedFetch(
     async () => new Response(
       JSON.stringify({
@@ -73,7 +109,7 @@ test("login stores the JWT access token in memory for later requests", async () 
     ),
     async () => {
       setAccessToken(null);
-      const user = await authClient.login({ email: VALID_USER.email, password: "correct-horse" });
+      const user = await authClient.verifyTwoFactor("123456");
       assert.equal(user.username, "analyst");
       assert.equal(getAccessToken(), "fresh-jwt");
       setAccessToken(null);

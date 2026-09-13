@@ -19,6 +19,7 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.security import hash_password, require_roles
+from app.validation import password_context_errors
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -258,6 +259,27 @@ def reset_user_password(
     """Replace a password and invalidate every session issued before the reset."""
 
     target_user = get_user_or_404(db, user_id)
+
+    # The schema enforces the shared policy; identity-derived checks need the
+    # stored account, so they run here.
+    context_errors = password_context_errors(
+        payload.new_password,
+        username=target_user.username,
+        email=target_user.email,
+    )
+    if context_errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "loc": ["body", "new_password"],
+                    "msg": message,
+                    "type": "value_error",
+                }
+                for message in context_errors
+            ],
+        )
+
     target_user.password_hash = hash_password(payload.new_password)
     sessions_revoked = revoke_user_sessions(db, target_user.id)
     db.commit()

@@ -20,7 +20,7 @@ const validUser = {
 test("validates Admin-created workspace accounts before submission", () => {
   assert.deepEqual(validateNewWorkspaceUser(validUser), {});
   assert.deepEqual(validateNewWorkspaceUser({ ...validUser, password: "short", confirmPassword: "different", role: "Owner" }), {
-    password: "Use a password with at least 12 characters.",
+    password: "Password does not meet all of the requirements listed below.",
     confirmPassword: "Passwords do not match.",
     role: "Select a supported workspace role.",
   });
@@ -57,7 +57,7 @@ test("validates and normalizes Admin account edits", () => {
 test("validates password resets independently of identity fields", () => {
   assert.deepEqual(validateWorkspacePassword({ password: "ResetPassphrase-42!", confirmPassword: "ResetPassphrase-42!" }), {});
   assert.deepEqual(validateWorkspacePassword({ password: "short", confirmPassword: "different" }), {
-    password: "Use a password with at least 12 characters.",
+    password: "Password does not meet all of the requirements listed below.",
     confirmPassword: "Passwords do not match.",
   });
 });
