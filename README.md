@@ -280,7 +280,7 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 | Name | Role |
 |------|------|
 | Yugal Limbu | Project Manager / Documentation Lead |
+| Marvellous Obasanya | Scrum Master |
 | Paul Truong | Frontend Developer |
 | Samin Rijal | Backend Developer |
-| Marvellous Obasanya | Cybersecurity / Detection Lead |
 | Ka!pil Khanal | ML / DevOps / Testing Lead |
