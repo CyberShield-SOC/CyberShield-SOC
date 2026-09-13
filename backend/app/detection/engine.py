@@ -8,9 +8,11 @@ from app.detection.rules.base import BaseRule
 from app.detection.rules.brute_force import BruteForceLoginRule
 from app.detection.rules.credential_stuffing import CredentialStuffingRule
 from app.detection.rules.invalid_user import InvalidUserRule
+from app.detection.rules.multi_ip_login import MultiIPLoginRule
 from app.detection.rules.password_spraying import PasswordSprayingRule
 from app.detection.rules.port_scan import PortScanRule
 from app.detection.rules.sudo_failure import SudoFailureRule
+from app.detection.rules.sudo_after_login import SudoAfterLoginRule
 
 
 def _rule_from_config(rule_cls: type[BaseRule], config: RuleConfig) -> BaseRule | None:
@@ -32,6 +34,8 @@ _RULE_CLASSES: tuple[type[BaseRule], ...] = (
     PasswordSprayingRule,
     CredentialStuffingRule,
     PortScanRule,
+    MultiIPLoginRule,
+    SudoAfterLoginRule,
 )
 
 

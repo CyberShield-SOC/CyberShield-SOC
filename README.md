@@ -31,6 +31,8 @@ Install these prerequisites before continuing:
 
 For the deployment/demo checklist, environment variable reference, migration commands, seeded account details, and verification commands, see [`docs/deployment_and_documentation.md`](docs/deployment_and_documentation.md).
 
+For Kapil's Sprint 5 detection rules, sample logs, ML evaluation plan, and deployment verification checklist, see [`docs/kapil_sprint5_dds.md`](docs/kapil_sprint5_dds.md).
+
 From the repository root, create the local environment file:
 
 ```powershell
