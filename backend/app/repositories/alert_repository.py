@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from ipaddress import ip_address
 from typing import Any
 from uuid import UUID
@@ -7,6 +8,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.detection._ts import parse_ts
+from app.detection.models import Alert as DetectionAlert
 from app.models.alert import Alert
 from app.repositories.log_repository import parse_event_timestamp
 
@@ -78,6 +81,10 @@ def create_alerts_from_detection(
             )
         ]
 
+        entity_type = str(alert_data.get("entity_type") or "source_ip")
+        if entity_type not in ("source_ip", "account", "host"):
+            entity_type = "source_ip"
+
         record = Alert(
             upload_id=upload_id,
             rule=str(
@@ -95,6 +102,12 @@ def create_alerts_from_detection(
             status="NEW",
             source_ip=optional_ip(source_ip),
             username=optional_text(username),
+            hostname=optional_text(alert_data.get("hostname")),
+            mitre_technique=optional_text(alert_data.get("mitre_technique")),
+            confidence=int(70 if alert_data.get("confidence") is None else alert_data["confidence"]),
+            entity_type=entity_type,
+            entity_id=optional_text(alert_data.get("entity_id")),
+            evidence=dict(alert_data.get("evidence") or {}),
             event_count=int(
                 alert_data.get("count") or 0
             ),
@@ -123,6 +136,67 @@ def create_alerts_from_detection(
     db.flush()
 
     return records
+
+
+def _alert_timestamp(alert: DetectionAlert) -> datetime | None:
+    return parse_ts(alert.last_seen) or parse_ts(alert.first_seen)
+
+
+def suppress_alerts_in_cooldown(
+    db: Session,
+    alerts: list[DetectionAlert],
+    cooldown_by_rule: dict[str, int | None],
+) -> list[DetectionAlert]:
+    """
+    Drop alerts that fall within their rule's configured cooldown window of
+    the most recent stored alert for the same (rule, entity_type, entity_id).
+
+    Rules themselves never look at alert history — this is a post-processing
+    step against persisted alerts, applied once per upload before new alerts
+    are written. A rule with no entity_id to key on, or no configured
+    cooldown_seconds, always passes through unchanged.
+    """
+
+    if not alerts:
+        return alerts
+
+    kept: list[DetectionAlert] = []
+    # An alert kept earlier in this same batch can itself start a new
+    # cooldown window for a later alert in the same upload, not just alerts
+    # from previous uploads.
+    latest_seen: dict[tuple[str, str, str], datetime] = {}
+
+    for alert in alerts:
+        cooldown = cooldown_by_rule.get(alert.rule) or 0
+        alert_ts = _alert_timestamp(alert)
+        if cooldown <= 0 or not alert.entity_id or alert_ts is None:
+            kept.append(alert)
+            continue
+
+        key = (alert.rule, alert.entity_type, alert.entity_id)
+        reference = latest_seen.get(key)
+        if reference is None:
+            reference = db.scalar(
+                select(Alert.last_seen)
+                .where(Alert.rule == alert.rule)
+                .where(Alert.entity_type == alert.entity_type)
+                .where(Alert.entity_id == alert.entity_id)
+                .where(Alert.last_seen.is_not(None))
+                .order_by(Alert.last_seen.desc())
+                .limit(1)
+            )
+
+        if reference is not None:
+            if reference.tzinfo is None:
+                reference = reference.replace(tzinfo=timezone.utc)
+            if (alert_ts - reference).total_seconds() < cooldown:
+                latest_seen[key] = max(reference, alert_ts)
+                continue
+
+        latest_seen[key] = alert_ts
+        kept.append(alert)
+
+    return kept
 
 
 def list_alert_records(
@@ -213,6 +287,12 @@ def serialize_alert_record(alert: Alert) -> dict:
         "ip_address": source_ip,
         "username": alert.username,
         "user": alert.username,
+        "hostname": alert.hostname,
+        "mitre_technique": alert.mitre_technique,
+        "confidence": alert.confidence,
+        "entity_type": alert.entity_type,
+        "entity_id": alert.entity_id,
+        "evidence": alert.evidence or {},
         "count": alert.event_count,
         "time_window_seconds": alert.time_window_seconds,
         "first_seen": first_seen,

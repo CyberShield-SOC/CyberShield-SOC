@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Clock3,
+  HeartPulse,
   Plus,
+  RadioTower,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -17,6 +19,14 @@ import {
   summarizeRuleActivity,
 } from "../data/detectionRulePack";
 import { getRuleCategory, RULE_CATEGORIES } from "../data/ruleCategories";
+import {
+  describeLiveConfig,
+  draftFromLive,
+  editableFields,
+  ENTITY_LABELS,
+  humanizeKey,
+  updatesFromDraft,
+} from "../utils/ruleConfig";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
@@ -31,13 +41,8 @@ import {
   StatusBadge,
 } from "../components/Ui";
 import { formatTimestamp } from "../utils/eventUtils";
-
-const THRESHOLD_FIELD_LABELS = Object.freeze({
-  threshold: "Threshold (count)",
-  failThreshold: "Failure threshold (count)",
-  windowSeconds: "Window (seconds)",
-  successWindowSeconds: "Success window (seconds)",
-});
+import { ThreatIntelPanel } from "../components/ThreatIntelPanel";
+import { HostHeartbeatPanel } from "../components/HostHeartbeatPanel";
 
 const WINDOW_LABELS = Object.freeze({
   300: "5 minutes", 600: "10 minutes", 1800: "30 minutes", 3600: "1 hour", 86400: "24 hours",
@@ -178,26 +183,30 @@ export default function ThreatDetectionPage({ navigate }) {
     }
   }
 
+  const [ruleConfigFieldErrors, setRuleConfigFieldErrors] = useState({});
+
   function startRuleConfigEdit(rule) {
     if (!rule.live) return;
     setRuleConfigError("");
-    setRuleConfigDraft({
-      engineKey: rule.engineKey,
-      threshold: rule.live.threshold,
-      failThreshold: rule.live.failThreshold,
-      windowSeconds: rule.live.windowSeconds,
-      successWindowSeconds: rule.live.successWindowSeconds,
-    });
+    setRuleConfigFieldErrors({});
+    setRuleConfigDraft(draftFromLive(rule.live));
   }
 
   async function submitRuleConfigEdit(event) {
     event.preventDefault();
     if (!ruleConfigDraft) return;
-    const { engineKey, ...fields } = ruleConfigDraft;
-    const updates = Object.fromEntries(
-      Object.entries(fields).filter(([, value]) => value !== null && value !== ""),
-    );
-    await updateBuiltInRule(engineKey, updates);
+    const rule = rules.find((item) => item.engineKey === ruleConfigDraft.engineKey);
+    const { errors, updates } = updatesFromDraft(ruleConfigDraft, rule?.live);
+    if (Object.keys(errors).length) {
+      setRuleConfigFieldErrors(errors);
+      return;
+    }
+    setRuleConfigFieldErrors({});
+    if (!Object.keys(updates).length) {
+      setRuleConfigDraft(null);
+      return;
+    }
+    await updateBuiltInRule(ruleConfigDraft.engineKey, updates);
   }
 
   const categoryCounts = useMemo(() => Object.fromEntries([
@@ -397,25 +406,31 @@ export default function ThreatDetectionPage({ navigate }) {
               <dl>
                 <div><dt>Execution</dt><dd>{selected.executable ? "Executable detector" : `${selected.status} · presentation only`}</dd></div>
                 <div><dt>Severity</dt><dd><SeverityBadge severity={selected.severity} /></dd></div>
-                <div><dt>ATT&amp;CK</dt><dd>{selected.technique}</dd></div>
+                <div><dt>ATT&amp;CK</dt><dd>{selected.live?.mitreTechnique || selected.technique}</dd></div>
+                {selected.live?.entityType && (
+                  <div><dt>Pivots on</dt><dd>{ENTITY_LABELS[selected.live.entityType] || selected.live.entityType}</dd></div>
+                )}
                 <div><dt>Input</dt><dd>{selected.input}</dd></div>
                 <div><dt>Grouped by</dt><dd>{selected.groupBy}</dd></div>
+                {selected.logSource && <div><dt>Required log source</dt><dd>{selected.logSource}</dd></div>}
                 <div><dt>Threshold</dt><dd>{selected.criteria}</dd></div>
                 {selected.executable && !selected.isCustom && selected.live && (
                   <div>
                     <dt>Active configuration</dt>
-                    <dd>
-                      {selected.live.enabled ? "Enabled" : "Disabled"}
-                      {Object.entries(THRESHOLD_FIELD_LABELS)
-                        .filter(([field]) => selected.live[field] !== null && selected.live[field] !== undefined)
-                        .map(([field, label]) => ` · ${label.split(" (")[0]}: ${selected.live[field]}`)
-                        .join("")}
-                    </dd>
+                    <dd>{describeLiveConfig(selected.live)}</dd>
                   </div>
                 )}
                 {selected.executable && <div><dt>Loaded matches</dt><dd>{selected.activity.total}</dd></div>}
                 {selected.executable && <div><dt>Latest match</dt><dd>{selected.activity.latest ? formatTimestamp(selected.activity.latest) : "No loaded match"}</dd></div>}
               </dl>
+              {selected.setupNote && (
+                <InlineNotice tone="warning" title="Setup required">{selected.setupNote}</InlineNotice>
+              )}
+              {selected.requiresAllowlist && selected.live && (selected.live.allowlist || []).length === 0 && (
+                <InlineNotice tone="warning" title="Not configured">
+                  This rule matches nothing until you add at least one entry to its allowlist below.
+                </InlineNotice>
+              )}
               <div className="rule-logic-block">
                 <span><Activity size={14} /> {selected.executable ? "Detection logic" : "Example logic"}</span>
                 <code>{selected.query}</code>
@@ -457,23 +472,49 @@ export default function ThreatDetectionPage({ navigate }) {
                   </div>
                   {ruleConfigDraft?.engineKey === selected.engineKey && (
                     <form className="rule-threshold-form" onSubmit={submitRuleConfigEdit}>
-                      {Object.keys(THRESHOLD_FIELD_LABELS)
-                        .filter((field) => ruleConfigDraft[field] !== null && ruleConfigDraft[field] !== undefined)
-                        .map((field) => (
-                          <label key={field}>
-                            <span>{THRESHOLD_FIELD_LABELS[field]}</span>
+                      {editableFields(selected.live).map((field) => (
+                        <label key={field.key} className={field.kind === "list" ? "rule-threshold-form-wide" : ""}>
+                          <span>{field.label}</span>
+                          {field.kind === "list" ? (
+                            <textarea
+                              rows={3}
+                              value={ruleConfigDraft.values[field.key] ?? ""}
+                              placeholder="One name per line"
+                              onChange={(event) => setRuleConfigDraft((current) => ({
+                                ...current, values: { ...current.values, [field.key]: event.target.value },
+                              }))}
+                            />
+                          ) : (
                             <input
                               type="number"
-                              min="1"
-                              max="86400"
-                              value={ruleConfigDraft[field]}
-                              onChange={(event) => setRuleConfigDraft((current) => ({ ...current, [field]: event.target.value === "" ? "" : Number(event.target.value) }))}
+                              min={field.min}
+                              max={field.max}
+                              value={ruleConfigDraft.values[field.key] ?? ""}
+                              onChange={(event) => setRuleConfigDraft((current) => ({
+                                ...current, values: { ...current.values, [field.key]: event.target.value },
+                              }))}
                             />
-                          </label>
-                        ))}
+                          )}
+                          {ruleConfigFieldErrors[field.key] && <small className="soc-field-error">{ruleConfigFieldErrors[field.key]}</small>}
+                        </label>
+                      ))}
+                      {Object.entries(selected.live?.defaultParams || {}).map(([key]) => (
+                        <label key={key}>
+                          <span>{humanizeKey(key)}</span>
+                          <input
+                            type={typeof selected.live.defaultParams[key] === "number" ? "number" : "text"}
+                            step="any"
+                            value={ruleConfigDraft.params[key] ?? ""}
+                            onChange={(event) => setRuleConfigDraft((current) => ({
+                              ...current, params: { ...current.params, [key]: event.target.value },
+                            }))}
+                          />
+                          {ruleConfigFieldErrors[`params.${key}`] && <small className="soc-field-error">{ruleConfigFieldErrors[`params.${key}`]}</small>}
+                        </label>
+                      ))}
                       <div className="rule-threshold-form-actions">
-                        <button className="soc-button secondary compact" type="button" onClick={() => setRuleConfigDraft(null)} disabled={ruleConfigSaving}>Cancel</button>
-                        <button className="soc-button primary compact" type="submit" disabled={ruleConfigSaving}>{ruleConfigSaving ? "Saving…" : "Save thresholds"}</button>
+                        <button className="soc-button secondary compact" type="button" onClick={() => { setRuleConfigDraft(null); setRuleConfigFieldErrors({}); }} disabled={ruleConfigSaving}>Cancel</button>
+                        <button className="soc-button primary compact" type="submit" disabled={ruleConfigSaving}>{ruleConfigSaving ? "Saving…" : "Save settings"}</button>
                       </div>
                     </form>
                   )}
@@ -514,6 +555,11 @@ export default function ThreatDetectionPage({ navigate }) {
             <div className="detail-placeholder"><Search size={24} /><strong>No matching rule</strong><span>Clear the search or select another category to choose a detection rule.</span></div>
           )}
         </Panel>
+      </div>
+
+      <div className="secondary-workspace detection-rule-workspace">
+        <ThreatIntelPanel canWrite={canWrite} icon={RadioTower} />
+        <HostHeartbeatPanel canWrite={canWrite} icon={HeartPulse} />
       </div>
     </>
   );

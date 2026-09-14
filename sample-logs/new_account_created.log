@@ -1,0 +1,32 @@
+# new_account_created.log -- exercises NewAccountCreatedRule (HIGH, host entity)
+# Expected: 1 alert, host web09 (2 merged actions: useradd contractor7, adduser tempuser9)
+Sep 14 02:45:00 web09 sshd[36103]: Accepted publickey for admin3 from 10.40.8.5 port 50700 ssh2
+Sep 14 02:46:00 web09 useradd[32130]: new user: name=contractor7, UID=1050, GID=1050, home=/home/contractor7, shell=/bin/bash
+Sep 14 02:48:00 web09 adduser[54751]: Adding user `tempuser9' ...
+Sep 14 09:00:00 web09 sshd[45292]: Accepted publickey for admin3 from 10.40.8.5 port 50800 ssh2
+Sep 14 09:04:00 web09 crontab[24764]: (admin3) LIST (admin3)
+Sep 14 09:08:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 09:12:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:16:00 web09 sshd[7657]: Accepted publickey for admin3 from 10.40.8.5 port 50804 ssh2
+Sep 14 09:20:00 web09 crontab[57468]: (admin3) LIST (admin3)
+Sep 14 09:24:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 09:28:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:32:00 web09 sshd[5745]: Accepted publickey for admin3 from 10.40.8.5 port 50808 ssh2
+Sep 14 09:36:00 web09 crontab[32251]: (admin3) LIST (admin3)
+Sep 14 09:40:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 09:44:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:48:00 web09 sshd[41909]: Accepted publickey for admin3 from 10.40.8.5 port 50812 ssh2
+Sep 14 09:52:00 web09 crontab[40773]: (admin3) LIST (admin3)
+Sep 14 09:56:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 10:00:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:04:00 web09 sshd[1050]: Accepted publickey for admin3 from 10.40.8.5 port 50816 ssh2
+Sep 14 10:08:00 web09 crontab[37032]: (admin3) LIST (admin3)
+Sep 14 10:12:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 10:16:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:20:00 web09 sshd[53678]: Accepted publickey for admin3 from 10.40.8.5 port 50820 ssh2
+Sep 14 10:24:00 web09 crontab[1460]: (admin3) LIST (admin3)
+Sep 14 10:28:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade
+Sep 14 10:32:00 web09 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:36:00 web09 sshd[38554]: Accepted publickey for admin3 from 10.40.8.5 port 50824 ssh2
+Sep 14 10:40:00 web09 crontab[31234]: (admin3) LIST (admin3)
+Sep 14 10:44:00 web09 sudo:    admin3 : TTY=pts/0 ; PWD=/home/admin3 ; USER=root ; COMMAND=/usr/bin/apt-get upgrade

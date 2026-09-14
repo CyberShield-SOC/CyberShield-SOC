@@ -1,0 +1,12 @@
+Sep 10 14:00:00 web01 sshd[58802]: Accepted publickey for alice from 10.10.0.21 port 50122 ssh2
+Sep 10 14:00:40 web01 useradd[8759]: new user: name=support2, UID=1012, GID=1012, home=/home/support2, shell=/bin/bash
+Sep 10 14:00:55 web01 usermod[17613]: add 'support2' to group 'sudo'
+Sep 10 14:02:00 web01 crontab[6104]: (support2) REPLACE (support2)
+Sep 10 14:02:30 web01 systemd[1]: Started sys-update.timer.
+Sep 10 14:03:00 web01 sudo:    alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/tee -a /root/.ssh/authorized_keys
+Sep 10 14:04:00 web01 sudo:    alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/sbin/iptables -F
+Sep 10 14:04:20 web01 systemd[1]: Stopped Fail2Ban Service (fail2ban).
+Sep 10 14:05:00 app01 sudo:    alice : TTY=pts/1 ; PWD=/root ; USER=root ; COMMAND=/usr/sbin/setenforce 0
+Sep 10 14:06:00 app01 systemd[1]: Stopped Security Auditing Service (auditd).
+Sep 10 14:06:30 app01 systemd-journald[412]: Vacuuming done, freed 2.1G of archived journals from /var/log/journal.
+Sep 10 14:07:00 app01 sudo:    alice : TTY=pts/1 ; PWD=/root ; USER=root ; COMMAND=/usr/bin/truncate -s 0 /root/.bash_history

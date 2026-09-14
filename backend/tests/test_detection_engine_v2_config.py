@@ -67,7 +67,11 @@ def test_engine_v2_can_disable_a_rule_and_exposes_metadata():
     assert "brute_force_login" not in {rule.name for rule in engine.rules}
     metadata = engine.rule_metadata()
     assert metadata
-    assert all(item.name and item.config.window_seconds for item in metadata)
+    assert all(item.name for item in metadata)
+    # Only the frequency/window-based rules carry a window_seconds — several
+    # newer rules (e.g. direct_root_login) key off a cooldown instead.
+    by_name = {item.name: item for item in metadata}
+    assert by_name["invalid_user_enumeration"].config.window_seconds
 
 
 def test_detection_rules_endpoint_exposes_active_rule_metadata():
@@ -187,3 +191,37 @@ def test_patch_detection_rule_requires_write_role(db_session: Session):
         assert response.status_code == 403
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_engine_v2_applies_confidence_and_reused_threshold_overrides():
+    engine = DetectionEngine.from_config({
+        "brute_force_login": {"confidence": 95},
+        "dormant_account_activity": {"threshold": 90},
+    })
+    by_name = {rule.name: rule for rule in engine.rules}
+
+    assert by_name["brute_force_login"].confidence == 95
+    assert by_name["dormant_account_activity"].threshold == 90
+
+    records = [
+        LogRecord(line_number=i + 1, timestamp=f"2026-06-14T14:00:0{i}Z", ip_address="203.0.113.4",
+                  username="root", event_type="login_attempt", status="FAILED")
+        for i in range(5)
+    ]
+    alerts = [a for a in engine.run(records) if a.rule == "brute_force_login"]
+    assert alerts and alerts[0].confidence == 95
+
+
+def test_original_rules_accept_a_configured_cooldown():
+    from app.repositories.detection_rule_setting_repository import effective_rule_configs
+
+    class _NoRows:
+        def scalars(self, _):
+            class _R:
+                def all(self):
+                    return []
+            return _R()
+
+    configs = effective_rule_configs(_NoRows(), {"brute_force_login": {"cooldown_seconds": 600}})
+    assert configs["brute_force_login"].cooldown_seconds == 600
+    assert configs["port_scan"].cooldown_seconds is None

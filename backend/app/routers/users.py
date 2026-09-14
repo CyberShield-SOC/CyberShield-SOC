@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models.auth_session import AuthSession
 from app.models.role import Role
 from app.models.user import User
 from app.schemas.user import (
@@ -18,7 +15,7 @@ from app.schemas.user import (
     UserRoleUpdate,
     UserUpdate,
 )
-from app.security import hash_password, require_roles
+from app.security import hash_password, require_roles, revoke_user_sessions
 from app.validation import password_context_errors
 
 
@@ -83,18 +80,6 @@ def commit_user_change(db: Session) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="Username or email already exists",
         ) from exc
-
-
-def revoke_user_sessions(db: Session, user_id: int) -> int:
-    """Revoke every currently active session for a managed account."""
-
-    result = db.execute(
-        update(AuthSession)
-        .where(AuthSession.user_id == user_id)
-        .where(AuthSession.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(timezone.utc))
-    )
-    return max(0, int(result.rowcount or 0))
 
 
 def ensure_not_final_active_admin(db: Session, target_user: User) -> None:

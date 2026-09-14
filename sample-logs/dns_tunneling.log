@@ -1,0 +1,36 @@
+# dns_tunneling.log -- exercises DnsTunnelingRule (HIGH, source_ip entity)
+# Expected: 1 alert, client 10.0.5.77, 20 distinct high-entropy queries under data-relay.net
+Sep 14 05:00:00 dns02 dnsmasq[900]: query[A] d1a2b3c4.cloudfront.net from 10.0.5.15
+Sep 14 05:00:25 dns02 dnsmasq[900]: query[A] outlook.office365.com from 10.0.5.42
+Sep 14 05:00:50 dns02 dnsmasq[900]: query[A] api.github.com from 10.0.5.25
+Sep 14 05:01:00 dns02 dnsmasq[900]: query[TXT] q6hcayear6rxqjxjcxpq32uu66qziih5vhwbeg33g5im.5ueiesze.data-relay.net from 10.0.5.77
+Sep 14 05:01:12 dns02 dnsmasq[900]: query[TXT] xmfclxwrlpdt2bcr7u6fn27lf6zcierkl5h73fun3232.m6zd2ywj.data-relay.net from 10.0.5.77
+Sep 14 05:01:15 dns02 dnsmasq[900]: query[A] time.cloudflare.com from 10.0.5.35
+Sep 14 05:01:24 dns02 dnsmasq[900]: query[TXT] mjwficyqu6s6ounu5d3yqibl4rxpw42xtmk7qfmdoybz.wx5i7344.data-relay.net from 10.0.5.77
+Sep 14 05:01:36 dns02 dnsmasq[900]: query[TXT] p32ov2ln2vreptao3mtmzhwv6mlcndtcpa5mebebylpn.7s52sgsc.data-relay.net from 10.0.5.77
+Sep 14 05:01:40 dns02 dnsmasq[900]: query[A] outlook.office365.com from 10.0.5.49
+Sep 14 05:01:48 dns02 dnsmasq[900]: query[TXT] bcsgsmlgs5k2axt5xb2zsrsspfvxt63rz5nep4abs6bh.rfpcjne5.data-relay.net from 10.0.5.77
+Sep 14 05:02:00 dns02 dnsmasq[900]: query[TXT] fsfc2y4ufnxtxua5yfd4ro5jeoqqalbxjew3old2p64c.ibgib27e.data-relay.net from 10.0.5.77
+Sep 14 05:02:05 dns02 dnsmasq[900]: query[A] outlook.office365.com from 10.0.5.28
+Sep 14 05:02:12 dns02 dnsmasq[900]: query[TXT] 7zpwuvkpdgtjrvnrcrtjdbarji6tbbbts3hymgwururl.2tjfilz7.data-relay.net from 10.0.5.77
+Sep 14 05:02:24 dns02 dnsmasq[900]: query[TXT] 52qhtbqiqcc3pe5etlny2iecuw6kczsvz66nd3sxjuqv.eeogbn6w.data-relay.net from 10.0.5.77
+Sep 14 05:02:30 dns02 dnsmasq[900]: query[A] www.google.com from 10.0.5.34
+Sep 14 05:02:36 dns02 dnsmasq[900]: query[TXT] quarhumlguivr3txc6dlhlsqosggpmvw6oh2s36dko6a.gvqzrwf7.data-relay.net from 10.0.5.77
+Sep 14 05:02:48 dns02 dnsmasq[900]: query[TXT] iqjffi77psrcn55kudivxqhpe2jsfg5wpsitxqkbp6hn.aj7dmodl.data-relay.net from 10.0.5.77
+Sep 14 05:02:55 dns02 dnsmasq[900]: query[A] d1a2b3c4.cloudfront.net from 10.0.5.18
+Sep 14 05:03:00 dns02 dnsmasq[900]: query[TXT] b2fdplflz5wpdqinmlf7tus6nbbfkubbitq7c2zx6it2.4wpx3smu.data-relay.net from 10.0.5.77
+Sep 14 05:03:12 dns02 dnsmasq[900]: query[TXT] lgrvw52qwxyastf4l2anydvczo6fingnr3oqdv7mmibt.tqe74qy3.data-relay.net from 10.0.5.77
+Sep 14 05:03:20 dns02 dnsmasq[900]: query[A] slack.com from 10.0.5.56
+Sep 14 05:03:24 dns02 dnsmasq[900]: query[TXT] cwuxn6g6wmyg327xdonayhntunieohzrnfpkje4taqug.pf4zi5cj.data-relay.net from 10.0.5.77
+Sep 14 05:03:36 dns02 dnsmasq[900]: query[TXT] okhah2o4lbc5umdiixy3voxq3mogbwum4lqti4ril2rv.mjtvskr6.data-relay.net from 10.0.5.77
+Sep 14 05:03:45 dns02 dnsmasq[900]: query[A] slack.com from 10.0.5.44
+Sep 14 05:03:48 dns02 dnsmasq[900]: query[TXT] ggwx3mfyqt2h2dqctpsugmbl4ymi4ezm3ceoc3xrg5ee.bopfjkw2.data-relay.net from 10.0.5.77
+Sep 14 05:04:00 dns02 dnsmasq[900]: query[TXT] mqu7zpmsvwkmb6ysdnb37zyszs5xlxozkr265p5amcd3.xvm24v37.data-relay.net from 10.0.5.77
+Sep 14 05:04:10 dns02 dnsmasq[900]: query[A] www.google.com from 10.0.5.16
+Sep 14 05:04:12 dns02 dnsmasq[900]: query[TXT] z25bkdquvsbryjqhrrbiocuf3p2445236hraoepb6qe5.ilggsun3.data-relay.net from 10.0.5.77
+Sep 14 05:04:24 dns02 dnsmasq[900]: query[TXT] ggix3whcpxw36mcsrceo6mgjth7azzfycmqx3kwadx5n.pm2aftny.data-relay.net from 10.0.5.77
+Sep 14 05:04:35 dns02 dnsmasq[900]: query[A] slack.com from 10.0.5.31
+Sep 14 05:04:36 dns02 dnsmasq[900]: query[TXT] wamp56m5e4dksxwloowo6dyodxwcv7adxa554brt65wl.khqovob2.data-relay.net from 10.0.5.77
+Sep 14 05:04:48 dns02 dnsmasq[900]: query[TXT] rrrgzisj6l45kx44q2uvfbbxr5z7t64rlzsl6a5bxse6.tjffcxs2.data-relay.net from 10.0.5.77
+Sep 14 05:05:00 dns02 dnsmasq[900]: query[A] slack.com from 10.0.5.28
+Sep 14 05:05:25 dns02 dnsmasq[900]: query[A] api.github.com from 10.0.5.14

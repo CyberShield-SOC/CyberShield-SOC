@@ -11,12 +11,15 @@ class MultiIPLoginRule(BaseRule):
     name = "multi_ip_successful_login"
     description = "One account has successful logins from multiple source IPs in a short window."
     severity = "MEDIUM"
+    mitre_technique = "T1078"
+    entity_type = "account"
+    confidence = 65
 
     def __init__(self, threshold: int = 3, window_seconds: int = 300):
         self.threshold = threshold
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         by_user = defaultdict(list)
         for record in records:
             if record.event_type == "login_attempt" and record.status == "SUCCESS" and record.username and record.ip_address:
@@ -39,6 +42,10 @@ class MultiIPLoginRule(BaseRule):
                         first_seen=ts_to_str(matched[0][1]), last_seen=ts_to_str(ts),
                         description=f"Account {username} logged in from {self.threshold} or more IPs within {self.window_seconds}s.",
                         matched_line_numbers=[entry.line_number for entry, _ in matched],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=username,
                     ))
                     window.clear()
         return alerts

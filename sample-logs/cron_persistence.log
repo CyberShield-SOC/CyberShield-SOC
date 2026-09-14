@@ -1,0 +1,32 @@
+# cron_persistence.log -- exercises CronPersistenceRule (MEDIUM, host entity)
+# Expected: ONE alert on host batch01 (2 merged actions: crontab edit + systemd timer)
+Sep 14 03:00:00 batch01 sshd[27983]: Accepted publickey for ops1 from 10.40.2.11 port 51200 ssh2
+Sep 14 03:00:30 batch01 CRON[49343]: (root) CMD (run-parts /etc/cron.hourly)
+Sep 14 03:01:00 batch01 crontab[41745]: (svc-deploy) REPLACE (svc-deploy)
+Sep 14 03:01:20 batch01 sudo:    ops1 : TTY=pts/0 ; PWD=/home/ops1 ; USER=root ; COMMAND=/usr/bin/apt list --upgradable
+Sep 14 03:02:00 batch01 systemd[1]: Started data-sync.timer.
+Sep 14 03:02:15 batch01 systemd[1]: Started data-sync.service - Nightly data sync.
+Sep 14 09:00:00 batch01 sshd[31715]: Accepted publickey for ops1 from 10.40.2.11 port 50000 ssh2
+Sep 14 09:03:00 batch01 crontab[44716]: (ops1) LIST (ops1)
+Sep 14 09:06:00 batch01 CRON[23590]: (root) CMD (/usr/local/bin/report-nightly)
+Sep 14 09:09:00 batch01 sudo:    ops1 : TTY=pts/0 ; PWD=/home/ops1 ; USER=root ; COMMAND=/usr/bin/systemctl status data-sync.service
+Sep 14 09:12:00 batch01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:15:00 batch01 sshd[38458]: Accepted publickey for ops1 from 10.40.2.11 port 50105 ssh2
+Sep 14 09:18:00 batch01 sshd[49844]: Accepted publickey for ops1 from 10.40.2.11 port 50006 ssh2
+Sep 14 09:21:00 batch01 crontab[55474]: (ops1) LIST (ops1)
+Sep 14 09:24:00 batch01 CRON[1099]: (root) CMD (/usr/local/bin/report-nightly)
+Sep 14 09:27:00 batch01 sudo:    ops1 : TTY=pts/0 ; PWD=/home/ops1 ; USER=root ; COMMAND=/usr/bin/systemctl status data-sync.service
+Sep 14 09:30:00 batch01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:33:00 batch01 sshd[49638]: Accepted publickey for ops1 from 10.40.2.11 port 50111 ssh2
+Sep 14 09:36:00 batch01 sshd[23935]: Accepted publickey for ops1 from 10.40.2.11 port 50012 ssh2
+Sep 14 09:39:00 batch01 crontab[49908]: (ops1) LIST (ops1)
+Sep 14 09:42:00 batch01 CRON[49449]: (root) CMD (/usr/local/bin/report-nightly)
+Sep 14 09:45:00 batch01 sudo:    ops1 : TTY=pts/0 ; PWD=/home/ops1 ; USER=root ; COMMAND=/usr/bin/systemctl status data-sync.service
+Sep 14 09:48:00 batch01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:51:00 batch01 sshd[42386]: Accepted publickey for ops1 from 10.40.2.11 port 50117 ssh2
+Sep 14 09:54:00 batch01 sshd[19864]: Accepted publickey for ops1 from 10.40.2.11 port 50018 ssh2
+Sep 14 09:57:00 batch01 crontab[54629]: (ops1) LIST (ops1)
+Sep 14 10:00:00 batch01 CRON[56759]: (root) CMD (/usr/local/bin/report-nightly)
+Sep 14 10:03:00 batch01 sudo:    ops1 : TTY=pts/0 ; PWD=/home/ops1 ; USER=root ; COMMAND=/usr/bin/systemctl status data-sync.service
+Sep 14 10:06:00 batch01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:09:00 batch01 sshd[35757]: Accepted publickey for ops1 from 10.40.2.11 port 50123 ssh2

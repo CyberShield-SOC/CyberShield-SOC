@@ -9,22 +9,52 @@ from app.detection.engine import _RULE_CLASSES
 from app.detection.models import RuleConfig
 from app.models.detection_rule_setting import DetectionRuleSetting
 
-_OVERRIDE_FIELDS = ("threshold", "fail_threshold", "window_seconds", "success_window_seconds")
+_OVERRIDE_FIELDS = (
+    "threshold",
+    "fail_threshold",
+    "window_seconds",
+    "success_window_seconds",
+    "cooldown_seconds",
+    "confidence",
+    "allowlist",
+    "start_hour",
+    "end_hour",
+    "params",
+)
 
 
 class DetectionRuleNotFoundError(Exception):
     """Raised when the requested rule name is not a registered built-in rule."""
 
 
+class DetectionRuleSettingError(ValueError):
+    """Raised when an update names a setting the rule doesn't support."""
+
+
+def rule_classes_by_name() -> dict[str, type]:
+    return {rule_cls().name: rule_cls for rule_cls in _RULE_CLASSES}
+
+
 def known_rule_names() -> set[str]:
     """Every built-in rule name the DetectionEngine can run, regardless of config."""
 
-    return {rule_cls().name for rule_cls in _RULE_CLASSES}
+    return set(rule_classes_by_name())
 
 
 def list_rule_settings(db: Session) -> dict[str, DetectionRuleSetting]:
     rows = db.scalars(select(DetectionRuleSetting)).all()
     return {row.rule_name: row for row in rows}
+
+
+def _apply_layer(config: dict, layer: Mapping) -> None:
+    for field, value in layer.items():
+        if value is None:
+            continue
+        if field == "params":
+            # Params merge key by key so overriding one tunable keeps the rest.
+            config["params"] = {**(config.get("params") or {}), **dict(value)}
+        else:
+            config[field] = value
 
 
 def effective_rule_configs(
@@ -48,24 +78,44 @@ def effective_rule_configs(
 
         env_override = env_config.get(default_rule.name)
         if env_override is not None:
-            env_dict = (
+            _apply_layer(
+                config,
                 env_override.model_dump(exclude_none=True)
                 if isinstance(env_override, RuleConfig)
-                else {k: v for k, v in dict(env_override).items() if v is not None}
+                else dict(env_override),
             )
-            config.update(env_dict)
 
         row = settings_by_name.get(default_rule.name)
         if row is not None:
             config["enabled"] = row.enabled
-            for field in _OVERRIDE_FIELDS:
-                value = getattr(row, field)
-                if value is not None:
-                    config[field] = value
+            _apply_layer(config, {field: getattr(row, field) for field in _OVERRIDE_FIELDS})
 
         merged[default_rule.name] = RuleConfig.model_validate(config)
 
     return merged
+
+
+def validate_rule_updates(rule_name: str, updates: dict) -> None:
+    """Reject settings the named rule would silently ignore."""
+
+    rule_cls = rule_classes_by_name().get(rule_name)
+    if rule_cls is None:
+        raise DetectionRuleNotFoundError(f"Unknown detection rule '{rule_name}'.")
+
+    tunables = set(rule_cls.tunables())
+    unsupported = sorted(field for field in updates if field not in tunables)
+    if unsupported:
+        raise DetectionRuleSettingError(
+            f"Rule '{rule_name}' does not use: {', '.join(unsupported)}."
+        )
+
+    params = updates.get("params")
+    if params:
+        unknown = sorted(set(params) - set(rule_cls.DEFAULT_PARAMS))
+        if unknown:
+            raise DetectionRuleSettingError(
+                f"Rule '{rule_name}' has no parameter(s): {', '.join(unknown)}."
+            )
 
 
 def upsert_rule_setting(
@@ -75,9 +125,7 @@ def upsert_rule_setting(
     updates: dict,
     updated_by: int | None,
 ) -> DetectionRuleSetting:
-    valid_names = known_rule_names()
-    if rule_name not in valid_names:
-        raise DetectionRuleNotFoundError(f"Unknown detection rule '{rule_name}'.")
+    validate_rule_updates(rule_name, updates)
 
     row = db.get(DetectionRuleSetting, rule_name)
     if row is None:
@@ -87,7 +135,11 @@ def upsert_rule_setting(
     if "enabled" in updates:
         row.enabled = updates["enabled"]
     for field in _OVERRIDE_FIELDS:
-        if field in updates:
+        if field not in updates:
+            continue
+        if field == "params" and updates[field] is not None:
+            row.params = {**(row.params or {}), **updates[field]}
+        else:
             setattr(row, field, updates[field])
     row.updated_by = updated_by
 

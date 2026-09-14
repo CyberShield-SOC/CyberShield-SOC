@@ -5,6 +5,7 @@ import { LoginCard } from "./components/LoginCard";
 import { LogoutSuccessCard } from "./components/LogoutSuccessCard";
 import { MfaCard } from "./components/MfaCard";
 import { RecoveryCard } from "./components/RecoveryCard";
+import { ResetPasswordCard } from "./components/ResetPasswordCard";
 import { SsoCard } from "./components/SsoCard";
 import { SupportCard } from "./components/SupportCard";
 import {
@@ -159,6 +160,13 @@ export default function App() {
           <RecoveryCard
             initialEmail={email}
             onBack={() => navigate(AUTH_ROUTES.login)}
+          />
+        );
+      case AUTH_ROUTES.resetPassword:
+        return (
+          <ResetPasswordCard
+            onBack={() => navigate(AUTH_ROUTES.login)}
+            onComplete={() => navigate(AUTH_ROUTES.login)}
           />
         );
       case AUTH_ROUTES.sso:

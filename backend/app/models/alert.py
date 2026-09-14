@@ -35,12 +35,19 @@ class Alert(Base):
             "status IN ('NEW', 'REVIEWING', 'ESCALATED', 'CLOSED')",
             name="ck_alerts_status",
         ),
+        CheckConstraint(
+            "entity_type IN ('source_ip', 'account', 'host')",
+            name="ck_alerts_entity_type",
+        ),
         Index("ix_alerts_upload_id", "upload_id"),
         Index("ix_alerts_rule", "rule"),
         Index("ix_alerts_severity", "severity"),
         Index("ix_alerts_status", "status"),
         Index("ix_alerts_source_ip", "source_ip"),
         Index("ix_alerts_created_at", "created_at"),
+        # Cooldown suppression looks up the most recent alert for the same
+        # (rule, entity_type, entity_id) — see app/repositories/alert_repository.py.
+        Index("ix_alerts_rule_entity", "rule", "entity_type", "entity_id"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -86,6 +93,11 @@ class Alert(Base):
         nullable=True,
     )
 
+    hostname: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     event_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -120,6 +132,37 @@ class Alert(Base):
         nullable=False,
         default=list,
         server_default=text("'{}'::integer[]"),
+    )
+
+    mitre_technique: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    confidence: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=70,
+        server_default=text("70"),
+    )
+
+    entity_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="source_ip",
+        server_default=text("'source_ip'"),
+    )
+
+    entity_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    evidence: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
     )
 
     response_playbook: Mapped[dict] = mapped_column(
