@@ -163,11 +163,81 @@ are actually anomalous for that entity. Two consequences for this project specif
    `egress_volume_anomaly.py` does) so the alert can say *which* feature was unusual, not just
    "this was unusual."
 
-## 5. Risks specific to a SOC tool
+## 5. Additional requirements: feature engineering, lifecycle, and governance
+
+§4 covers the pipeline shape. These are the things that only show up once you try to actually
+run it — mostly lifecycle and governance, not algorithm.
+
+### 5.1 Feature engineering plumbing
+
+- An encoding scheme for categorical fields (`username`, `country`, `asn`, `event_type`) —
+  count/frequency encoding is simplest and matches "how often does this entity normally do X."
+- A **per-source-format feature set**, not one universal one. A syslog upload never populates
+  `bytes_out`/`bytes_in`; a CSV flow export never populates `dns_query`. Training one model on
+  a feature matrix full of nulls is a mess — realistically this means separate feature sets
+  per rule/use-case (a "login behavior" model vs. an "egress volume" model), which multiplies
+  the number of models to maintain, not one model that does everything.
+- Missing-value handling for features that are expected for a given feature set but
+  occasionally absent (a login event with no resolvable geo, say).
+
+### 5.2 Model lifecycle — the part with no existing equivalent in this codebase
+
+- **Storage + versioning**: a fitted model needs a home — a `ml_models` table storing the
+  `joblib` bytes plus training date, sample count, and feature-schema version, so scoring code
+  can confirm a loaded model actually matches the shape of the features it's about to score.
+- **A retraining trigger**: same gap as `host_log_silence` — no scheduler exists in this
+  codebase, so retraining needs the same on-demand-endpoint-standing-in-for-a-cron pattern
+  already used for `/detection/host-silence/check`.
+- **Rollback**: if a retrained model starts flooding alerts, there needs to be a way back to
+  the last-known-good model without a code deploy.
+- **Contamination estimation**: `IsolationForest`'s `contamination` parameter needs a
+  believable guess at what fraction of windows are actually anomalous. There's no ground
+  truth for this; the closest proxy is the existing rule engine's own historical alert rate
+  per entity, used as a rough calibration target rather than a precise input.
+
+### 5.3 Where training actually runs
+
+Detection today runs synchronously inside `/upload`'s request handler. Fitting a forest is
+too slow for that path, and there's no worker/background-job infrastructure in this app (a
+single FastAPI service on Railway). Training needs to run somewhere else — a separate script
+invoked manually, or a genuine background worker — which is new infrastructure, not a code
+change.
+
+### 5.4 Testing that isn't inherently flaky
+
+`IsolationForest` is stochastic. Tests need a fixed `random_state` for reproducibility, plus
+synthetic fixtures with a *known*, deliberately planted outlier among otherwise-normal points
+— unlike the rule engine's `assert alerts == []`-style tests, there's no way to assert "it
+learned correctly," only "it flagged the planted outlier and not the normal points."
+
+### 5.5 Rollout governance
+
+Given how much analyst trust costs to rebuild once lost to noisy alerts, this wants a
+**shadow-mode phase** first: compute and log scores without creating alerts, let an analyst
+review a sample of what would have fired, and only turn on real alerts once the false-positive
+rate looks tolerable. That's process, not code, but it's a real prerequisite, not optional
+polish.
+
+### 5.6 Threshold tuning fits the existing pattern — this part is not new work
+
+The score cutoff, the `min_samples` cold-start gate, and any per-entity exemptions would slot
+directly into the `BaseRule.DEFAULT_PARAMS`/`params`/`allowlist` mechanism already built for
+the other 28 rules (`backend/app/detection/rules/base.py`) — no new config plumbing needed,
+just a new rule class using the existing one.
+
+### 5.7 Privacy
+
+Feature snapshots derived from raw events inherit the same sensitivity the existing
+[`backend_data_requirements_for_ml.md`](../backend_data_requirements_for_ml.md) already flags
+for `parsed_data`/`raw_message` — a feature table keyed by username/IP is still identifying
+data, even once it's been reduced to numbers.
+
+## 6. Risks specific to a SOC tool
 
 - **False positives read as credibility loss** for a security product faster than for most ML
   applications — an unexplained "anomaly" alert an analyst can't act on trains them to ignore
-  the whole category. The evidence/explainability requirement in §4.5 isn't optional polish.
+  the whole category. The evidence/explainability requirement in §4.5 and the shadow-mode
+  rollout in §5.5 aren't optional polish.
 - **Model drift**: normal behavior changes (new job duties, a host's workload changes) —
   needs a retraining cadence, and probably the same "don't let one exfiltration teach the
   model that exfiltration is normal" exclusion `egress_volume_anomaly.py` already applies to
@@ -176,7 +246,7 @@ are actually anomalous for that entity. Two consequences for this project specif
   enough to raise a new account/host's baseline before acting — a known weakness of any
   learned baseline, not unique to this implementation, worth naming rather than ignoring.
 
-## 6. Open questions
+## 7. Open questions
 
 - What deployment scale is actually expected? If this stays a small/demo deployment, the data
   volume in §3.3 never materializes and this stays infeasible regardless of engineering effort.
