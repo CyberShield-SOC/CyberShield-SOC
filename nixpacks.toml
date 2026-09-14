@@ -1,9 +1,8 @@
 providers = ["python", "node"]
 
-
 [phases.install]
 cmds = [
-  "python3 -m pip install -r backend/requirements.txt",
+  "pip install -r backend/requirements.txt",
   "npm --prefix frontend ci"
 ]
 
