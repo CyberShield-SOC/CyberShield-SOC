@@ -19,6 +19,9 @@ class CredentialStuffingRule(BaseRule):
     name = "credential_stuffing_success"
     description = "A failed-login burst from one IP is followed by a successful login."
     severity = "HIGH"
+    mitre_technique = "T1110"
+    entity_type = "source_ip"
+    confidence = 85
 
     def __init__(
         self,
@@ -30,7 +33,7 @@ class CredentialStuffingRule(BaseRule):
         self.window_seconds = window_seconds
         self.success_window_seconds = success_window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         candidates = [
             r for r in records
             if r.event_type == "login_attempt"
@@ -83,6 +86,10 @@ class CredentialStuffingRule(BaseRule):
                             f"within {self.success_window_seconds}s of the failure burst."
                         ),
                         matched_line_numbers=[r.line_number for r, _ in burst_records] + [rec.line_number],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=ip,
                     ))
 
                 # A success resolves the burst either way — start clean.

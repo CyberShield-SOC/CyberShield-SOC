@@ -13,12 +13,15 @@ class InvalidUserRule(BaseRule):
     name = "invalid_user_enumeration"
     description = "One source IP tries several distinct usernames within a window."
     severity = "MEDIUM"
+    mitre_technique = "T1087"
+    entity_type = "source_ip"
+    confidence = 65
 
     def __init__(self, threshold: int = 3, window_seconds: int = 600):
         self.threshold = threshold
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         candidates = [
             r for r in records
             if r.status == "FAILED"
@@ -62,6 +65,10 @@ class InvalidUserRule(BaseRule):
                             f"{len(distinct_users)} distinct usernames tried within {self.window_seconds}s."
                         ),
                         matched_line_numbers=[r.line_number for r, _ in matched],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=ip,
                     ))
                     window.clear()
 
