@@ -45,6 +45,18 @@ class Settings(BaseSettings):
     otp_resend_cooldown_seconds: int = Field(default=60, ge=10, le=600)
     otp_pending_cookie_name: str = Field(default="cybershield_2fa_pending", min_length=1, max_length=100)
 
+    # Optional local MaxMind-format databases for geo identity rules
+    # (impossible_travel, first_seen_geo_asn). See app/detection/geoip.py.
+    geoip_city_db_path: str | None = None
+    geoip_asn_db_path: str | None = None
+
+    # Forgot-password email flow (see app/routers/auth.py).
+    reset_token_expiry_minutes: int = Field(default=30, ge=5, le=1440)
+    # Base URL of the deployed frontend, used to build the link emailed to
+    # /auth/forgot-password requesters. No trailing slash. Defaults to the
+    # Vite dev server's own HTTPS origin (see frontend/vite.config.js).
+    frontend_base_url: str = Field(default="https://127.0.0.1:5173", min_length=1)
+
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         env_file_encoding="utf-8",

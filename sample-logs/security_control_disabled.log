@@ -1,0 +1,32 @@
+# security_control_disabled.log -- exercises SecurityControlDisabledRule (HIGH, host entity)
+# Expected: 1 alert, host fw02 (3 merged actions: iptables flushed, ufw disabled, clamav stopped)
+Sep 14 01:30:00 fw02 sshd[15474]: Accepted publickey for mallory3 from 203.0.113.61 port 50600 ssh2
+Sep 14 01:31:00 fw02 sudo:    mallory3 : TTY=pts/2 ; PWD=/root ; USER=root ; COMMAND=/usr/sbin/iptables -F
+Sep 14 01:32:00 fw02 sudo:    mallory3 : TTY=pts/2 ; PWD=/root ; USER=root ; COMMAND=/usr/sbin/ufw --force disable
+Sep 14 01:33:00 fw02 systemd[1]: Stopped ClamAV Daemon (clamav-daemon).
+Sep 14 09:00:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 09:04:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 09:08:00 fw02 sshd[55092]: Accepted publickey for ops3 from 10.40.11.9 port 52202 ssh2
+Sep 14 09:12:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 09:16:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 09:20:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 09:24:00 fw02 sshd[57318]: Accepted publickey for ops3 from 10.40.11.9 port 52206 ssh2
+Sep 14 09:28:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 09:32:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 09:36:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 09:40:00 fw02 sshd[23952]: Accepted publickey for ops3 from 10.40.11.9 port 52210 ssh2
+Sep 14 09:44:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 09:48:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 09:52:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 09:56:00 fw02 sshd[14122]: Accepted publickey for ops3 from 10.40.11.9 port 52214 ssh2
+Sep 14 10:00:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 10:04:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 10:08:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 10:12:00 fw02 sshd[19578]: Accepted publickey for ops3 from 10.40.11.9 port 52218 ssh2
+Sep 14 10:16:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 10:20:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 10:24:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.
+Sep 14 10:28:00 fw02 sshd[52062]: Accepted publickey for ops3 from 10.40.11.9 port 52222 ssh2
+Sep 14 10:32:00 fw02 systemd[1]: Started ufw.service - Uncomplicated firewall.
+Sep 14 10:36:00 fw02 sudo:    ops3 : TTY=pts/1 ; PWD=/home/ops3 ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 14 10:40:00 fw02 systemd[1]: Started clamav-daemon.service - ClamAV Daemon.

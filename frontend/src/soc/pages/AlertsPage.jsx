@@ -7,6 +7,7 @@ import { nextIncidentId } from "../utils/recordIds";
 import { paginateRecords } from "../utils/pagination";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { getAlertRecommendations, getIncidentActionLabel, incidentMatchesAlert } from "../utils/alertRecommendations";
+import { evidenceEntries } from "../utils/ruleConfig";
 import {
   ErrorState,
   InlineNotice,
@@ -285,7 +286,20 @@ export default function AlertsPage({ navigate }) {
                     <div><dt>Assignee</dt><dd>{selected.assignee}</dd></div>
                     <div><dt>Source</dt><dd>{selected.source}</dd></div>
                     <div><dt>Source IP</dt><dd className="mono">{selected.sourceIp}</dd></div>
+                    {selected.hostname && <div><dt>Host</dt><dd className="mono">{selected.hostname}</dd></div>}
+                    {selected.mitreTechnique && <div><dt>ATT&amp;CK</dt><dd>{selected.mitreTechnique}</dd></div>}
+                    {selected.confidence !== null && <div><dt>Confidence</dt><dd>{selected.confidence}%</dd></div>}
                   </dl>
+                  {evidenceEntries(selected.evidence).length > 0 && (
+                    <div className="alert-evidence-detail">
+                      <span>Detection evidence</span>
+                      <dl>
+                        {evidenceEntries(selected.evidence).map((row) => (
+                          <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
                   <button className={`soc-button ${linkedIncident ? "secondary" : "primary"} full`} type="button" disabled={(!linkedIncident && !canWrite) || mutation.loading || (repositoryMode === "api" && !selected.sourceAlertId && !linkedIncident)} onClick={promoteToIncident}><ShieldPlus size={15} />{incidentActionLabel}</button>
                   <button className="soc-button secondary full" type="button" disabled={!canWrite || mutation.loading} onClick={openNoteComposer}><BookOpenCheck size={15} />Add analyst note</button>
                 </div>

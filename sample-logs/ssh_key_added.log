@@ -1,0 +1,32 @@
+# ssh_key_added.log -- exercises SshKeyAddedRule (HIGH, host entity)
+# Expected: 1 alert, host jump01 (2 merged actions: authorized_keys written, then chmod'd)
+Sep 14 03:00:00 jump01 sshd[30278]: Accepted publickey for intern from 203.0.113.62 port 50700 ssh2
+Sep 14 03:01:00 jump01 sudo:    intern : TTY=pts/2 ; PWD=/home/intern ; USER=root ; COMMAND=/usr/bin/tee -a /home/intern/.ssh/authorized_keys
+Sep 14 03:02:00 jump01 sudo:    intern : TTY=pts/2 ; PWD=/home/intern ; USER=root ; COMMAND=/bin/chmod 600 /home/intern/.ssh/authorized_keys
+Sep 14 09:00:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 09:04:00 jump01 sshd[23716]: Accepted publickey for admin5 from 10.40.13.5 port 52301 ssh2
+Sep 14 09:08:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 09:12:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 09:16:00 jump01 sshd[19603]: Accepted publickey for admin5 from 10.40.13.5 port 52304 ssh2
+Sep 14 09:20:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 09:24:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 09:28:00 jump01 sshd[49043]: Accepted publickey for admin5 from 10.40.13.5 port 52307 ssh2
+Sep 14 09:32:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 09:36:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 09:40:00 jump01 sshd[23917]: Accepted publickey for admin5 from 10.40.13.5 port 52310 ssh2
+Sep 14 09:44:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 09:48:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 09:52:00 jump01 sshd[21097]: Accepted publickey for admin5 from 10.40.13.5 port 52313 ssh2
+Sep 14 09:56:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 10:00:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 10:04:00 jump01 sshd[22468]: Accepted publickey for admin5 from 10.40.13.5 port 52316 ssh2
+Sep 14 10:08:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 10:12:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 10:16:00 jump01 sshd[22042]: Accepted publickey for admin5 from 10.40.13.5 port 52319 ssh2
+Sep 14 10:20:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 10:24:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 10:28:00 jump01 sshd[25953]: Accepted publickey for admin5 from 10.40.13.5 port 52322 ssh2
+Sep 14 10:32:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban
+Sep 14 10:36:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/cat /home/admin5/.ssh/known_hosts
+Sep 14 10:40:00 jump01 sshd[27723]: Accepted publickey for admin5 from 10.40.13.5 port 52325 ssh2
+Sep 14 10:44:00 jump01 sudo:    admin5 : TTY=pts/0 ; PWD=/home/admin5 ; USER=root ; COMMAND=/usr/bin/apt-get install -y fail2ban

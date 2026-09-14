@@ -48,6 +48,38 @@ export function getTwoFactorFailureMessage(status, payload = {}) {
   return "The secure service could not complete the request. Please try again.";
 }
 
+function safeAuthValidationDetail(payload) {
+  const detail = payload?.detail;
+  if (typeof detail === "string") return detail.slice(0, 240);
+  if (Array.isArray(detail)) {
+    // FastAPI's default Pydantic validation-error shape: a list of
+    // {msg: "Value error, <message>", ...}. Strip Pydantic's prefix so a
+    // policy rejection (e.g. from backend/app/validation/passwords.py)
+    // reads as a plain sentence instead of a generic fallback.
+    const messages = detail
+      .map((item) => String(item?.msg || "").replace(/^value error,\s*/i, "").trim())
+      .filter(Boolean);
+    if (messages.length) return messages.join(" ").slice(0, 240);
+  }
+  return "";
+}
+
+/** /auth/forgot-password never reveals account existence, but a genuine
+ * service failure (rate limit, outage) still needs a message to show. */
+export function getPasswordResetRequestFailureMessage(status, payload = {}) {
+  const detail = safeAuthValidationDetail(payload);
+  if (detail) return detail;
+  if (status === 429) return "Too many requests. Wait a moment and try again.";
+  return "The secure service could not complete the request. Please try again.";
+}
+
+export function getPasswordResetFailureMessage(status, payload = {}) {
+  const detail = safeAuthValidationDetail(payload);
+  if (detail) return detail;
+  if (status === 400) return "This reset link is invalid or has expired.";
+  return "The secure service could not complete the request. Please try again.";
+}
+
 export function readAuthUser(payload) {
   const user = payload?.user;
   const supportedRoles = new Set(["Admin", "Analyst", "Viewer"]);
@@ -164,6 +196,30 @@ export const authClient = {
     } finally {
       setAccessToken(null);
     }
+  },
+
+  /**
+   * Start a password-reset challenge for `email`, if an account matches.
+   * The response is identical whether or not it does — never branch UI
+   * on it beyond showing the confirmation message.
+   */
+  async requestPasswordReset(email) {
+    const payload = await authRequest("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      errorMessage: getPasswordResetRequestFailureMessage,
+    });
+    return String(payload?.message || "");
+  },
+
+  /** Complete a reset with the token from the emailed link. */
+  async resetPassword({ token, newPassword }) {
+    const payload = await authRequest("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password: newPassword }),
+      errorMessage: getPasswordResetFailureMessage,
+    });
+    return String(payload?.message || "");
   },
 };
 

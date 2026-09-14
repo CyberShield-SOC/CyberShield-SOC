@@ -513,6 +513,41 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 }
 .app-shell[data-theme="light"] .auth-session-notice { color: #0d5f58; border-color: rgba(11, 138, 127, 0.25); background: rgba(11, 138, 127, 0.09); }
 
+.password-requirements-list {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.password-requirements-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--subtle-copy);
+}
+.password-requirements-list li svg { flex: 0 0 auto; margin-top: 1px; }
+.password-requirements-list li[data-state="met"] { color: #9ce9df; }
+.app-shell[data-theme="light"] .password-requirements-list li[data-state="met"] { color: #0d5f58; }
+.password-requirements-list li[data-state="unmet"] { color: #fca5a5; }
+.app-shell[data-theme="light"] .password-requirements-list li[data-state="unmet"] { color: #b42318; }
+.password-match-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.password-match-status svg { flex: 0 0 auto; }
+.password-match-status[data-state="met"] { color: #9ce9df; }
+.app-shell[data-theme="light"] .password-match-status[data-state="met"] { color: #0d5f58; }
+.password-match-status[data-state="unmet"] { color: #fca5a5; }
+.app-shell[data-theme="light"] .password-match-status[data-state="unmet"] { color: #b42318; }
+
 .remember-row {
   display: inline-flex;
   min-height: 36px;

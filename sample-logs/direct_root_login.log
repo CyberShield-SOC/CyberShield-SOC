@@ -1,0 +1,30 @@
+# direct_root_login.log -- exercises DirectRootLoginRule (HIGH, account entity)
+# Expected: 2 alerts, entity 'root', from 45.33.12.9 and 45.33.12.9 (publickey + password)
+Sep 14 04:10:00 prod-db01 sshd[45751]: Accepted password for root from 45.33.12.9 port 51022 ssh2
+Sep 14 04:16:00 prod-db01 sshd[13521]: Accepted publickey for root from 45.33.12.9 port 51090 ssh2
+Sep 14 09:00:00 prod-db01 sshd[36743]: Failed password for dsilva from 10.40.3.20 port 52000 ssh2
+Sep 14 09:05:00 prod-db01 sshd[43718]: Accepted publickey for mkeller from 10.40.3.21 port 52001 ssh2
+Sep 14 09:10:00 prod-db01 sshd[19656]: Accepted publickey for nrhodes from 10.40.3.22 port 52002 ssh2
+Sep 14 09:15:00 prod-db01 sshd[5027]: Accepted publickey for twoods from 10.40.3.23 port 52003 ssh2
+Sep 14 09:20:00 prod-db01 sshd[24885]: Accepted publickey for abaker from 10.40.3.24 port 52004 ssh2
+Sep 14 09:25:00 prod-db01 sshd[48319]: Failed password for dsilva from 10.40.3.25 port 52005 ssh2
+Sep 14 09:30:00 prod-db01 sshd[52424]: Accepted publickey for mkeller from 10.40.3.26 port 52006 ssh2
+Sep 14 09:35:00 prod-db01 sshd[11682]: Accepted publickey for nrhodes from 10.40.3.27 port 52007 ssh2
+Sep 14 09:40:00 prod-db01 sshd[23227]: Accepted publickey for twoods from 10.40.3.28 port 52008 ssh2
+Sep 14 09:45:00 prod-db01 sshd[15819]: Accepted publickey for abaker from 10.40.3.29 port 52009 ssh2
+Sep 14 09:50:00 prod-db01 sshd[7921]: Failed password for dsilva from 10.40.3.30 port 52010 ssh2
+Sep 14 09:55:00 prod-db01 sshd[52526]: Accepted publickey for mkeller from 10.40.3.31 port 52011 ssh2
+Sep 14 10:00:00 prod-db01 sshd[51444]: Accepted publickey for nrhodes from 10.40.3.32 port 52012 ssh2
+Sep 14 10:05:00 prod-db01 sshd[7249]: Accepted publickey for twoods from 10.40.3.33 port 52013 ssh2
+Sep 14 10:10:00 prod-db01 sshd[33870]: Accepted publickey for abaker from 10.40.3.34 port 52014 ssh2
+Sep 14 10:15:00 prod-db01 sshd[23726]: Failed password for dsilva from 10.40.3.35 port 52015 ssh2
+Sep 14 10:20:00 prod-db01 sshd[56931]: Accepted publickey for mkeller from 10.40.3.36 port 52016 ssh2
+Sep 14 10:25:00 prod-db01 sshd[56152]: Accepted publickey for nrhodes from 10.40.3.37 port 52017 ssh2
+Sep 14 10:30:00 prod-db01 sshd[18127]: Accepted publickey for twoods from 10.40.3.38 port 52018 ssh2
+Sep 14 10:35:00 prod-db01 sshd[31961]: Accepted publickey for abaker from 10.40.3.39 port 52019 ssh2
+Sep 14 10:40:00 prod-db01 sshd[59387]: Failed password for dsilva from 10.40.3.40 port 52020 ssh2
+Sep 14 10:45:00 prod-db01 sshd[30152]: Accepted publickey for mkeller from 10.40.3.41 port 52021 ssh2
+Sep 14 10:50:00 prod-db01 sshd[3429]: Accepted publickey for nrhodes from 10.40.3.42 port 52022 ssh2
+Sep 14 10:55:00 prod-db01 sshd[31371]: Accepted publickey for twoods from 10.40.3.43 port 52023 ssh2
+Sep 14 11:00:00 prod-db01 sshd[57990]: Accepted publickey for abaker from 10.40.3.44 port 52024 ssh2
+Sep 14 11:05:00 prod-db01 sshd[52370]: Failed password for dsilva from 10.40.3.45 port 52025 ssh2

@@ -414,8 +414,12 @@ class TestDetectionEngine:
 
     def test_engine_returns_empty_for_clean_logs(self):
         engine = DetectionEngine()
+        # A business-hours timestamp so this only tests "one clean login
+        # doesn't trip anything" — _BASE itself is 02:11 UTC, which
+        # off_hours_login now correctly flags on its own (see
+        # test_off_hours_login.py for that behavior).
         records = [
-            rec(1, _ts(0), "10.0.0.1", "admin", status="SUCCESS"),
+            rec(1, "2026-06-14T14:11:00Z", "10.0.0.1", "admin", status="SUCCESS"),
         ]
         assert engine.run(records) == []
 

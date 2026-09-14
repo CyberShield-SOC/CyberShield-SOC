@@ -10,7 +10,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -42,6 +42,14 @@ def generate_pending_login_token() -> str:
     """Opaque token identifying one in-progress login attempt across the
     two-factor step. Only its digest (token_digest) is ever persisted; the
     raw value lives solely in a short-lived HttpOnly cookie."""
+
+    return secrets.token_urlsafe(32)
+
+
+def generate_reset_token() -> str:
+    """Opaque single-use password-reset token. Only its digest (token_digest)
+    is ever persisted; the raw value is carried solely in the emailed
+    reset link, never logged or returned in an API response."""
 
     return secrets.token_urlsafe(32)
 
@@ -223,6 +231,18 @@ def revoke_refresh_token(db: Session, raw_token: str) -> None:
 
     session.revoked_at = datetime.now(timezone.utc)
     db.commit()
+
+
+def revoke_user_sessions(db: Session, user_id: int) -> int:
+    """Revoke every currently active session for an account."""
+
+    result = db.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id)
+        .where(AuthSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    return max(0, int(result.rowcount or 0))
 
 
 def require_roles(*allowed_roles: str):

@@ -1,8 +1,25 @@
+import { EXTENDED_DETECTION_RULES } from "./extendedDetectionRules.js";
+
 /**
  * Frontend catalog for the rules registered by backend DetectionEngine.
  * Keep these identifiers and thresholds aligned with backend/app/detection/rules.
+ * The 28 built-ins are the eight core rules below (R-101..R-108) plus the
+ * Group A/B/C rules in extendedDetectionRules.js (R-A01..R-C06). Their IDs
+ * deliberately don't use the numeric R-### form, which the custom Rule
+ * Builder allocates from R-109 upward.
  */
-export const CURRENT_DETECTION_RULES = Object.freeze({
+const CORE_RULE_EXTRAS = Object.freeze({
+  "R-101": { group: "Core", logSource: "Any authentication log", defaults: { threshold: 5, window_seconds: 60 } },
+  "R-102": { group: "Core", logSource: "Any authentication log", defaults: { threshold: 3, window_seconds: 600 } },
+  "R-103": { group: "Core", logSource: "Auth/syslog (sudo events)", defaults: { threshold: 3, window_seconds: 300 } },
+  "R-104": { group: "Core", logSource: "Any authentication log", defaults: { threshold: 5, window_seconds: 600 } },
+  "R-105": { group: "Core", logSource: "Any authentication log", defaults: { fail_threshold: 5, window_seconds: 60, success_window_seconds: 120 } },
+  "R-106": { group: "Core", logSource: "Firewall/IDS logs or flow exports", defaults: { threshold: 10, window_seconds: 60 } },
+  "R-107": { group: "Core", logSource: "Any authentication log", defaults: { threshold: 3, window_seconds: 300 } },
+  "R-108": { group: "Core", logSource: "Auth/syslog (sudo events)", defaults: { window_seconds: 120 } },
+});
+
+const CORE_DETECTION_RULES = Object.freeze({
   "R-101": Object.freeze({
     id: "R-101",
     engineKey: "brute_force_login",
@@ -111,7 +128,7 @@ export const CURRENT_DETECTION_RULES = Object.freeze({
     status: "enabled",
     owner: "Network Security",
     lastUpdated: "Current deployment",
-    criteria: "10 scan events from one source IP within 60 seconds",
+    criteria: "10 scan events from one source IP within 60 seconds, or 10 distinct ports probed on one host within 60 seconds",
     input: "port_scan events with a source IP",
     groupBy: "Source IP",
     query: "event_type=port_scan | window 60s by source_ip | count >= 10",
@@ -156,6 +173,19 @@ export const CURRENT_DETECTION_RULES = Object.freeze({
     response: "Confirm the escalation was authorized, review commands run after it, and rotate the account's credentials if it was not.",
   }),
 });
+
+export const CURRENT_DETECTION_RULES = Object.freeze({
+  ...Object.fromEntries(Object.entries(CORE_DETECTION_RULES).map(([id, rule]) => [
+    id,
+    Object.freeze({ ...rule, ...CORE_RULE_EXTRAS[id] }),
+  ])),
+  ...EXTENDED_DETECTION_RULES,
+});
+
+/** engine key (backend rule name) -> catalog ID, e.g. "log_tampering" -> "R-A05". */
+export const RULE_ID_BY_ENGINE_KEY = Object.freeze(Object.fromEntries(
+  Object.values(CURRENT_DETECTION_RULES).map((rule) => [rule.engineKey, rule.id]),
+));
 
 export const CURRENT_DETECTION_RULE_IDS = Object.freeze(
   Object.keys(CURRENT_DETECTION_RULES),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -32,6 +33,16 @@ class DetectionRuleSetting(Base):
     fail_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
     window_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     success_window_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cooldown_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Generic named-list override (service accounts, decommissioned
+    # accounts, allowed processes, ...). NULL means "use the rule's default".
+    allowlist: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    start_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Rule-specific named tunables (see BaseRule.DEFAULT_PARAMS). Merged key
+    # by key over the rule's defaults, so a row only stores what changed.
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     updated_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
