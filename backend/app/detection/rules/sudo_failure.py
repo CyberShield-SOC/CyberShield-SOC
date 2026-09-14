@@ -13,12 +13,15 @@ class SudoFailureRule(BaseRule):
     name = "sudo_failure"
     description = "One subject has repeated failed privilege-escalation attempts."
     severity = "MEDIUM"
+    mitre_technique = "T1548"
+    entity_type = "account"
+    confidence = 65
 
     def __init__(self, threshold: int = 3, window_seconds: int = 300):
         self.threshold = threshold
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         candidates = [
             r for r in records
             if r.event_type == "privilege_escalation"
@@ -65,6 +68,10 @@ class SudoFailureRule(BaseRule):
                             "Possible privilege escalation attempt."
                         ),
                         matched_line_numbers=[r.line_number for r, _ in matched],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=subject,
                     ))
                     window.clear()
 

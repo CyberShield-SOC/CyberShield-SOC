@@ -1,4 +1,5 @@
 from app.parsers.apache_parser import parse_apache_log
+from app.parsers.auditd_parser import looks_like_auditd, parse_auditd_log
 from app.parsers.syslog_parser import parse_syslog
 from app.parsers.csv_parser import parse_csv_log
 from app.parsers.json_parser import parse_json_log
@@ -65,6 +66,9 @@ def parse_log(content: str, filename: str) -> dict:
         # Falls through to the same syslog/apache/generic detection used
         # for .log files below, since plain-text log lines and .log files
         # are structurally the same thing.
+
+    if looks_like_auditd(lines):
+        return parse_auditd_log(content, lines)
 
     # Check content patterns on first 5 lines
     sample = lines[:5]

@@ -1,0 +1,7 @@
+Sep 10 09:01:00 web01 sshd[46367]: Accepted publickey for alice from 10.20.0.21 port 50100 ssh2
+Sep 10 09:30:00 web01 sshd[17826]: Accepted publickey for alice from 10.20.0.21 port 50101 ssh2
+Sep 10 11:02:00 db01 sshd[18665]: Accepted password for bob from 10.20.0.30 port 50200 ssh2
+Sep 10 11:03:00 db01 sshd[54130]: Failed password for bob from 10.20.0.30 port 50201 ssh2
+Sep 10 13:45:00 web01 sshd[15551]: Accepted publickey for rootkit-scanner from 10.20.0.50 port 50300 ssh2
+Sep 10 15:20:00 db01 sshd[17872]: Accepted publickey for alice from 10.20.0.21 port 50102 ssh2
+Sep 10 19:55:00 web01 sshd[10015]: Accepted publickey for carol from 10.20.0.60 port 50400 ssh2

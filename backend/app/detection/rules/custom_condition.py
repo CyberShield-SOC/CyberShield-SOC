@@ -153,7 +153,7 @@ class CustomConditionRule(BaseRule):
 
         return [record for record in records if self._matches(record)]
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         matched = self.matches(records)
         if not matched:
             return []

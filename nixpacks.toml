@@ -1,13 +1,12 @@
 providers = ["python", "node"]
 
-[phases.setup]
-nixPkgs = ["...", "python313Packages.pip"]
-
 [phases.install]
 cmds = [
-  "python -m pip install -r backend/requirements.txt",
+  "python -m venv --copies /opt/venv",
+  "/opt/venv/bin/pip install -r backend/requirements.txt",
   "npm --prefix frontend ci"
 ]
+paths = ["/opt/venv/bin"]
 
 [phases.build]
 cmds = [
@@ -15,4 +14,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd backend && python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+cmd = "cd backend && /opt/venv/bin/python -m alembic upgrade head && /opt/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"

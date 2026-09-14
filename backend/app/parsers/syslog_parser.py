@@ -8,6 +8,7 @@ from app.parsers.field_normalizer import (
     status_from_text,
     username_from_text,
 )
+from app.parsers.structured_fields import extract_from_message
 
 # Jan 10 08:00:01 server01 sshd[1234]: message
 _SYSLOG_RE = re.compile(
@@ -21,6 +22,11 @@ _SEVERITY_KEYWORDS = {
     "INFO":     ["info", "accepted", "started", "stopped"],
     "DEBUG":    ["debug"],
 }
+
+# Structured keys that replace the heuristic text-derived core fields when a
+# message format is recognised (e.g. a firewall line's SRC is the source IP,
+# not merely the first IP-looking token).
+_CORE_OVERRIDES = ("ip_address", "username", "event_type", "status")
 
 
 def parse_syslog(content: str, lines: list[str]) -> dict:
@@ -36,29 +42,38 @@ def parse_syslog(content: str, lines: list[str]) -> dict:
             continue
 
         ts_raw, hostname, process, pid, message = m.groups()
+        process = process.strip()
+        message = message.strip()
 
-        timestamp = _normalize_date(ts_raw)
-        ip_address = first_ip(message)
-        username = username_from_text(message)
-        event_type = event_type_from_text(message)
-        status = status_from_text(message)
+        structured = extract_from_message(process, message)
+        core = {
+            "timestamp": _normalize_date(ts_raw),
+            "ip_address": first_ip(message),
+            "username": username_from_text(message),
+            "event_type": event_type_from_text(message),
+            "status": status_from_text(message),
+        }
+        for key in _CORE_OVERRIDES:
+            if structured.get(key):
+                core[key] = structured[key]
+
+        extra = {
+            key: value
+            for key, value in structured.items()
+            if key not in _CORE_OVERRIDES and key != "hostname"
+        }
 
         entries.append({
             "line_number": idx + 1,
             "raw": line,
             "parsed": {
-                **normalize_entry(
-                    timestamp=timestamp,
-                    ip_address=ip_address,
-                    username=username,
-                    event_type=event_type,
-                    status=status,
-                ),
+                **normalize_entry(**core),
                 "hostname": hostname,
-                "process": process.strip(),
+                "process": process,
                 "pid": int(pid) if pid else None,
-                "message": message.strip(),
+                "message": message,
                 "severity": _detect_severity(message),
+                **extra,
             },
         })
 

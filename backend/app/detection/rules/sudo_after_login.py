@@ -11,11 +11,14 @@ class SudoAfterLoginRule(BaseRule):
     name = "sudo_after_login"
     description = "A successful login is followed quickly by successful privilege escalation for the same account."
     severity = "MEDIUM"
+    mitre_technique = "T1078"
+    entity_type = "account"
+    confidence = 55
 
     def __init__(self, window_seconds: int = 120):
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         by_user = defaultdict(list)
         for record in records:
             if record.username and record.status == "SUCCESS" and record.event_type in {"login_attempt", "privilege_escalation"}:
@@ -42,6 +45,10 @@ class SudoAfterLoginRule(BaseRule):
                         first_seen=ts_to_str(login_ts), last_seen=ts_to_str(ts),
                         description=f"Account {username} escalated privileges within {self.window_seconds}s of login.",
                         matched_line_numbers=[login.line_number, record.line_number],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=username,
                     ))
                     logins.clear()
         return alerts

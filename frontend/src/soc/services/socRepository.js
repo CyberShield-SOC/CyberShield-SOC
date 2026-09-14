@@ -8,7 +8,8 @@ import {
   workspaceSettings,
 } from "../data/mockData.js";
 import { TEST_DELAY_MS, TEST_RESULT } from "../data/ruleBuilderMockData.js";
-import { CURRENT_DETECTION_RULES } from "../data/detectionRulePack.js";
+import { CURRENT_DETECTION_RULES, RULE_ID_BY_ENGINE_KEY } from "../data/detectionRulePack.js";
+import { detectionRuleApiBody } from "../utils/ruleConfig.js";
 import { restoreStoredNotes, restoreStoredSettings } from "../utils/storageValidation.js";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
@@ -21,16 +22,8 @@ const CUSTOM_RULES_STORAGE_KEY = "cybershield-session-custom-rules";
 const BUILT_IN_RULES_STORAGE_KEY = "cybershield-session-built-in-rules";
 const CUSTOM_RULE_NUMBER_BASE = 108; // R-101..R-108 are the built-in rules
 const SEVERITY_RISK = Object.freeze({ critical: 96, high: 82, medium: 58, low: 30, info: 10 });
-const RULE_IDS = Object.freeze({
-  brute_force_login: "R-101",
-  invalid_user_enumeration: "R-102",
-  sudo_failure: "R-103",
-  password_spraying: "R-104",
-  credential_stuffing_success: "R-105",
-  port_scan: "R-106",
-  multi_ip_successful_login: "R-107",
-  sudo_after_login: "R-108",
-});
+// Backend rule name -> catalog ID (R-101.., R-A01..), from detectionRulePack.js.
+const RULE_IDS = RULE_ID_BY_ENGINE_KEY;
 let apiNotesSnapshot = new Map();
 const runApiReadOnce = createInFlightDeduper();
 
@@ -263,6 +256,51 @@ function writeSessionBuiltInRuleOverrides(overrides) {
   }
 }
 
+const THREAT_FEEDS_STORAGE_KEY = "cybershield-session-threat-feeds";
+
+function readSessionThreatFeeds() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(THREAT_FEEDS_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionThreatFeeds(feeds) {
+  try {
+    window.sessionStorage.setItem(THREAT_FEEDS_STORAGE_KEY, JSON.stringify(feeds));
+  } catch {
+    // Keep working in memory when storage is blocked.
+  }
+}
+
+export function normalizeThreatFeed(feed) {
+  const byType = plainObject(feed?.by_type || feed?.byType);
+  return {
+    source: String(feed?.source || ""),
+    indicatorCount: Number(feed?.indicator_count ?? feed?.indicatorCount) || 0,
+    updatedAt: feed?.updated_at || feed?.updatedAt || null,
+    byType: { ip: Number(byType.ip) || 0, cidr: Number(byType.cidr) || 0, domain: Number(byType.domain) || 0 },
+  };
+}
+
+const HEARTBEAT_STATUSES = new Set(["reporting", "silent", "learning"]);
+
+export function normalizeHostHeartbeat(host) {
+  const status = String(host?.status || "").toLowerCase();
+  return {
+    hostname: String(host?.hostname || ""),
+    status: HEARTBEAT_STATUSES.has(status) ? status : "learning",
+    lastSeenAt: host?.last_seen_at || null,
+    firstSeenAt: host?.first_seen_at || null,
+    eventCount: Number(host?.event_count) || 0,
+    cadenceSeconds: host?.cadence_seconds == null ? null : Number(host.cadence_seconds),
+    silenceThresholdSeconds: Number(host?.silence_threshold_seconds) || 0,
+    silentForSeconds: Number(host?.silent_for_seconds) || 0,
+  };
+}
+
 async function request(path, options = {}) {
   const payload = await apiRequest(path, {
     ...options,
@@ -379,6 +417,12 @@ function normalizeAlert(alert, latest = null) {
       : "ingested log",
     sourceIp: alert.source_ip || "Unknown",
     user: alert.username || "Unknown",
+    hostname: alert.hostname || "",
+    mitreTechnique: alert.mitre_technique || "",
+    confidence: Number.isFinite(Number(alert.confidence)) && alert.confidence !== null ? Number(alert.confidence) : null,
+    entityType: alert.entity_type || "",
+    entityId: alert.entity_id || "",
+    evidence: plainObject(alert.evidence),
     risk: SEVERITY_RISK[severity] ?? SEVERITY_RISK.low,
     // Workflow age follows when the persisted alert was created; firstSeen is
     // the evidence observation time and may legitimately predate ingestion.
@@ -404,19 +448,58 @@ function normalizeAlert(alert, latest = null) {
   };
 }
 
-function normalizeBuiltInRule(rule) {
-  const config = rule?.config || {};
+const ALWAYS_TUNABLE = Object.freeze(["enabled", "confidence", "cooldown_seconds"]);
+
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+export function normalizeBuiltInRule(rule) {
+  const config = plainObject(rule?.config);
+  const tunables = Array.isArray(rule?.tunables) ? rule.tunables.map(String) : [...ALWAYS_TUNABLE];
   return {
     engineKey: String(rule?.name || ""),
     id: RULE_IDS[rule?.name] || String(rule?.name || ""),
     description: rule?.description || "",
     severity: String(rule?.severity || "MEDIUM").toLowerCase(),
+    mitreTechnique: rule?.mitre_technique || null,
+    entityType: rule?.entity_type || null,
+    tunables,
+    defaultParams: plainObject(rule?.default_params),
     enabled: config.enabled !== false,
     threshold: config.threshold ?? null,
     failThreshold: config.fail_threshold ?? null,
     windowSeconds: config.window_seconds ?? null,
     successWindowSeconds: config.success_window_seconds ?? null,
+    cooldownSeconds: config.cooldown_seconds ?? null,
+    confidence: config.confidence ?? null,
+    allowlist: Array.isArray(config.allowlist) ? config.allowlist.map(String) : (tunables.includes("allowlist") ? [] : null),
+    startHour: config.start_hour ?? null,
+    endHour: config.end_hour ?? null,
+    params: plainObject(config.params),
   };
+}
+
+/** What sample mode reports for a catalog rule: its defaults plus session overrides. */
+function sampleBuiltInRule(rule, overrides = {}) {
+  const defaults = rule.defaults || {};
+  const { params: defaultParams = {}, ...defaultConfig } = defaults;
+  const tunables = [...new Set([...Object.keys(defaultConfig), ...(Object.keys(defaultParams).length ? ["params"] : []), ...ALWAYS_TUNABLE])];
+  return normalizeBuiltInRule({
+    name: rule.engineKey,
+    description: rule.description,
+    severity: rule.severity.toUpperCase(),
+    mitre_technique: String(rule.technique || "").split(" ")[0] || null,
+    tunables,
+    default_params: defaultParams,
+    config: {
+      enabled: true,
+      confidence: null,
+      ...defaultConfig,
+      ...overrides,
+      params: { ...defaultParams, ...(overrides.params || {}) },
+    },
+  });
 }
 
 function normalizeCustomRule(rule) {
@@ -702,47 +785,49 @@ const mockRepository = {
   async getDetectionRules() {
     await wait(80);
     const overrides = readSessionBuiltInRuleOverrides();
-    return Object.values(CURRENT_DETECTION_RULES).map((rule) => normalizeBuiltInRule({
-      name: rule.engineKey,
-      description: rule.description,
-      severity: rule.severity.toUpperCase(),
-      config: {
-        enabled: true,
-        threshold: null,
-        fail_threshold: null,
-        window_seconds: null,
-        success_window_seconds: null,
-        ...overrides[rule.engineKey],
-      },
-    }));
+    return Object.values(CURRENT_DETECTION_RULES).map((rule) => sampleBuiltInRule(rule, overrides[rule.engineKey]));
   },
   async updateDetectionRule(engineKey, updates) {
     await wait(120);
     const rule = Object.values(CURRENT_DETECTION_RULES).find((item) => item.engineKey === engineKey);
     if (!rule) throw new Error("That detection rule no longer exists.");
     const overrides = readSessionBuiltInRuleOverrides();
+    const body = detectionRuleApiBody(updates);
     const current = overrides[engineKey] || {};
-    const next = { ...current };
-    if (typeof updates.enabled === "boolean") next.enabled = updates.enabled;
-    if (updates.threshold != null) next.threshold = Number(updates.threshold);
-    if (updates.failThreshold != null) next.fail_threshold = Number(updates.failThreshold);
-    if (updates.windowSeconds != null) next.window_seconds = Number(updates.windowSeconds);
-    if (updates.successWindowSeconds != null) next.success_window_seconds = Number(updates.successWindowSeconds);
-    overrides[engineKey] = next;
+    overrides[engineKey] = {
+      ...current,
+      ...body,
+      ...(body.params ? { params: { ...(current.params || {}), ...body.params } } : {}),
+    };
     writeSessionBuiltInRuleOverrides(overrides);
-    return normalizeBuiltInRule({
-      name: engineKey,
-      description: rule?.description || "",
-      severity: (rule?.severity || "medium").toUpperCase(),
-      config: {
-        enabled: true,
-        threshold: null,
-        fail_threshold: null,
-        window_seconds: null,
-        success_window_seconds: null,
-        ...next,
-      },
-    });
+    return sampleBuiltInRule(rule, overrides[engineKey]);
+  },
+  async getThreatIntelFeeds() {
+    await wait(80);
+    return readSessionThreatFeeds();
+  },
+  async importThreatIntelFeed({ source, content }) {
+    await wait(120);
+    const indicators = String(content || "")
+      .split(/\r?\n/)
+      .map((line) => line.split(/[#;]/, 1)[0].trim().split(/[\s,]+/, 1)[0])
+      .filter(Boolean);
+    if (!indicators.length) throw new Error("The feed contained no indicators.");
+    const feeds = readSessionThreatFeeds().filter((feed) => feed.source !== source);
+    feeds.push({ source, indicatorCount: new Set(indicators).size, updatedAt: new Date().toISOString(), byType: {} });
+    writeSessionThreatFeeds(feeds);
+    return { source, imported: new Set(indicators).size, rejectedLines: 0 };
+  },
+  async deleteThreatIntelFeed(source) {
+    await wait(80);
+    writeSessionThreatFeeds(readSessionThreatFeeds().filter((feed) => feed.source !== source));
+  },
+  async getHostHeartbeats() {
+    await wait(80);
+    return { checkedAt: new Date().toISOString(), hosts: [] };
+  },
+  async checkHostSilence() {
+    throw new Error("Host silence checks require the connected backend.");
   },
   async createCustomRule(rule) {
     await wait(150);
@@ -1067,17 +1152,40 @@ const httpRepository = {
     return responseArray(payload, "rules").map(normalizeBuiltInRule);
   },
   async updateDetectionRule(engineKey, updates) {
-    const body = {};
-    if (typeof updates.enabled === "boolean") body.enabled = updates.enabled;
-    if (updates.threshold != null) body.threshold = Number(updates.threshold);
-    if (updates.failThreshold != null) body.fail_threshold = Number(updates.failThreshold);
-    if (updates.windowSeconds != null) body.window_seconds = Number(updates.windowSeconds);
-    if (updates.successWindowSeconds != null) body.success_window_seconds = Number(updates.successWindowSeconds);
     const payload = await request(`/detection/rules/${encodeURIComponent(engineKey)}`, {
       method: "PATCH",
-      body: JSON.stringify(body),
+      body: JSON.stringify(detectionRuleApiBody(updates)),
     });
     return normalizeBuiltInRule(payload.rule);
+  },
+  async getThreatIntelFeeds() {
+    const payload = await request("/threat-intel/feeds");
+    return responseArray(payload, "feeds").map(normalizeThreatFeed);
+  },
+  async importThreatIntelFeed({ source, content, replace = true }) {
+    const payload = await request("/threat-intel/feeds", {
+      method: "POST",
+      body: JSON.stringify({ source, content, replace }),
+    });
+    return {
+      source: payload.source,
+      imported: Number(payload.imported) || 0,
+      rejectedLines: Number(payload.rejected_lines) || 0,
+    };
+  },
+  async deleteThreatIntelFeed(source) {
+    await request(`/threat-intel/feeds/${encodeURIComponent(source)}`, { method: "DELETE" });
+  },
+  async getHostHeartbeats() {
+    const payload = await request("/detection/host-heartbeats");
+    return {
+      checkedAt: payload.checked_at || null,
+      hosts: responseArray(payload, "hosts").map(normalizeHostHeartbeat),
+    };
+  },
+  async checkHostSilence() {
+    const payload = await request("/detection/host-silence/check", { method: "POST" });
+    return responseArray(payload, "alerts").map((alert) => normalizeAlert(alert));
   },
   async createCustomRule(rule) {
     const payload = await request("/custom-rules", {

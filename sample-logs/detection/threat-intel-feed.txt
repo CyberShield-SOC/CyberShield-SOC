@@ -1,0 +1,6 @@
+# CyberShield sample threat-intel feed — import via Threat Detection > Threat intelligence
+# One IP, CIDR, or domain per line. Text after # or ; is ignored.
+185.220.101.45    # known Tor exit used in phishing kits
+45.155.205.0/24   ; bulletproof hosting range
+badactor-c2.com
+not an indicator

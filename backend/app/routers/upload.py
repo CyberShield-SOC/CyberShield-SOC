@@ -18,7 +18,8 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.detection import DetectionEngine
 from app.detection.alert_store import serialize_alert
-from app.detection.models import LogRecord
+from app.detection.geoip import enrich_records, get_geo_resolver
+from app.detection.normalize import log_record_from_entry
 from app.detection.rules.custom_condition import CustomConditionRule
 from app.middleware.file_validation import MAX_FILE_SIZE_BYTES, validate_log_file
 from app.models.alert import Alert
@@ -30,13 +31,13 @@ from app.repositories.blocked_ip_repository import auto_block_from_alerts
 from app.repositories.alert_repository import (
     create_alerts_from_detection,
     serialize_alert_record,
+    suppress_alerts_in_cooldown,
 )
 from app.repositories.custom_rule_action_repository import apply_custom_rule_actions
 from app.repositories.custom_rule_repository import list_enabled_custom_rules
 from app.repositories.detection_rule_setting_repository import effective_rule_configs
 from app.repositories.log_repository import (
     create_logs_from_parse_result,
-    port_from_parsed_data,
 )
 from app.repositories.upload_batch_repository import (
     create_upload_batch,
@@ -169,22 +170,14 @@ def _run_upload_pipeline(
     upload_id = uuid.uuid4()
 
     # --- Run detection engine ---
-    records = [
-        LogRecord(
-            line_number=entry["line_number"],
-            timestamp=entry["parsed"].get("timestamp"),
-            ip_address=entry["parsed"].get("ip_address") or None,
-            username=entry["parsed"].get("username") or None,
-            event_type=entry["parsed"].get("event_type"),
-            status=entry["parsed"].get("status"),
-            port=port_from_parsed_data(entry["parsed"]),
-        )
-        for entry in parsed["entries"]
-    ]
+    records = enrich_records(
+        [log_record_from_entry(entry, str(parsed["format"])) for entry in parsed["entries"]],
+        get_geo_resolver(),
+    )
 
     configs = effective_rule_configs(db, settings.detection_rule_config)
     engine = DetectionEngine.from_config({name: config.model_dump() for name, config in configs.items()})
-    alerts = engine.run(records)
+    alerts = engine.run(records, db)
 
     enabled_custom_rules = list_enabled_custom_rules(db)
     custom_rule_titles: dict[str, str] = {}
@@ -201,6 +194,9 @@ def _run_upload_pipeline(
         )
         custom_rule_titles[custom_rule.rule_id] = custom_rule.name
         alerts.extend(runner.analyze(records))
+
+    cooldown_by_rule = {name: config.cooldown_seconds for name, config in configs.items()}
+    alerts = suppress_alerts_in_cooldown(db, alerts, cooldown_by_rule)
 
     def _serialize(alert):
         data = serialize_alert(alert)

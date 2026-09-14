@@ -1151,6 +1151,13 @@
 .rule-detail-title > .soc-badge { flex: 0 0 auto; white-space: nowrap; }
 .rule-detail-title h3 { margin-bottom: 4px; }
 .rule-detail-title p { margin: 0 0 12px; }
+.alert-evidence-detail { display: grid; gap: 7px; margin-top: 12px; padding: 11px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 7px; }
+.alert-evidence-detail > span { color: var(--soc-text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.alert-evidence-detail dl { display: grid; gap: 5px; margin: 0; }
+.alert-evidence-detail dl > div { display: flex; gap: 8px; font-size: 10.5px; line-height: 1.4; }
+.alert-evidence-detail dt { flex: 0 0 auto; min-width: 120px; color: var(--soc-text-muted); }
+.alert-evidence-detail dd { margin: 0; color: var(--soc-text); overflow-wrap: anywhere; }
+
 .rule-logic-block,
 .rule-response-block { display: grid; gap: 7px; margin-top: 12px; padding: 11px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 7px; }
 .rule-logic-block > span,
@@ -1164,6 +1171,21 @@
 .rule-threshold-form label { display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; color: var(--soc-text-muted); }
 .rule-threshold-form input { width: 110px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--soc-border); background: var(--soc-surface); color: var(--soc-text); font-size: 11px; }
 .rule-threshold-form-actions { display: flex; gap: 8px; }
+.rule-threshold-form label:has(textarea),
+.rule-threshold-form-wide { flex-basis: 100%; }
+.rule-threshold-form textarea { width: 100%; min-width: 220px; padding: 8px; border-radius: 6px; border: 1px solid var(--soc-border); background: var(--soc-surface); color: var(--soc-text); font-size: 11px; resize: vertical; }
+
+.threat-feed-list { margin-bottom: 12px; }
+.threat-feed-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border: 1px solid var(--soc-border); border-radius: 8px; background: var(--soc-surface-subtle); }
+.threat-feed-row + .threat-feed-row { margin-top: 8px; }
+.threat-feed-row strong { display: block; font-size: 11px; }
+.threat-feed-row small { color: var(--soc-text-muted); font-size: 10px; }
+.threat-feed-import-form { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--soc-border); }
+.threat-feed-import-form label { display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; color: var(--soc-text-muted); }
+.threat-feed-import-form input,
+.threat-feed-import-form textarea { padding: 8px; border-radius: 6px; border: 1px solid var(--soc-border); background: var(--soc-surface); color: var(--soc-text); font-size: 11px; font-family: inherit; }
+.threat-feed-import-form textarea { resize: vertical; font-family: ui-monospace, monospace; }
+.threat-feed-checked-at { display: flex; align-items: center; gap: 5px; margin: 10px 0 0; color: var(--soc-text-muted); font-size: 10px; }
 
 .alert-action-results { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
 .alert-action-results li { display: flex; align-items: flex-start; gap: 8px; font-size: 10.8px; line-height: 1.4; }

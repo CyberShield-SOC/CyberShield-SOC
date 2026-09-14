@@ -2,20 +2,99 @@
 
 Scoped answer to one question: could CyberShield use `IsolationForest` to catch things the
 28 rule-based detectors (`backend/app/detection/rules/`) miss, and if so, what data would it
-need? This is a feasibility note, not an implementation — nothing here is wired into the
-engine. It complements, and does not replace,
+need? It complements, and does not replace,
 [`docs/backend_data_requirements_for_ml.md`](../backend_data_requirements_for_ml.md), which
 predates the Group A/B/C rule work and the `entity_baselines`/`host_heartbeats`/
 `threat_indicators` tables described below.
 
+## Implementation status
+
+Two pilots are built and live-tested end to end, sharing one plumbing layer:
+
+- `backend/app/ml/pipeline.py` — the shared implementation every pilot now uses for the three
+  steps that used to be duplicated per pilot: `load_active()` (load the active model once per
+  `analyze()` batch, or `None` if none exists / its schema no longer matches), `record_and_score()`
+  (persist a feature snapshot, scoring it against the model when one is loaded), and
+  `fit_and_save_model()` (fit an `IsolationForest`, compute per-feature mean/std with an
+  epsilon floor, serialize, and save a new model version). Adding a third pilot means writing
+  a `features_*.py` and a rule; the fit/score/persist mechanics are no longer duplicated.
+- **Pilot #1 — login behavior** (§2): `backend/app/ml/features.py`
+  (`hour_sin/cos`, `dow_sin/cos`, `is_new_geo`), `backend/app/ml/train_login_behavior.py`,
+  `backend/app/detection/rules/behavioral_anomaly_login.py` (frontend: `R-D01`).
+- **Pilot #2 — egress volume** (§2's second-ranked candidate): `backend/app/ml/features_egress_volume.py`
+  (`log_bytes_out`, `connection_count`, `distinct_destinations`, `hour_sin/cos`, entity type
+  `host` instead of `account`), `backend/app/ml/train_egress_volume.py`,
+  `backend/app/detection/rules/behavioral_anomaly_egress.py` (frontend: `R-D02`). Scores one
+  host's hourly egress bucket jointly on volume, connection count, destination spread, and
+  time of day — catching combinations that stay under `egress_volume_anomaly`'s single-dimension
+  threshold on their own.
+- `ml_feature_snapshots` / `ml_models` tables (migrations `e3f8b1a4c962`, `f2a9c7e410b3`) — the
+  persisted feature history §3.2 says doesn't exist for the running-scalar baselines; it now
+  does, shared by both pilots and keyed by `feature_set`. The second migration added a nullable
+  `score` column so a snapshot can carry the score it was given, whether or not that score ever
+  became an alert.
+- **Genuine two-stage shadow mode** (§5.5), no longer just "no model = shadow mode": (1) no
+  active model for a `(feature_set, entity_type)` — pure data collection, nothing is scored;
+  (2) once a model exists, `params.shadow_mode` (rule default `True`) still gates whether a
+  computed score becomes an `Alert` — every event is scored and its score persisted on
+  `MLFeatureSnapshot.score` either way, so a shadow-mode deployment is reviewable rather than a
+  black box. `GET /ml/scores?feature_set=...&below=...` surfaces the lowest (most anomalous)
+  recorded scores for that review, independent of whether shadow mode is on.
+- **Model lifecycle API** (§5.2's "no retraining trigger, model rollback, or admin UI" gap,
+  now partially closed at the API layer): `backend/app/routers/ml_models.py` —
+  `GET /ml/models` (every version, `is_active` flag, sample count, params), `POST
+  /ml/models/{feature_set}/train` (Admin-only, synchronous, dispatches through
+  `backend/app/ml/registry.py` so each pilot's trainer is one registry entry), and `POST
+  /ml/models/{model_id}/activate` (Admin-only rollback/roll-forward — deactivates every sibling
+  version of that `(feature_set, entity_type)` and takes effect on the very next upload, no
+  redeploy). **Still missing**: no *frontend* panel exposes any of this yet — it's
+  `curl`/API-only today, unlike every other admin-facing feature in this project (threat
+  intel, host heartbeats), which pairs a backend feature with a dashboard panel.
+- Explainability (§4.5, §5.7): every alert's `evidence` carries the raw score, the threshold,
+  and per-feature z-score deviations from the training population's own mean — not a bare
+  number.
+- Tests: `backend/tests/test_ml_behavioral_anomaly.py` (19 cases, including the two shadow-mode
+  gate tests added in this phase), `backend/tests/test_ml_egress_volume.py` (6 cases),
+  `backend/tests/test_ml_models_api.py` (8 cases covering train/list/activate/scores + RBAC).
+  Fixed `random_state` throughout, per §5.4. One of the login-pilot tests is a real regression
+  caught by live-testing against the running app: a single-day training set gives
+  `dow_sin`/`dow_cos` ~zero variance, and a floating-point std of order 1e-16 slipped past an
+  exact-zero divide-by-zero guard, producing z-scores in the hundreds of trillions instead of a
+  sane single digit. Fixed with an epsilon floor (`stds[stds < 1e-6] = 1.0`) inside
+  `fit_and_save_model()`, so both pilots get the fix for free.
+
+Still real gaps, not yet addressed:
+
+- **Only one feature set per pilot is pooled globally**, not per-entity — the §3.3 tradeoff,
+  deliberately: per-entity models would need far more history per entity than a typical
+  deployment has yet.
+- **No automatic retraining trigger** — `POST /ml/models/{feature_set}/train` exists, but
+  nothing calls it on a schedule or in response to snapshot volume; an admin (or an external
+  cron hitting the endpoint) has to decide when to retrain.
+- **No frontend admin UI** for any of the model-lifecycle or shadow-mode-review endpoints —
+  they exist and are tested at the API layer only.
+- **Only two of the four pilot candidates exist.** `outbound_beaconing` and `host_sweep`/`port_scan`
+  (§2's other two candidates) are still un-started — the §2 table's reasoning for why they're
+  good candidates still stands, but no code exists for them, and nothing about the shared
+  `pipeline.py` layer changes that estimate.
+- **Real volume**: both pilots were demonstrated with synthetic datasets generated for the
+  purpose (hundreds of samples with deliberate jitter so `IsolationForest` has something to
+  split on), not organic upload history — §3.3's point about lab-deployment data volume being
+  too thin for real training remains true for actual production use.
+- **No background job runner**: `POST /ml/models/{feature_set}/train` is synchronous — it blocks
+  the request for however long the fit takes. Fine at current sample sizes; not something to
+  build a bigger feature_set on without adding real background-job infrastructure first (§5.3).
+
 ## Verdict
 
-**Feasible as a complementary, advisory scoring layer. Not implementable today as-is.**
-Three concrete things are missing before it could run for real: a persisted per-entity
-**feature history** (today's baselines are running scalars, not stored feature vectors — see
-§3.2), enough **event volume per entity** to fit a model on, and a **training job outside the
-request path** (detection today runs synchronously inside `/upload`, and fitting a forest is
-too slow to do per-upload). None of these are hard blockers, but none exist yet either.
+**Feasible as a complementary, advisory scoring layer, and two pilots now prove it end to end
+on a shared implementation.** The things §1-§5 originally said were missing — a persisted
+feature history, a training job outside the request path, an explainability layer, a real
+shadow-mode review step, and model version lifecycle management — all exist now, for two
+feature sets, without duplicating the fit/score/persist logic per pilot. What's unchanged: real
+per-entity data volume still doesn't exist outside a synthetic demo, there's no frontend for any
+of this, no automatic retraining trigger, and nothing here should be treated as validated
+against real attack data.
 
 ## 1. What `IsolationForest` actually does
 

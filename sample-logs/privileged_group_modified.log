@@ -1,0 +1,32 @@
+# privileged_group_modified.log -- exercises PrivilegedGroupModifiedRule (HIGH, host entity)
+# Expected: 1 alert, host app11 (2 merged actions: contractor7 -> sudo, contractor7 -> docker)
+Sep 14 04:00:00 app11 sshd[38152]: Accepted publickey for admin4 from 10.40.10.5 port 50900 ssh2
+Sep 14 04:01:00 app11 usermod[8346]: add 'contractor7' to group 'sudo'
+Sep 14 04:02:00 app11 gpasswd[26887]: user contractor7 added by admin4 to group docker
+Sep 14 09:00:00 app11 usermod[5086]: add 'intern5' to group 'developers'
+Sep 14 09:04:00 app11 sshd[41900]: Accepted publickey for admin4 from 10.40.10.5 port 51001 ssh2
+Sep 14 09:08:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 09:12:00 app11 usermod[12543]: add 'intern5' to group 'developers'
+Sep 14 09:16:00 app11 sshd[8727]: Accepted publickey for admin4 from 10.40.10.5 port 51004 ssh2
+Sep 14 09:20:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 09:24:00 app11 usermod[18214]: add 'intern5' to group 'developers'
+Sep 14 09:28:00 app11 sshd[42137]: Accepted publickey for admin4 from 10.40.10.5 port 51007 ssh2
+Sep 14 09:32:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 09:36:00 app11 usermod[55668]: add 'intern5' to group 'developers'
+Sep 14 09:40:00 app11 sshd[39644]: Accepted publickey for admin4 from 10.40.10.5 port 51010 ssh2
+Sep 14 09:44:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 09:48:00 app11 usermod[30756]: add 'intern5' to group 'developers'
+Sep 14 09:52:00 app11 sshd[45398]: Accepted publickey for admin4 from 10.40.10.5 port 51013 ssh2
+Sep 14 09:56:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 10:00:00 app11 usermod[53257]: add 'intern5' to group 'developers'
+Sep 14 10:04:00 app11 sshd[12602]: Accepted publickey for admin4 from 10.40.10.5 port 51016 ssh2
+Sep 14 10:08:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 10:12:00 app11 usermod[27047]: add 'intern5' to group 'developers'
+Sep 14 10:16:00 app11 sshd[17374]: Accepted publickey for admin4 from 10.40.10.5 port 51019 ssh2
+Sep 14 10:20:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 10:24:00 app11 usermod[28764]: add 'intern5' to group 'developers'
+Sep 14 10:28:00 app11 sshd[10180]: Accepted publickey for admin4 from 10.40.10.5 port 51022 ssh2
+Sep 14 10:32:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service
+Sep 14 10:36:00 app11 usermod[31230]: add 'intern5' to group 'developers'
+Sep 14 10:40:00 app11 sshd[35948]: Accepted publickey for admin4 from 10.40.10.5 port 51025 ssh2
+Sep 14 10:44:00 app11 sudo:    admin4 : TTY=pts/0 ; PWD=/home/admin4 ; USER=root ; COMMAND=/usr/bin/systemctl status app11.service

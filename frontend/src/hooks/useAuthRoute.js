@@ -5,6 +5,7 @@ export const AUTH_ROUTES = Object.freeze({
   login: "login",
   mfa: "mfa",
   forgotPassword: "forgot-password",
+  resetPassword: "reset-password",
   sso: "uta-sso",
   support: "support",
   logoutSuccess: "logout-success",
