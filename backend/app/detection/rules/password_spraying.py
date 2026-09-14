@@ -18,12 +18,15 @@ class PasswordSprayingRule(BaseRule):
     name = "password_spraying"
     description = "One username receives failed logins from many source IPs."
     severity = "HIGH"
+    mitre_technique = "T1110.003"
+    entity_type = "account"
+    confidence = 75
 
     def __init__(self, threshold: int = 5, window_seconds: int = 600):
         self.threshold = threshold
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         candidates = [
             r for r in records
             if r.status == "FAILED"
@@ -69,6 +72,10 @@ class PasswordSprayingRule(BaseRule):
                             f"within {self.window_seconds}s."
                         ),
                         matched_line_numbers=[r.line_number for r, _ in matched],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=username,
                     ))
                     window.clear()
 

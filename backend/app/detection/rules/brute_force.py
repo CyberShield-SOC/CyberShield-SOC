@@ -13,12 +13,15 @@ class BruteForceLoginRule(BaseRule):
     name = "brute_force_login"
     description = "One source IP has repeated failed login attempts in a short window."
     severity = "HIGH"
+    mitre_technique = "T1110.001"
+    entity_type = "source_ip"
+    confidence = 80
 
     def __init__(self, threshold: int = 5, window_seconds: int = 60):
         self.threshold = threshold
         self.window_seconds = window_seconds
 
-    def analyze(self, records: list[LogRecord]) -> list[Alert]:
+    def analyze(self, records: list[LogRecord], db=None) -> list[Alert]:
         candidates = [
             r for r in records
             if r.status == "FAILED"
@@ -61,6 +64,10 @@ class BruteForceLoginRule(BaseRule):
                             f"{len(matched)} failed login attempts within {self.window_seconds}s."
                         ),
                         matched_line_numbers=[r.line_number for r, _ in matched],
+                        mitre_technique=self.mitre_technique,
+                        confidence=self.confidence,
+                        entity_type=self.entity_type,
+                        entity_id=ip,
                     ))
                     window.clear()
 
