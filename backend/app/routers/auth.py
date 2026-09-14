@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import secrets
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dispatch.otp_email import get_otp_email_sender
+from app.dispatch.reset_email import get_reset_email_sender
 from app.models.user import User
 from app.repositories.otp_repository import (
     OtpPendingNotFoundError,
@@ -16,11 +19,20 @@ from app.repositories.otp_repository import (
     resend_otp_challenge,
     verify_otp_challenge,
 )
+from app.repositories.password_reset_repository import (
+    PasswordResetTokenInvalidError,
+    consume_reset_token,
+    create_reset_challenge,
+)
 from app.schemas.auth import (
     CurrentUserResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
     RefreshResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     TwoFactorRequiredResponse,
     TwoFactorResendResponse,
     TwoFactorVerifyRequest,
@@ -29,12 +41,14 @@ from app.security import (
     authenticate_user,
     create_refresh_token,
     current_user,
+    hash_password,
     mint_access_token,
     revoke_refresh_token,
+    revoke_user_sessions,
     rotate_refresh_token,
 )
 from app.core.config import settings
-from app.validation import mask_email
+from app.validation import mask_email, password_context_errors
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -280,3 +294,79 @@ def me(user: User = Depends(current_user)):
         "success": True,
         "user": user_payload(user),
     }
+
+
+GENERIC_RECOVERY_MESSAGE = "If an account matches that email, recovery instructions will be sent."
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+    send_reset_email=Depends(get_reset_email_sender),
+):
+    """
+    Start a password-reset challenge for the account matching `email`, if any.
+
+    Always returns the same success response regardless of whether the
+    email matches an account, whether that account is active, or whether
+    the email actually sent — none of that is ever observable from this
+    endpoint's response, so it can't be used to enumerate accounts.
+    """
+
+    identifier = payload.email.strip().lower()
+    user = db.scalar(select(User).where(func.lower(User.email) == identifier))
+
+    if user is not None and user.is_active:
+        token = create_reset_challenge(db, user)
+        reset_link = (
+            f"{settings.frontend_base_url}/#/reset-password?token={quote(token)}"
+        )
+        try:
+            send_reset_email(to_email=user.email, reset_link=reset_link)
+        except Exception:
+            db.rollback()
+        else:
+            db.commit()
+
+    return {"success": True, "message": GENERIC_RECOVERY_MESSAGE}
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+def reset_password(
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Complete a password reset: consume the token, replace the password,
+    and revoke every session issued before the reset."""
+
+    try:
+        user = consume_reset_token(db, payload.token)
+    except PasswordResetTokenInvalidError as exc:
+        db.commit()  # persist the used=True marked on an expired/stale token
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    context_errors = password_context_errors(
+        payload.new_password,
+        username=user.username,
+        email=user.email,
+    )
+    if context_errors:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "loc": ["body", "new_password"],
+                    "msg": message,
+                    "type": "value_error",
+                }
+                for message in context_errors
+            ],
+        )
+
+    user.password_hash = hash_password(payload.new_password)
+    revoke_user_sessions(db, user.id)
+    db.commit()
+
+    return {"success": True, "message": "Your password has been reset. Sign in with your new password."}

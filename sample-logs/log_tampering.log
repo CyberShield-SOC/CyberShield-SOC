@@ -1,0 +1,32 @@
+# log_tampering.log -- exercises LogTamperingRule (CRITICAL, host entity)
+# Expected: 1 alert, host edge01 (3 merged actions: log file deleted, history cleared, auditd stopped)
+Sep 14 01:00:00 edge01 sshd[30515]: Accepted publickey for mallory2 from 203.0.113.60 port 50500 ssh2
+Sep 14 01:01:00 edge01 sudo:    mallory2 : TTY=pts/3 ; PWD=/root ; USER=root ; COMMAND=/usr/bin/rm -f /var/log/auth.log
+Sep 14 01:02:00 edge01 sudo:    mallory2 : TTY=pts/3 ; PWD=/root ; USER=root ; COMMAND=/usr/bin/history -c
+Sep 14 01:03:00 edge01 systemd[1]: Stopped Security Auditing Service (auditd).
+Sep 14 09:00:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 14 09:04:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/cat /var/log/syslog
+Sep 14 09:08:00 edge01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:12:00 edge01 systemd[1]: Started auditd.service - Security Auditing Service.
+Sep 14 09:16:00 edge01 sshd[41533]: Accepted publickey for ops2 from 10.40.6.8 port 53004 ssh2
+Sep 14 09:20:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 14 09:24:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/cat /var/log/syslog
+Sep 14 09:28:00 edge01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:32:00 edge01 systemd[1]: Started auditd.service - Security Auditing Service.
+Sep 14 09:36:00 edge01 sshd[14027]: Accepted publickey for ops2 from 10.40.6.8 port 53009 ssh2
+Sep 14 09:40:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 14 09:44:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/cat /var/log/syslog
+Sep 14 09:48:00 edge01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 09:52:00 edge01 systemd[1]: Started auditd.service - Security Auditing Service.
+Sep 14 09:56:00 edge01 sshd[20630]: Accepted publickey for ops2 from 10.40.6.8 port 53014 ssh2
+Sep 14 10:00:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 14 10:04:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/cat /var/log/syslog
+Sep 14 10:08:00 edge01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:12:00 edge01 systemd[1]: Started auditd.service - Security Auditing Service.
+Sep 14 10:16:00 edge01 sshd[59832]: Accepted publickey for ops2 from 10.40.6.8 port 53019 ssh2
+Sep 14 10:20:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 14 10:24:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/cat /var/log/syslog
+Sep 14 10:28:00 edge01 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 14 10:32:00 edge01 systemd[1]: Started auditd.service - Security Auditing Service.
+Sep 14 10:36:00 edge01 sshd[34892]: Accepted publickey for ops2 from 10.40.6.8 port 53024 ssh2
+Sep 14 10:40:00 edge01 sudo:    ops2 : TTY=pts/1 ; PWD=/home/ops2 ; USER=root ; COMMAND=/usr/bin/apt-get update

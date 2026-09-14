@@ -1,0 +1,36 @@
+# login_to_nonexistent_account.log -- exercises LoginToNonexistentAccountRule (MEDIUM, account entity)
+# NOTE: this rule fires ONLY against usernames in its configured `allowlist` (decommissioned accounts).
+# Configure the rule (PATCH /detection/rules or the Threat Detection settings UI) with:
+#   allowlist = ["jsmith-old", "old-svc-2019"]
+# BEFORE uploading this file, otherwise it will match nothing (fails safe by design).
+# Expected once configured: 2 alerts (one per attempt) targeting jsmith-old and old-svc-2019.
+Sep 14 03:30:00 gateway01 sshd[54602]: Failed password for invalid user jsmith-old from 203.0.113.80 port 60100 ssh2
+Sep 14 03:42:00 gateway01 sshd[47100]: Failed password for invalid user old-svc-2019 from 198.51.100.90 port 60110 ssh2
+Sep 14 09:00:00 gateway01 sshd[13209]: Failed password for rlindqvist from 10.40.7.10 port 54000 ssh2
+Sep 14 09:05:00 gateway01 sshd[36580]: Accepted publickey for sabara from 10.40.7.11 port 54001 ssh2
+Sep 14 09:10:00 gateway01 sshd[48749]: Accepted publickey for tcolon from 10.40.7.12 port 54002 ssh2
+Sep 14 09:15:00 gateway01 sshd[55812]: Accepted publickey for uenright from 10.40.7.13 port 54003 ssh2
+Sep 14 09:20:00 gateway01 sshd[48620]: Accepted publickey for rlindqvist from 10.40.7.14 port 54004 ssh2
+Sep 14 09:25:00 gateway01 sshd[55210]: Accepted publickey for sabara from 10.40.7.15 port 54005 ssh2
+Sep 14 09:30:00 gateway01 sshd[28028]: Failed password for tcolon from 10.40.7.16 port 54006 ssh2
+Sep 14 09:35:00 gateway01 sshd[55991]: Accepted publickey for uenright from 10.40.7.17 port 54007 ssh2
+Sep 14 09:40:00 gateway01 sshd[31564]: Accepted publickey for rlindqvist from 10.40.7.18 port 54008 ssh2
+Sep 14 09:45:00 gateway01 sshd[47712]: Accepted publickey for sabara from 10.40.7.19 port 54009 ssh2
+Sep 14 09:50:00 gateway01 sshd[12853]: Accepted publickey for tcolon from 10.40.7.20 port 54010 ssh2
+Sep 14 09:55:00 gateway01 sshd[59032]: Accepted publickey for uenright from 10.40.7.21 port 54011 ssh2
+Sep 14 10:00:00 gateway01 sshd[16604]: Failed password for rlindqvist from 10.40.7.22 port 54012 ssh2
+Sep 14 10:05:00 gateway01 sshd[10501]: Accepted publickey for sabara from 10.40.7.23 port 54013 ssh2
+Sep 14 10:10:00 gateway01 sshd[24558]: Accepted publickey for tcolon from 10.40.7.24 port 54014 ssh2
+Sep 14 10:15:00 gateway01 sshd[23950]: Accepted publickey for uenright from 10.40.7.25 port 54015 ssh2
+Sep 14 10:20:00 gateway01 sshd[18434]: Accepted publickey for rlindqvist from 10.40.7.26 port 54016 ssh2
+Sep 14 10:25:00 gateway01 sshd[54326]: Accepted publickey for sabara from 10.40.7.27 port 54017 ssh2
+Sep 14 10:30:00 gateway01 sshd[59552]: Failed password for tcolon from 10.40.7.28 port 54018 ssh2
+Sep 14 10:35:00 gateway01 sshd[48864]: Accepted publickey for uenright from 10.40.7.29 port 54019 ssh2
+Sep 14 10:40:00 gateway01 sshd[31552]: Accepted publickey for rlindqvist from 10.40.7.30 port 54020 ssh2
+Sep 14 10:45:00 gateway01 sshd[44006]: Accepted publickey for sabara from 10.40.7.31 port 54021 ssh2
+Sep 14 10:50:00 gateway01 sshd[46701]: Accepted publickey for tcolon from 10.40.7.32 port 54022 ssh2
+Sep 14 10:55:00 gateway01 sshd[30567]: Accepted publickey for uenright from 10.40.7.33 port 54023 ssh2
+Sep 14 11:00:00 gateway01 sshd[58821]: Failed password for rlindqvist from 10.40.7.34 port 54024 ssh2
+Sep 14 11:05:00 gateway01 sshd[31896]: Accepted publickey for sabara from 10.40.7.35 port 54025 ssh2
+Sep 14 11:10:00 gateway01 sshd[17501]: Accepted publickey for tcolon from 10.40.7.36 port 54026 ssh2
+Sep 14 11:15:00 gateway01 sshd[40143]: Accepted publickey for uenright from 10.40.7.37 port 54027 ssh2

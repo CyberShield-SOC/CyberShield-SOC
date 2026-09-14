@@ -1,0 +1,7 @@
+# Companion feed for sample-logs/threat_intel_match.csv
+# Import this via Threat Detection > Threat Intelligence > Import Feed
+# BEFORE uploading threat_intel_match.csv, otherwise ThreatIntelMatchRule
+# has no indicators to match against and will produce no alerts.
+# One IP, CIDR, or domain per line. Text after # or ; is ignored.
+198.51.100.222   # sample sample-logs fixture indicator (C2 IP)
+malicious-c2-example.net   ; sample sample-logs fixture indicator (C2 domain)

@@ -97,7 +97,12 @@ def event_type_from_text(text: str):
         return "privilege_escalation"
     if "connection closed" in lowered or "disconnected" in lowered:
         return "connection_closed"
-    if any(word in lowered for word in ["password", "login", "authentication", "auth", "invalid user"]):
+    # "publickey"/"keyboard-interactive"/"gssapi": sshd's non-password auth
+    # methods ("Accepted publickey for alice from ...") are logins too.
+    if any(word in lowered for word in [
+        "password", "login", "authentication", "auth", "invalid user",
+        "publickey", "keyboard-interactive", "gssapi-with-mic",
+    ]):
         return "login_attempt"
     if "port_scan" in lowered or "scan" in lowered:
         return "port_scan"

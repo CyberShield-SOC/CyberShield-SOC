@@ -1,0 +1,12 @@
+Sep 10 10:00:00 web02 sshd[11728]: Accepted publickey for bob from 10.10.0.30 port 51000 ssh2
+Sep 10 10:01:00 web02 CRON[58580]: (root) CMD (run-parts /etc/cron.hourly)
+Sep 10 10:02:00 web02 crontab[45428]: (bob) LIST (bob)
+Sep 10 10:03:00 web02 usermod[24975]: add 'bob' to group 'developers'
+Sep 10 10:04:00 web02 sudo:    bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/apt-get update
+Sep 10 10:05:00 web02 sudo:    bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/cat /root/.ssh/authorized_keys
+Sep 10 10:06:00 web02 sudo:    bob : TTY=pts/0 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/sbin/iptables -L -n
+Sep 10 10:07:00 web02 systemd[1]: Stopped A high performance web server and a reverse proxy server (nginx).
+Sep 10 10:07:02 web02 systemd[1]: Started A high performance web server and a reverse proxy server (nginx).
+Sep 10 10:08:00 web02 systemd[1]: Started logrotate.service - Rotate log files.
+Sep 10 10:09:00 web02 systemd-journald[398]: Journal started
+Sep 10 10:10:00 web02 systemd[1]: Started fail2ban.service - Fail2Ban Service.

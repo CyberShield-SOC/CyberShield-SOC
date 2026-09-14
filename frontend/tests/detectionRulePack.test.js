@@ -6,10 +6,23 @@ import {
   summarizeRuleActivity,
 } from "../src/soc/data/detectionRulePack.js";
 
-test("catalogs the eight rules registered by the backend detection engine", () => {
-  assert.deepEqual(CURRENT_DETECTION_RULE_IDS, [
+test("catalogs the 30 rules registered by the backend detection engine", () => {
+  assert.equal(CURRENT_DETECTION_RULE_IDS.length, 30);
+  assert.deepEqual(CURRENT_DETECTION_RULE_IDS.slice(0, 8), [
     "R-101", "R-102", "R-103", "R-104", "R-105", "R-106", "R-107", "R-108",
   ]);
+  const engineKeys = new Set(Object.values(CURRENT_DETECTION_RULES).map((rule) => rule.engineKey));
+  for (const key of [
+    "new_account_created", "privileged_group_modified", "cron_persistence",
+    "security_control_disabled", "log_tampering", "ssh_key_added", "host_log_silence",
+    "direct_root_login", "service_account_interactive", "login_to_nonexistent_account",
+    "off_hours_login", "dormant_account_activity", "impossible_travel", "first_seen_geo_asn",
+    "lateral_movement_chain", "host_sweep", "outbound_beaconing", "dns_tunneling",
+    "egress_volume_anomaly", "threat_intel_match", "behavioral_anomaly_login",
+    "behavioral_anomaly_egress",
+  ]) {
+    assert.ok(engineKeys.has(key), `missing catalog entry for ${key}`);
+  }
   assert.equal(CURRENT_DETECTION_RULES["R-101"].engineKey, "brute_force_login");
   assert.match(CURRENT_DETECTION_RULES["R-101"].criteria, /5 failed login attempts.+60 seconds/i);
   assert.equal(CURRENT_DETECTION_RULES["R-102"].engineKey, "invalid_user_enumeration");

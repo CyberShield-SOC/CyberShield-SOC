@@ -1,0 +1,12 @@
+node=app01 type=SYSCALL msg=audit(1789050600.833:81001): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=55d1c0 a2=441 a3=1b6 items=2 ppid=4100 pid=4121 auid=1003 uid=0 gid=0 euid=0 tty=pts1 ses=7 comm="bash" exe="/usr/bin/bash" key="ssh_keys" AUID="mallory" UID="root"
+node=app01 type=CWD msg=audit(1789050600.833:81001): cwd="/root"
+node=app01 type=PATH msg=audit(1789050600.833:81001): item=0 name="/root/.ssh/" inode=131090 dev=08:01 mode=040700 ouid=0 ogid=0 nametype=PARENT
+node=app01 type=PATH msg=audit(1789050600.833:81001): item=1 name="/root/.ssh/authorized_keys" inode=131095 dev=08:01 mode=0100600 ouid=0 ogid=0 nametype=NORMAL
+node=app01 type=SYSCALL msg=audit(1789050620.452:81002): arch=c000003e syscall=257 success=yes exit=5 a0=ffffff9c a1=7ffd10 a2=0 a3=0 items=1 ppid=1 pid=4200 auid=4294967295 uid=0 gid=0 euid=0 tty=(none) ses=4294967295 comm="sshd" exe="/usr/sbin/sshd" key="ssh_keys"
+node=app01 type=PATH msg=audit(1789050620.452:81002): item=0 name="/root/.ssh/authorized_keys" inode=131095 dev=08:01 mode=0100600 ouid=0 ogid=0 nametype=NORMAL
+node=app01 type=SYSCALL msg=audit(1789050660.680:81003): arch=c000003e syscall=59 success=yes exit=0 a0=55d2 a1=55d3 a2=55d4 a3=0 items=2 ppid=4121 pid=4300 auid=1003 uid=0 comm="truncate" exe="/usr/bin/truncate" key="exec"
+node=app01 type=EXECVE msg=audit(1789050660.680:81003): argc=3 a0="truncate" a1="-s0" a2="/root/.bash_history"
+node=app01 type=MAC_STATUS msg=audit(1789050690.360:81004): enforcing=0 old_enforcing=1 auid=1003 ses=7 enabled=1 old-enabled=1 lsm=selinux res=1
+node=app01 type=CONFIG_CHANGE msg=audit(1789050720.946:81005): auid=1003 ses=7 op=remove_rule key="ssh_keys" list=4 res=1
+node=app01 type=SYSCALL msg=audit(1789050750.115:81006): arch=c000003e syscall=59 success=yes exit=0 a0=1 a1=2 a2=3 a3=0 items=2 ppid=4121 pid=4400 auid=1003 uid=0 comm="ls" exe="/usr/bin/ls" key="exec"
+node=app01 type=EXECVE msg=audit(1789050750.115:81006): argc=2 a0="ls" a1="-la"

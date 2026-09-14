@@ -7,6 +7,8 @@ The frontend in `frontend/` is connected to the FastAPI service in `backend/`. S
 - `POST /api/auth/login` accepts `{ username, password, remember_me }`. `username` may contain the account username or email address.
 - `GET /api/auth/me` restores a browser session on reload.
 - `POST /api/auth/logout` revokes the server session and clears its cookies.
+- `POST /api/auth/forgot-password` accepts `{ email }` and always returns the same success response, regardless of whether the email matches an account, so the response can't be used to enumerate accounts. If it matches an active account, a single-use, 30-minute reset link is emailed via Resend.
+- `POST /api/auth/reset-password` accepts `{ token, new_password }`, replaces the password, and revokes every existing session for the account.
 - The opaque session is stored in an HttpOnly, SameSite cookie. A separate non-secret CSRF cookie must match the `X-CSRF-Token` header for cookie-authenticated writes.
 - FastAPI remains authoritative for Admin, Analyst, and Viewer permissions. The frontend route guard is only a user-experience layer.
 
@@ -52,7 +54,7 @@ An incident may contain at most five analyst notes. The repository locks the inc
 
 ## Features still local
 
-The current backend has no API for workspace settings, AI inference/chat, reports, integrations, UTA SSO, MFA, end-user password recovery, or immutable note revisions. Admin-managed password reset is implemented, but the Forgot password page remains a support handoff. Supported interface preferences are stored only for the browser session; backend-managed security, retention, and masking policies are displayed as capability status rather than editable controls. Those screens do not claim that a server-side action occurred. After connected primary-credential login, the MFA screen remains in the route flow for UI continuity, but its six-digit check is frontend-only; the future backend must verify the challenge before issuing a fully authenticated session.
+The current backend has no API for workspace settings, AI inference/chat, reports, integrations, UTA SSO, or immutable note revisions. Admin-managed password reset and end-user self-service password recovery (`/api/auth/forgot-password`, `/api/auth/reset-password`) are both implemented. Supported interface preferences are stored only for the browser session; backend-managed security, retention, and masking policies are displayed as capability status rather than editable controls. Those screens do not claim that a server-side action occurred. After connected primary-credential login, the MFA screen's six-digit code is issued and verified server-side (`POST /api/auth/login` starts the challenge and emails the code via Resend; `POST /api/auth/2fa/verify` completes it) — no fully authenticated session exists until that verification succeeds.
 
 ## Error handling
 
