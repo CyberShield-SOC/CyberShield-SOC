@@ -20,8 +20,30 @@ The `DetectionEngine` (`backend/app/detection/engine.py`) runs every enabled rul
 | `port_scan` | Medium | A burst of port-scan events from one source IP |
 | `multi_ip_successful_login` | Medium | One account with successful logins from several distinct source IPs in a short window — shared/compromised credential use |
 | `sudo_after_login` | Medium | A successful login immediately followed by successful privilege escalation for the same account |
+| `direct_root_login` | High | A successful direct login to a superuser account |
+| `new_account_created` | High | A new OS account was created (useradd/adduser) |
+| `privileged_group_modified` | High | An account was added to a privileged group (sudo/wheel/admin/...) |
+| `ssh_key_added` | High | An SSH authorized_keys file was modified |
+| `security_control_disabled` | High | A firewall, MAC policy, or security agent was disabled |
+| `log_tampering` | Critical | Audit/log evidence was deleted, truncated, or its service stopped |
+| `cron_persistence` | Medium | A cron entry or systemd timer was created or modified |
+| `host_log_silence` | High | A host with an established reporting cadence stopped sending logs |
+| `host_sweep` | Medium | One source IP probed the same port across many hosts |
+| `lateral_movement_chain` | High | One account authenticated across several hosts in quick succession |
+| `service_account_interactive` | High | A configured service/system account was used for an interactive login |
+| `login_to_nonexistent_account` | Medium | A failed login attempt targeted a known decommissioned/disabled account |
+| `dormant_account_activity` | Medium | An account authenticated after being idle for an extended period |
+| `off_hours_login` | Low | A successful login occurred outside the configured business-hours window |
+| `first_seen_geo_asn` | Medium | An account logged in from a country or network (ASN) it has never used |
+| `impossible_travel` | High | An account logged in from two locations too far apart for the time between them |
+| `dns_tunneling` | High | A client sent many long, high-entropy DNS queries to one parent domain |
+| `outbound_beaconing` | High | An internal host made regular, low-jitter connections to one external destination |
+| `egress_volume_anomaly` | High | A host sent far more outbound data than its own baseline |
+| `threat_intel_match` | High | Traffic or DNS activity matched an imported threat-intelligence indicator |
+| `behavioral_anomaly_login` | Low | A login's time/geo combination scored as unusual against a trained population model (ML pilot, shadow-mode capable) |
+| `behavioral_anomaly_egress` | Low | A host's hourly egress pattern scored as unusual against a trained population model (ML pilot, shadow-mode capable) |
 
-Sample normal and suspicious log fixtures for each rule live under `sample-logs/cybershield-rule-tests/` and `sample-logs/kk_normal.csv` / `sample-logs/kk_suspicious.csv`, exercised by `backend/tests/test_detection.py` and `backend/tests/test_kapil_sprint5_rules.py`.
+Sample normal and suspicious log fixtures for the original eight rules live under `sample-logs/cybershield-rule-tests/` and `sample-logs/kk_normal.csv` / `sample-logs/kk_suspicious.csv`, exercised by `backend/tests/test_detection.py` and `backend/tests/test_kapil_sprint5_rules.py`. Fixtures for the 22 rules above live under `sample-logs/` (see `sample-logs/NEW_RULES_README.txt` for the expected alert per file); `login_to_nonexistent_account` and `service_account_interactive` need an `allowlist` configured first, `threat_intel_match` needs its companion feed imported first, and the two `behavioral_anomaly_*` ML pilots need a trained model (50+ historical samples) before they alert outside shadow mode — see that README for exact values.
 
 ## One-time local setup
 
