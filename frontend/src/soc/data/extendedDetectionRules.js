@@ -411,4 +411,23 @@ export const EXTENDED_DETECTION_RULES = Object.freeze({
     setupNote: "Same two-gate shadow mode as R-D01: no model yet means pure snapshot collection; once trained via POST /ml/models/egress_volume/train, `params.shadow_mode` (default on) withholds alerts until reviewed at GET /ml/scores and turned off.",
     defaults: { cooldown_seconds: 3600, params: { score_threshold: -0.02, shadow_mode: true } },
   }),
+
+  "R-D03": rule({
+    id: "R-D03",
+    engineKey: "behavioral_anomaly_threat_log",
+    group: "D",
+    name: "Unusual source IP traffic (ML)",
+    description: "A source IP's hourly traffic bucket — volume, connection count, deny rate, and how rare/novel this bucket's destinations/ports/protocols are against that IP's own history — scored jointly against a trained IsolationForest model, the same joint-anomaly idea as R-D01/R-D02 applied to generic firewall/flow traffic instead of logins or egress.",
+    technique: "T1046 · Network Service Discovery",
+    severity: "low",
+    owner: "Detection Engineering",
+    criteria: "decision_function score below a configured threshold against the source IP population's trained model",
+    input: "Firewall/netflow/proxy records with source IP, destination IP/port, protocol, byte counts, and allow/deny status; bucketed hourly per source IP against that IP's own running destination/port/protocol history",
+    groupBy: "Source IP",
+    query: "IsolationForest(log_bytes_total, connection_count, distinct_destinations, distinct_ports, deny_rate, dest_rarity, port_rarity, protocol_rarity, new_destination_rate, new_port_rate, dest_entropy, port_entropy).decision_function(bucket) < score_threshold",
+    response: "Advisory only — review alongside host_sweep and port_scan before acting; this is a statistical judgment, not a rule match.",
+    logSource: "Same firewall kernel logs or CSV/JSON flow/proxy exports host_sweep and port_scan already require.",
+    setupNote: "Same two-gate shadow mode as R-D01/R-D02: no model yet means pure snapshot collection; once trained via POST /ml/models/threat_log/train, `params.shadow_mode` (default on) withholds alerts until reviewed at GET /ml/scores and turned off. score_threshold defaults to -0.12, a provisional value from synthetic validation only (~0.8% false positives, 100% detection of injected attacks in testing) — see ml_experiments/README.md. Re-derive it from real GET /ml/scores data before trusting it long-term.",
+    defaults: { cooldown_seconds: 3600, params: { score_threshold: -0.12, shadow_mode: true } },
+  }),
 });

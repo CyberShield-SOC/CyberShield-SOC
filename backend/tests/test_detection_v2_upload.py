@@ -88,7 +88,7 @@ def test_detection_rules_endpoint_exposes_technique_and_entity_type():
     assert response.status_code == 200
     rules = {rule["name"]: rule for rule in response.json()["rules"]}
 
-    assert len(rules) == 30
+    assert len(rules) == 31
     assert rules["brute_force_login"]["mitre_technique"] == "T1110.001"
     assert rules["lateral_movement_chain"]["entity_type"] == "account"
     assert rules["new_account_created"]["config"]["cooldown_seconds"] == 1800

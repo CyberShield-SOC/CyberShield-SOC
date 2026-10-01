@@ -1,0 +1,16 @@
+dataset: kdd99
+rows: 311029  features: 83  contamination: 0.5000
+ROC-AUC (anomaly score vs. true label): 0.3463
+
+confusion matrix [rows=true, cols=pred] (normal, anomaly):
+[[ 3048  9071]
+ [28991 21096]]
+
+              precision    recall  f1-score   support
+
+      normal       0.10      0.25      0.14     12119
+     anomaly       0.70      0.42      0.53     50087
+
+    accuracy                           0.39     62206
+   macro avg       0.40      0.34      0.33     62206
+weighted avg       0.58      0.39      0.45     62206

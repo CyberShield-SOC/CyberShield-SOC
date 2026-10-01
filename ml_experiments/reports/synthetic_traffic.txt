@@ -1,0 +1,16 @@
+dataset: synthetic_traffic
+rows: 1000000  features: 10  contamination: 0.0050
+ROC-AUC (anomaly score vs. true label): 0.4925
+
+confusion matrix [rows=true, cols=pred] (normal, anomaly):
+[[198012    988]
+ [   996      4]]
+
+              precision    recall  f1-score   support
+
+      normal       0.99      1.00      1.00    199000
+     anomaly       0.00      0.00      0.00      1000
+
+    accuracy                           0.99    200000
+   macro avg       0.50      0.50      0.50    200000
+weighted avg       0.99      0.99      0.99    200000

@@ -1,0 +1,30 @@
+Label-fairness check for the bucket-level "any row non-benign" label
+======================================================================
+row-level anomaly rate: 0.0799
+
+empirical bucket-label rate by bucket size vs. iid-scatter prediction
+(if anomalous rows were scattered independent of bucket-level behavior):
+          mean  count  predicted_iid
+size                                
+1     0.074583  29524       0.079857
+2     0.141667  33981       0.153336
+3     0.200676  26331       0.220948
+4     0.266346  15371       0.283161
+5     0.316262   7127       0.340405
+6     0.363505   2762       0.393078
+7     0.418507    951       0.441545
+8     0.511364    264       0.486141
+9     0.430556     72       0.527176
+10    0.444444     18       0.564935
+11    0.666667      3       0.599677
+12    1.000000      1       0.631646
+
+corr(bucket_size, label): 0.2202
+ROC-AUC of connection_count ALONE predicting the bucket label: 0.6591
+
+Conclusion: the empirical label rate per bucket size tracks the iid-scatter
+prediction closely, and bucket size alone reaches AUC ~0.66 with zero
+behavioral signal -- this label is confounded by bucket size. It affects every
+bucketed feature set in this comparison equally (all include connection_count),
+so relative comparisons between feature sets remain meaningful, but absolute
+ROC-AUC numbers overstate genuine behavioral signal.

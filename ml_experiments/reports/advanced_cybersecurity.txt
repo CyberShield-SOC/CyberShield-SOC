@@ -1,0 +1,16 @@
+dataset: advanced_cybersecurity
+rows: 10000  features: 28  contamination: 0.0490
+ROC-AUC (anomaly score vs. true label): 0.4661
+
+confusion matrix [rows=true, cols=pred] (normal, anomaly):
+[[1795  107]
+ [  96    2]]
+
+              precision    recall  f1-score   support
+
+      normal       0.95      0.94      0.95      1902
+     anomaly       0.02      0.02      0.02        98
+
+    accuracy                           0.90      2000
+   macro avg       0.48      0.48      0.48      2000
+weighted avg       0.90      0.90      0.90      2000
