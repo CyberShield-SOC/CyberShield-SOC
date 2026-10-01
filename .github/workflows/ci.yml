@@ -31,8 +31,8 @@ jobs:
       JWT_SECRET_KEY: ci-test-only-secret-do-not-use-in-production
       OTP_SECRET: ci-test-only-otp-secret-do-not-use-in-production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -52,8 +52,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -65,7 +65,7 @@ jobs:
       - name: Build frontend
         run: npm run build
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-dist
           path: frontend/dist/
