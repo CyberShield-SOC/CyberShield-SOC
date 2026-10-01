@@ -22,7 +22,6 @@ from app.detection.models import LogRecord
 from app.detection.rules.behavioral_anomaly_login import BehavioralAnomalyLoginRule
 from app.ml.features import ENTITY_TYPE, FEATURE_NAMES, FEATURE_SET, login_behavior_features, vector
 from app.ml.train_login_behavior import InsufficientTrainingDataError, train
-from app.repositories.baseline_repository import get_baseline
 from app.ml.scoring import load_estimator, score_event
 from app.repositories.ml_repository import (
     count_feature_snapshots,

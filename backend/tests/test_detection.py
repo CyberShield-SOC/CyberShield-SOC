@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 pytestmark = pytest.mark.no_db
 
 from app.detection.engine import DetectionEngine
-from app.detection.models import Alert, LogRecord
+from app.detection.models import LogRecord
 from app.detection.rules.brute_force import BruteForceLoginRule
 from app.detection.rules.credential_stuffing import CredentialStuffingRule
 from app.detection.rules.invalid_user import InvalidUserRule

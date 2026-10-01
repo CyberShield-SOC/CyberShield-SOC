@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from app.parsers.field_normalizer import CORE_FIELDS, normalize_entry, status_from_http_code
 
 # 127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326 "ref" "UA"
