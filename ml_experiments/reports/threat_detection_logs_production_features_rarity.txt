@@ -1,0 +1,16 @@
+dataset: threat_detection_logs (production threat_log features, 12-feature w/ rarity+novelty+entropy, bucketed)
+rows: 116405  features: 12  contamination: 0.1738
+ROC-AUC (anomaly score vs. true label): 0.5198
+
+confusion matrix [rows=true, cols=pred] (normal, anomaly):
+[[15942  3294]
+ [ 3229   816]]
+
+              precision    recall  f1-score   support
+
+      normal       0.83      0.83      0.83     19236
+     anomaly       0.20      0.20      0.20      4045
+
+    accuracy                           0.72     23281
+   macro avg       0.52      0.52      0.52     23281
+weighted avg       0.72      0.72      0.72     23281

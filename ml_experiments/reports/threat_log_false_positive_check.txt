@@ -1,0 +1,47 @@
+False-positive check for behavioral_anomaly_threat_log under realistic normal traffic
+========================================================================================
+provisional score_threshold used throughout: -0.12
+normal IPs per run: 30  |  attack IPs per run: 6 (3 loud + 3 subtle)
+
+--- novelty_level=0% (actual novel-bucket fraction observed: 0.0%) ---
+false-positive rate @ threshold: 3.3% (1/30)
+loud-attack detection rate @ threshold:   100%
+subtle-attack detection rate @ threshold: 100%
+normal scores:  min=-0.1428  max=0.1488
+attack scores:  min=-0.2328  max=-0.1933
+ROC-AUC (all 6 attacks vs. all 30 normals): 1.0000
+false positives caused by (counts, a flagged IP can have >1 cause): {'volume_spike': 1}
+
+--- novelty_level=5% (actual novel-bucket fraction observed: 5.3%) ---
+false-positive rate @ threshold: 0.0% (0/30)
+loud-attack detection rate @ threshold:   100%
+subtle-attack detection rate @ threshold: 100%
+normal scores:  min=-0.0238  max=0.1313
+attack scores:  min=-0.2059  max=-0.1797
+ROC-AUC (all 6 attacks vs. all 30 normals): 1.0000
+false positives caused by: n/a (none flagged)
+
+--- novelty_level=15% (actual novel-bucket fraction observed: 13.4%) ---
+false-positive rate @ threshold: 0.0% (0/30)
+loud-attack detection rate @ threshold:   100%
+subtle-attack detection rate @ threshold: 100%
+normal scores:  min=-0.0705  max=0.1381
+attack scores:  min=-0.2364  max=-0.1750
+ROC-AUC (all 6 attacks vs. all 30 normals): 1.0000
+false positives caused by: n/a (none flagged)
+
+--- novelty_level=30% (actual novel-bucket fraction observed: 28.0%) ---
+false-positive rate @ threshold: 3.3% (1/30)
+loud-attack detection rate @ threshold:   100%
+subtle-attack detection rate @ threshold: 100%
+normal scores:  min=-0.1273  max=0.1305
+attack scores:  min=-0.2486  max=-0.2046
+ROC-AUC (all 6 attacks vs. all 30 normals): 1.0000
+false positives caused by (counts, a flagged IP can have >1 cause): {'new_destination': 1}
+
+--- summary across novelty levels ---
+  novelty   fp_rate  loud_det  subtle_det  roc_auc  normal_max  attack_min
+      0%      3.3%      100%        100%   1.0000      0.1488     -0.2328
+      5%      0.0%      100%        100%   1.0000      0.1313     -0.2059
+     15%      0.0%      100%        100%   1.0000      0.1381     -0.2364
+     30%      3.3%      100%        100%   1.0000      0.1305     -0.2486
