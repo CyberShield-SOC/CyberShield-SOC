@@ -8,6 +8,7 @@ from app.detection.models import Alert, LogRecord, RuleConfig, RuleMetadata
 from app.detection.rules.base import BaseRule
 from app.detection.rules.behavioral_anomaly_egress import BehavioralAnomalyEgressRule
 from app.detection.rules.behavioral_anomaly_login import BehavioralAnomalyLoginRule
+from app.detection.rules.behavioral_anomaly_threat_log import BehavioralAnomalyThreatLogRule
 from app.detection.rules.brute_force import BruteForceLoginRule
 from app.detection.rules.credential_stuffing import CredentialStuffingRule
 from app.detection.rules.cron_persistence import CronPersistenceRule
@@ -93,6 +94,7 @@ _RULE_CLASSES: tuple[type[BaseRule], ...] = (
     # Group D — machine-learning pilots (docs/ml/isolation_forest_feasibility.md)
     BehavioralAnomalyLoginRule,
     BehavioralAnomalyEgressRule,
+    BehavioralAnomalyThreatLogRule,
 )
 
 
