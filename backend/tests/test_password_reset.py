@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import settings
 from app.dispatch.reset_email import get_reset_email_sender
 from app.main import app
 from app.models.auth_session import AuthSession

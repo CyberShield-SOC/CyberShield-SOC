@@ -146,7 +146,6 @@ def test_invalid_user_ignores_empty_string_username_as_missing():
 # ── Boundary values ──────────────────────────────────────────────────────────
 
 def test_port_scan_fires_exactly_at_threshold_boundary_not_one_below():
-    rule = PortScanRule(threshold=10, window_seconds=60)
     below = [rec(i + 1, _ts(i), "198.51.100.9", None, event="port_scan", status="UNKNOWN") for i in range(9)]
     at_threshold = below + [rec(10, _ts(9), "198.51.100.9", None, event="port_scan", status="UNKNOWN")]
 

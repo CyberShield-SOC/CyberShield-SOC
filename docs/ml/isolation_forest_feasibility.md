@@ -1,7 +1,7 @@
 # Feasibility: `sklearn.ensemble.IsolationForest` for anomaly detection
 
 Scoped answer to one question: could CyberShield use `IsolationForest` to catch things the
-28 rule-based detectors (`backend/app/detection/rules/`) miss, and if so, what data would it
+31 rule-based detectors (`backend/app/detection/rules/`) miss, and if so, what data would it
 need? It complements, and does not replace,
 [`docs/backend_data_requirements_for_ml.md`](../backend_data_requirements_for_ml.md), which
 predates the Group A/B/C rule work and the `entity_baselines`/`host_heartbeats`/
@@ -301,7 +301,7 @@ polish.
 
 The score cutoff, the `min_samples` cold-start gate, and any per-entity exemptions would slot
 directly into the `BaseRule.DEFAULT_PARAMS`/`params`/`allowlist` mechanism already built for
-the other 28 rules (`backend/app/detection/rules/base.py`) — no new config plumbing needed,
+the other 31 rules (`backend/app/detection/rules/base.py`) — no new config plumbing needed,
 just a new rule class using the existing one.
 
 ### 5.7 Privacy

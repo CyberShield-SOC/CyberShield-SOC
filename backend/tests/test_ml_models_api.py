@@ -93,7 +93,7 @@ def test_train_list_and_activate_round_trip(db_session, monkeypatch):
 
     monkeypatch.setitem(registry_module.TRAINERS, feature_set, login_train)
 
-    admin = as_role(db_session, "Admin")
+    as_role(db_session, "Admin")
     _seed_snapshots(db_session, feature_set)
 
     trained = client.post(f"/ml/models/{feature_set}/train")

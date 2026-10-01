@@ -97,7 +97,7 @@ def test_unrecognized_role_name_is_denied_not_defaulted_to_privileged():
 
 def test_cannot_demote_the_final_active_admin_via_role_endpoint(db_session):
     admin_role = ensure_role(db_session, "Admin")
-    analyst_role = ensure_role(db_session, "Analyst")
+    ensure_role(db_session, "Analyst")
     suffix = uuid4().hex[:8]
 
     # Deactivate every other Admin so this test's admin is provably the last one.
@@ -155,7 +155,7 @@ def test_cannot_deactivate_the_final_active_admin(db_session):
 
 def test_can_demote_an_admin_when_another_active_admin_remains(db_session):
     admin_role = ensure_role(db_session, "Admin")
-    analyst_role = ensure_role(db_session, "Analyst")
+    ensure_role(db_session, "Analyst")
     suffix = uuid4().hex[:8]
 
     admin_one = User(
