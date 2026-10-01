@@ -3,7 +3,7 @@
 At real upload volume the same source IP routinely qualifies for
 auto-blocking from several different alerts in one batch (e.g. multiple
 password_spraying windows against different usernames). The old
-select-then-insert create_or_update_blocked_ip() had no way to see an
+select-then-insert approach had no way to see an
 uncommitted duplicate from earlier in the same loop, so Postgres raised a
 UniqueViolation on the batched flush the moment two qualifying alerts shared
 an IP — reproduced with a 400k-line synthetic upload before this fix.

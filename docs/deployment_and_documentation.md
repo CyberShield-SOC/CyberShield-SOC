@@ -117,11 +117,12 @@ The initial Admin account is created only when `CYBERSHIELD_ADMIN_PASSWORD` is s
 
 ## Railway Deployment
 
-`railway.json` and `nixpacks.toml` at the repository root configure a single
-Railway service that builds the frontend, installs backend dependencies, runs
-migrations, and starts the API (which also serves the built frontend from
-`frontend/dist` — see `app/main.py`). No separate frontend service or CORS
-configuration is required for this combined deployment.
+`railway.json` (pinned to the repository's `Dockerfile` as the builder)
+configures a single Railway service that builds the frontend, installs
+backend dependencies, runs migrations, and starts the API (which also serves
+the built frontend from `frontend/dist` — see `app/main.py`). No separate
+frontend service or CORS configuration is required for this combined
+deployment.
 
 To deploy:
 
