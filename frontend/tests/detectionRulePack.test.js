@@ -6,8 +6,8 @@ import {
   summarizeRuleActivity,
 } from "../src/soc/data/detectionRulePack.js";
 
-test("catalogs the 30 rules registered by the backend detection engine", () => {
-  assert.equal(CURRENT_DETECTION_RULE_IDS.length, 30);
+test("catalogs the 31 rules registered by the backend detection engine", () => {
+  assert.equal(CURRENT_DETECTION_RULE_IDS.length, 31);
   assert.deepEqual(CURRENT_DETECTION_RULE_IDS.slice(0, 8), [
     "R-101", "R-102", "R-103", "R-104", "R-105", "R-106", "R-107", "R-108",
   ]);
@@ -19,7 +19,7 @@ test("catalogs the 30 rules registered by the backend detection engine", () => {
     "off_hours_login", "dormant_account_activity", "impossible_travel", "first_seen_geo_asn",
     "lateral_movement_chain", "host_sweep", "outbound_beaconing", "dns_tunneling",
     "egress_volume_anomaly", "threat_intel_match", "behavioral_anomaly_login",
-    "behavioral_anomaly_egress",
+    "behavioral_anomaly_egress", "behavioral_anomaly_threat_log",
   ]) {
     assert.ok(engineKeys.has(key), `missing catalog entry for ${key}`);
   }
