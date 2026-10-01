@@ -34,3 +34,6 @@ postgres-data/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+
+Dataset for anamoly detection/
+ml_experiments/models/
