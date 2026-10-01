@@ -352,7 +352,7 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 - [Connected local setup](frontend/docs/CONNECTED_BACKEND.md)
 - [Deployment and documentation checklist](docs/deployment_and_documentation.md)
 - [Workflow validation](frontend/docs/WORKFLOW_VALIDATION.md)
-- [Interaction test report](frontend/docs/INTERACTION_TEST_REPORT.md)
+- [Interaction test report (archived)](frontend/docs/archive/INTERACTION_TEST_REPORT.md)
 - [Security policy and frontend boundary](SECURITY.md)
 
 ## Tech Stack

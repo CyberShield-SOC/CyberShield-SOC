@@ -51,7 +51,7 @@ From `backend/`:
 
 The backend suite includes a persisted investigation flow: upload evidence, generate/review an alert, reject a duplicate incident, create an incident, add a note, transition to Investigating and Resolved, then reload the incident and global notes collection. Each test is isolated inside a rollback-only database transaction so validation never changes the development dataset.
 
-See `INTERACTION_TEST_REPORT.md` for the latest route-by-route browser audit, exact test totals, discovered fixes, and release-environment boundaries.
+See `archive/INTERACTION_TEST_REPORT.md` for a dated, point-in-time route-by-route browser audit, exact test totals, discovered fixes, and release-environment boundaries.
 
 ## Production work that remains
 
