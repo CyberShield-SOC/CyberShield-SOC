@@ -5,6 +5,7 @@ import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDial
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { formatTimestamp } from "../utils/eventUtils";
 import { INCIDENT_STATUSES, incidentStatusLabel, isTerminalIncidentStatus, nextIncidentWorkflowAction } from "../utils/incidentWorkflow";
+import { investigationHistoryForIncident } from "../utils/investigationViews";
 import { ErrorState, InlineNotice, LoadingState, PageHeader, Panel, SeverityBadge, StatusBadge, ValidationMessage } from "../components/Ui";
 
 const MAX_INCIDENT_NOTES = 5;
@@ -55,6 +56,7 @@ export default function IncidentTrackingPage({ navigate }) {
   const tasks = incident ? tasksByIncident[incident.id] || defaultTasks(incident) : [];
   const allIncidentNotes = notes.filter((item) => item.linkedType === "incident" && item.linkedId === incident?.id);
   const visibleIncidentNotes = allIncidentNotes.filter((item) => !item.archived);
+  const incidentHistory = investigationHistoryForIncident(incident, notes);
   const noteLimitReached = allIncidentNotes.length >= MAX_INCIDENT_NOTES;
   const statusAction = incident ? nextIncidentWorkflowAction(incident.status) : null;
   const currentWorkflowIndex = incident ? workflowIndex(incident.status) : 0;
@@ -176,9 +178,10 @@ export default function IncidentTrackingPage({ navigate }) {
         </Panel>
         <Panel title="Investigation timeline">
           <ol className="timeline-list">
-            <li><PlayCircle size={16} /><div><strong>Incident record available</strong><span>{formatTimestamp(incident.updated)} · {incident.sourceAlertId ? `Alert ${incident.sourceAlertId}` : "SOC queue"}</span></div></li>
-            <li><Clock3 size={16} /><div><strong>Status: {incident.status}</strong><span>{incident.owner || "Unassigned"} · current assignee</span></div></li>
-            {visibleIncidentNotes.slice(0, 3).map((item) => <li key={item.id}><MessageSquareText size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.updatedAt)} · {item.author}</span></div></li>)}
+            {incidentHistory.slice(0, 6).map((item, index) => {
+              const Icon = index === 0 ? PlayCircle : item.id.startsWith("NOTE-") ? MessageSquareText : Clock3;
+              return <li key={item.id}><Icon size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>;
+            })}
           </ol>
         </Panel>
         <Panel className="span-2" title="Analyst notes" subtitle={allIncidentNotes.length > MAX_INCIDENT_NOTES ? `${allIncidentNotes.length} existing · ${MAX_INCIDENT_NOTES}-note limit enforced` : `${allIncidentNotes.length} of ${MAX_INCIDENT_NOTES} notes used`}>
