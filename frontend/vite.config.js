@@ -31,7 +31,7 @@ function loadDevHttpsCert() {
   }
 }
 
-const devHttps = loadDevHttpsCert();
+const devHttps = process.env.VITE_DEV_HTTPS === "false" ? false : loadDevHttpsCert();
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { formatTimestamp } from "../utils/eventUtils";
@@ -8,6 +8,7 @@ import { paginateRecords } from "../utils/pagination";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { getAlertRecommendations, getIncidentActionLabel, incidentMatchesAlert } from "../utils/alertRecommendations";
 import { evidenceEntries } from "../utils/ruleConfig";
+import { formatEvidenceValue, investigationHistoryForIncident, normalizedEvidenceRows, rawEvidenceRows, relatedAlertsForAlert } from "../utils/investigationViews";
 import {
   ErrorState,
   InlineNotice,
@@ -25,6 +26,7 @@ import {
 const ALERT_STATUSES = ["new", "triaging", "investigating", "acknowledged", "escalated", "contained", "resolved"];
 const API_ALERT_STATUSES = ["new", "investigating", "escalated", "resolved"];
 const PAGE_SIZE = 10;
+const EVIDENCE_PAGE_SIZE = 4;
 
 function formatAlertTimeRange(alert) {
   const start = formatTimestamp(alert.firstSeen || alert.observedAt || alert.createdAt);
@@ -87,6 +89,7 @@ export default function AlertsPage({ navigate }) {
     canWrite,
     currentActor,
     incidents,
+    notes,
     events,
     detectionRules,
     mutation,
@@ -109,6 +112,7 @@ export default function AlertsPage({ navigate }) {
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [noteComment, setNoteComment] = useState("");
   const [noteError, setNoteError] = useState("");
+  const [evidencePage, setEvidencePage] = useState(1);
   const loading = resources.alerts.loading || resources.events.loading;
   const error = resources.alerts.error || resources.events.error;
 
@@ -131,7 +135,10 @@ export default function AlertsPage({ navigate }) {
   const selected = allAlerts.find((alert) => alert.id === selectedAlertId) || null;
   const rule = selected ? detectionRules[selected.ruleId] : null;
   const evidence = selected ? events.filter((event) => selected.evidenceIds.includes(event.id)) : [];
+  const evidencePagination = useMemo(() => paginateRecords(evidence, evidencePage, EVIDENCE_PAGE_SIZE), [evidence, evidencePage]);
+  const relatedActivity = useMemo(() => relatedAlertsForAlert(selected, allAlerts, events), [allAlerts, events, selected]);
   const linkedIncident = selected ? incidents.find((incident) => incidentMatchesAlert(incident, selected)) : null;
+  const investigationHistory = useMemo(() => investigationHistoryForIncident(linkedIncident, notes), [linkedIncident, notes]);
   const recommendations = selected ? getAlertRecommendations(selected) : [];
   const linkedIncidentIsTerminal = linkedIncident ? isTerminalIncidentStatus(linkedIncident.status) : false;
   const incidentActionLabel = getIncidentActionLabel(linkedIncident, selected?.severity);
@@ -139,6 +146,10 @@ export default function AlertsPage({ navigate }) {
   useEffect(() => {
     setPage(1);
   }, [query, severity, source, status]);
+
+  useEffect(() => {
+    setEvidencePage(1);
+  }, [selected?.id]);
 
   if (loading) return <LoadingState label="Synchronizing active alerts and matched evidence…" />;
   if (error) return <ErrorState message={error} onRetry={() => Promise.all([refresh("alerts"), refresh("events")])} />;
@@ -305,18 +316,66 @@ export default function AlertsPage({ navigate }) {
                 </div>
               </Panel>
 
-              <Panel title="Matched log evidence" subtitle={`${evidence.length} normalized record${evidence.length === 1 ? "" : "s"}`}>
+              <Panel title="Matched log evidence" subtitle={`${evidence.length} normalized record${evidence.length === 1 ? "" : "s"}${evidence.length > EVIDENCE_PAGE_SIZE ? ` · page ${evidencePagination.page} of ${evidencePagination.pageCount}` : ""}`}>
                 <div className="evidence-cards">
-                  {evidence.map((event) => (
+                  {evidencePagination.items.map((event) => (
                     <article key={event.id}>
                       <header><strong className="mono">{event.id}</strong><StatusBadge status={event.status} /></header>
-                      <p className="mono">{formatTimestamp(event.timestamp)} {event.source} {event.sourceIp} user={event.user}</p>
-                      <span>{event.message}</span>
+                      <div className="evidence-field-groups">
+                        <section>
+                          <h4>Normalized fields</h4>
+                          <dl>
+                            {normalizedEvidenceRows(event).map(([key, value]) => (
+                              <div key={key}><dt>{key}</dt><dd>{formatEvidenceValue(value)}</dd></div>
+                            ))}
+                          </dl>
+                        </section>
+                        <section>
+                          <h4>Preserved raw evidence</h4>
+                          <dl>
+                            {rawEvidenceRows(selected, event).map(([key, value]) => (
+                              <div key={key}><dt>{key}</dt><dd>{formatEvidenceValue(value)}</dd></div>
+                            ))}
+                          </dl>
+                          {!rawEvidenceRows(selected, event).length && <p className="empty-inline">No raw evidence fields were supplied by the source API.</p>}
+                        </section>
+                      </div>
                     </article>
                   ))}
                   {!evidence.length && <p className="empty-inline">No normalized log evidence is linked to this alert yet.</p>}
                 </div>
+                <TablePagination label="evidence records" page={evidencePagination.page} pageSize={EVIDENCE_PAGE_SIZE} totalItems={evidence.length} onPageChange={setEvidencePage} />
                 <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.eventLogs)}>Open complete event log <ArrowUpRight size={13} /></button>
+              </Panel>
+
+              <Panel title="Correlated activity" subtitle={relatedActivity.length ? `${relatedActivity.length} related alert${relatedActivity.length === 1 ? "" : "s"} · grouped in a 30-minute window` : "No correlation exists for this alert"}>
+                <div className="correlation-list">
+                  {relatedActivity.map((item) => (
+                    <article key={item.alert.id}>
+                      <header><span><GitBranch size={14} />{item.reason}</span><SeverityBadge severity={item.alert.severity} /></header>
+                      <strong>{item.alert.id} · {item.alert.title}</strong>
+                      <dl>
+                        <div><dt>Grouping entity</dt><dd className="mono">{item.groupingEntity}</dd></div>
+                        <div><dt>Time window</dt><dd>{item.timeWindow}</dd></div>
+                        <div><dt>Linked events</dt><dd>{item.linkedEvents.length}</dd></div>
+                      </dl>
+                      <button className="soc-text-button" type="button" onClick={() => setSelectedAlertId(item.alert.id)}>Inspect related alert <ArrowUpRight size={13} /></button>
+                    </article>
+                  ))}
+                  {!relatedActivity.length && <p className="empty-inline">No related alert shares this alert's source, user, rule, or evidence in the active dataset.</p>}
+                </div>
+              </Panel>
+
+              <Panel title="Investigation history" subtitle={linkedIncident ? `${linkedIncident.id} · ${investigationHistory.length} timeline item${investigationHistory.length === 1 ? "" : "s"}` : "No incident has been opened yet"}>
+                {linkedIncident ? (
+                  <ol className="timeline-list compact">
+                    {investigationHistory.map((item) => (
+                      <li key={item.id}><Clock3 size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="empty-inline">Promote this alert or save an analyst note to begin investigation history.</p>
+                )}
               </Panel>
 
               <Panel

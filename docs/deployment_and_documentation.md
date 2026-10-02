@@ -2,6 +2,7 @@
 
 Use this checklist before a Sprint demo or deployment handoff. It covers clean-environment setup, environment variables, migrations, seeded accounts, and automated verification.
 
+
 ## Clean Environment Install
 
 Prerequisites:
