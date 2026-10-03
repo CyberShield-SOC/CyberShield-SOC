@@ -1,9 +1,4 @@
-"""create otp verifications table
-
-Revision ID: a1c3e7f92b4d
-Revises: d0a8c2e4f6b1
-Create Date: 2026-09-13 00:00:00.000000
-"""
+"""create otp verifications table"""
 
 from typing import Sequence, Union
 

@@ -1,9 +1,4 @@
-"""create custom rules table
-
-Revision ID: b4a1f6c9d3e7
-Revises: 7c91d4e6a2b8
-Create Date: 2026-09-12 00:00:00.000000
-"""
+"""create custom rules table"""
 
 from typing import Sequence, Union
 

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { socRepository } from "../services/socRepository";
 import { formatTimestamp } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
@@ -142,6 +143,7 @@ export default function QuickResolvePage({ navigate }) {
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState("");
   const [workflowError, setWorkflowError] = useState("");
+  const [resolutionNote, setResolutionNote] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [analysisError, setAnalysisError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
@@ -153,7 +155,8 @@ export default function QuickResolvePage({ navigate }) {
   );
   const selectedAlert = selectableAlerts.find((alert) => alert.id === selectedAlertId) || null;
   const linkedIncident = selectedAlert ? incidents.find((incident) => incidentMatchesAlert(incident, selectedAlert)) : null;
-  const evidence = selectedAlert ? events.filter((event) => selectedAlert.evidenceIds.includes(event.id)) : [];
+  const persisted = usePersistedInvestigation("alert", selectedAlert, repositoryMode, mutation.message);
+  const evidence = repositoryMode === "api" ? persisted.data?.events || [] : selectedAlert ? events.filter((event) => selectedAlert.evidenceIds.includes(event.id)) : [];
   const rule = selectedAlert ? detectionRules[selectedAlert.ruleId] : null;
   const incidentNotes = linkedIncident ? notes.filter((item) => item.linkedType === "incident" && item.linkedId === linkedIncident.id && !item.archived) : [];
   const checkedSteps = selectedAlert ? checklistByAlert[selectedAlert.id] || [] : [];
@@ -165,6 +168,7 @@ export default function QuickResolvePage({ navigate }) {
     setNote("");
     setNoteError("");
     setWorkflowError("");
+    setResolutionNote("");
     setAnalysis(null);
     setAnalysisError("");
   }, [selectedAlertId]);
@@ -218,23 +222,27 @@ export default function QuickResolvePage({ navigate }) {
   async function resolveInvestigation() {
     if (!selectedAlert || !linkedIncident || mutation.loading) return;
     setWorkflowError("");
+    if (resolutionNote.trim().length < 12) { setWorkflowError("Add a resolution note of at least 12 characters."); return; }
+    if (repositoryMode === "api") { await updateIncidentStatus(linkedIncident.id, "resolved", { note: resolutionNote }); return; }
     if (selectedAlert.status !== "resolved") {
       const updated = await updateAlertStatus(selectedAlert.id, "resolved");
       if (!updated) return;
     }
     if (!isTerminalIncidentStatus(linkedIncident.status)) {
-      await updateIncidentStatus(linkedIncident.id, "resolved");
+      await updateIncidentStatus(linkedIncident.id, "resolved", { note: resolutionNote });
     }
   }
 
   async function markFalsePositive() {
     if (!selectedAlert || !linkedIncident || mutation.loading) return;
     setWorkflowError("");
+    if (resolutionNote.trim().length < 12) { setWorkflowError("Add a resolution note of at least 12 characters."); return; }
+    if (repositoryMode === "api") { await updateIncidentStatus(linkedIncident.id, "false positive", { note: resolutionNote }); return; }
     if (selectedAlert.status !== "resolved") {
       const updated = await updateAlertStatus(selectedAlert.id, "resolved");
       if (!updated) return;
     }
-    await updateIncidentStatus(linkedIncident.id, "false positive");
+    await updateIncidentStatus(linkedIncident.id, "false positive", { note: resolutionNote });
   }
 
   async function saveNote(event) {
@@ -324,6 +332,7 @@ export default function QuickResolvePage({ navigate }) {
                 {linkedIncident && <div className="quick-status-pair"><div><small>Alert</small><StatusBadge status={selectedAlert.status} /></div><div><small>Incident</small><StatusBadge status={linkedIncident.status} /></div></div>}
                 {isTerminalIncidentStatus(linkedIncident?.status) && <p className="quick-completion"><Check size={14} />{linkedIncident.status === "false positive" ? "Marked false positive" : "Resolved"} by <strong>{linkedIncident.completedBy || "Unknown analyst"}</strong> · {formatTimestamp(linkedIncident.completedAt || linkedIncident.updated)}</p>}
                 {!linkedIncident ? <button className="soc-button primary full" type="button" disabled={!canWrite || mutation.loading} onClick={createFromAlert}><ShieldPlus size={15} />Create incident</button> : <>
+                  <label>Resolution note<textarea value={resolutionNote} maxLength="2000" disabled={!canWrite || mutation.loading} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Explain the final decision and actions taken." /></label>
                   <button className="soc-button secondary full" type="button" disabled={!canWrite || mutation.loading || linkedIncident.status === "investigating" || isTerminalIncidentStatus(linkedIncident.status)} onClick={startInvestigation}><PlayCircle size={15} />Start investigation</button>
                   <button className="soc-button primary full" type="button" disabled={!canWrite || mutation.loading || isTerminalIncidentStatus(linkedIncident.status)} onClick={resolveInvestigation}><CircleCheckBig size={15} />Resolve alert and incident</button>
                   <button className="soc-button secondary full" type="button" disabled={!canWrite || mutation.loading || isTerminalIncidentStatus(linkedIncident.status)} onClick={markFalsePositive}><CircleX size={15} />Mark false positive</button>

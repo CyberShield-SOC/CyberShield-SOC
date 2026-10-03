@@ -1,9 +1,4 @@
-"""ml feature snapshots and models (IsolationForest pilot)
-
-Revision ID: e3f8b1a4c962
-Revises: d7a1c3e5f820
-Create Date: 2026-09-14 00:30:00.000000
-"""
+"""ml feature snapshots and models (IsolationForest pilot)"""
 
 from typing import Sequence, Union
 

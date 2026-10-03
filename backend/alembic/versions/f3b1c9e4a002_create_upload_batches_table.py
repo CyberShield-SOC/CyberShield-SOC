@@ -1,9 +1,4 @@
-"""create upload batches table
-
-Revision ID: f3b1c9e4a002
-Revises: a37f5b8d2c10
-Create Date: 2026-08-28 00:00:00.000000
-"""
+"""create upload batches table"""
 
 from typing import Sequence, Union
 

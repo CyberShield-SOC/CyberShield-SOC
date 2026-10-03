@@ -1,9 +1,4 @@
-"""detection schema v3: alert evidence, rule params, threat indicators, host heartbeats
-
-Revision ID: d7a1c3e5f820
-Revises: c4e8b2f19a06
-Create Date: 2026-09-13 23:00:00.000000
-"""
+"""detection schema v3: alert evidence, rule params, threat indicators, host heartbeats"""
 
 from typing import Sequence, Union
 
