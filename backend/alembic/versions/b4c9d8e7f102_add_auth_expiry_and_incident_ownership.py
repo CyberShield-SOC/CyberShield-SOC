@@ -1,10 +1,4 @@
-"""add auth expiry and incident ownership
-
-Revision ID: b4c9d8e7f102
-Revises: 239f773d1743, f94d3c72a91b
-Create Date: 2026-07-15 00:00:00.000000
-
-"""
+"""add auth expiry and incident ownership"""
 from typing import Sequence, Union
 
 from alembic import op

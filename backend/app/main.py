@@ -12,7 +12,19 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.routers import alerts, auth, custom_rules, detection, incidents, ml_models, notes, threat_intel, upload, users
+from app.routers import (
+    alerts,
+    auth,
+    custom_rules,
+    detection,
+    incidents,
+    ml_models,
+    notes,
+    threat_intel,
+    upload,
+    users,
+)
+from app.routers import correlation, investigations, incident_history
 
 app = FastAPI(
     title="CyberShield SOC",
@@ -48,6 +60,12 @@ async def verify_browser_csrf(request: Request, call_next):
     """Protect cookie-authenticated writes with a double-submit CSRF token."""
 
     login_paths = {"/auth/login", "/api/auth/login"}
+    cookie_auth_paths = {
+        "/auth/refresh",
+        "/api/auth/refresh",
+        "/auth/logout",
+        "/api/auth/logout",
+    }
     has_bearer = request.headers.get("authorization", "").lower().startswith("bearer ")
     session_cookie = request.cookies.get(settings.auth_cookie_name)
 
@@ -55,11 +73,15 @@ async def verify_browser_csrf(request: Request, call_next):
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
         and request.url.path not in login_paths
         and session_cookie
-        and not has_bearer
+        and (not has_bearer or request.url.path in cookie_auth_paths)
     ):
         cookie_token = request.cookies.get(settings.auth_csrf_cookie_name)
         header_token = request.headers.get("x-csrf-token")
-        if not cookie_token or not header_token or not secrets.compare_digest(cookie_token, header_token):
+        if (
+            not cookie_token
+            or not header_token
+            or not secrets.compare_digest(cookie_token, header_token)
+        ):
             return JSONResponse(
                 status_code=403,
                 content={"detail": "CSRF validation failed"},
@@ -78,34 +100,36 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
     if request.url.path.startswith(("/auth/", "/api/auth/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     if settings.auth_cookie_secure:
-        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
     return response
 
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(upload.router)
-app.include_router(alerts.router)
-app.include_router(detection.router)
-app.include_router(incidents.router)
-app.include_router(notes.router)
-app.include_router(custom_rules.router)
-app.include_router(threat_intel.router)
-app.include_router(ml_models.router)
-app.include_router(auth.router, prefix="/api")
-app.include_router(users.router, prefix="/api")
-app.include_router(upload.router, prefix="/api")
-app.include_router(alerts.router, prefix="/api")
-app.include_router(detection.router, prefix="/api")
-app.include_router(incidents.router, prefix="/api")
-app.include_router(notes.router, prefix="/api")
-app.include_router(custom_rules.router, prefix="/api")
-app.include_router(threat_intel.router, prefix="/api")
-app.include_router(ml_models.router, prefix="/api")
+
+for prefix in ("", "/api"):
+    for module in (
+        auth,
+        users,
+        upload,
+        alerts,
+        detection,
+        incidents,
+        notes,
+        custom_rules,
+        threat_intel,
+        ml_models,
+        correlation,
+        investigations,
+        incident_history,
+    ):
+        app.include_router(module.router, prefix=prefix)
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -114,10 +138,11 @@ _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 @app.get("/api/health", tags=["Health"], include_in_schema=False)
 def health():
     from datetime import datetime, timezone
+
     return {
         "status": "ok",
         "service": "CyberShield SOC",
-        "sprint": "4 - Stabilization & Gate Review Readiness",
+        "sprint": "6 - Correlation & Investigation History",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -144,7 +169,9 @@ def root():
 
 # Serve built React assets — must be mounted after all API routes
 if (_FRONTEND_DIST / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="assets")
+    app.mount(
+        "/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="assets"
+    )
 
 
 if __name__ == "__main__":

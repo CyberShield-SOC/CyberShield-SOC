@@ -134,6 +134,9 @@ def create_alerts_from_detection(
 
     db.add_all(records)
     db.flush()
+    from app.services.workflow import record_event
+    for record in records:
+        record_event(db, alert_id=record.id, event_type="CREATED", after={"state": record.investigation_state, "rule": record.rule, "version": record.version})
 
     return records
 
@@ -234,21 +237,31 @@ def update_alert_record(
     alert_id: int,
     severity: str | None = None,
     status: str | None = None,
+    actor_user_id: int | None = None,
+    expected_version: int | None = None,
+    reason: str | None = None,
 ) -> Alert:
     """Update mutable alert workflow fields."""
 
-    alert = db.get(Alert, alert_id)
+    from app.services.workflow import check_version, locked, record_event, transition_alert
+    alert = locked(db, Alert, alert_id)
 
     if alert is None:
         raise AlertNotFoundError(
             f"Alert {alert_id} does not exist."
         )
 
-    if severity is not None:
+    check_version(alert, expected_version)
+    if severity is not None and severity != alert.severity:
+        before = alert.severity
         alert.severity = severity.upper()
+        alert.version += 1
+        record_event(db, alert_id=alert.id, actor_id=actor_user_id, event_type="SEVERITY_CHANGED", before={"severity": before}, after={"severity": alert.severity, "version": alert.version})
 
     if status is not None:
-        alert.status = status.upper()
+        state = {"NEW": "NEW", "REVIEWING": "INVESTIGATING", "ESCALATED": "ESCALATED", "CLOSED": "RESOLVED"}[status.upper()]
+        if state != alert.investigation_state:
+            transition_alert(db, alert, state, actor_id=actor_user_id, reason=reason)
 
     db.flush()
 
@@ -283,6 +296,8 @@ def serialize_alert_record(alert: Alert) -> dict:
         "title": alert.title,
         "severity": alert.severity,
         "status": alert.status,
+        "investigation_state": alert.investigation_state,
+        "version": alert.version,
         "source_ip": source_ip,
         "ip_address": source_ip,
         "username": alert.username,

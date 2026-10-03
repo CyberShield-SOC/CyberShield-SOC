@@ -48,6 +48,12 @@ Use this checklist after parser, upload, or detection changes.
 - Confirm the response includes `success`, `total_alerts`, and `alerts`.
 - Confirm `GET /api/alerts` returns the same structure.
 
+## Sprint 6 Evidence Checks
+
+- Verify exact event identities and pagination through `/alerts/{alert_id}/evidence` and the alert's correlation groups.
+- Confirm unrelated entities remain separate and repeated references do not duplicate evidence links.
+- Confirm workflow changes and refresh/restart preserve original evidence and saved groups.
+
 ## Commands Used
 
 ```bash
@@ -62,7 +68,9 @@ cd backend
 python -m pytest
 ```
 
-## Latest Manual Retest Result
+## Historical Manual Retest Result
+
+This earlier result predates current `.txt` support and Sprint 6.
 
 - Backend syntax compilation passed.
 - `.log` upload smoke test returned parsed entries and a brute-force alert.

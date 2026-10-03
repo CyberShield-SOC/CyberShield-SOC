@@ -1,9 +1,4 @@
-"""expand analyst notes
-
-Revision ID: d82a91f640c3
-Revises: b4c9d8e7f102
-Create Date: 2026-07-16 00:00:00.000000
-"""
+"""expand analyst notes"""
 
 from typing import Sequence, Union
 

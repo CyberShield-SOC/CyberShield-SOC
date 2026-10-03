@@ -62,6 +62,14 @@ Current rule set:
 
 Rules can be configured with `DETECTION_RULE_CONFIG` and inspected through `GET /detection/rules` or `GET /api/detection/rules`.
 
+### Sprint 6 Backend
+
+- Correlation groups match permitted entities, captured rule context, and inclusive time windows; exact evidence links preserve source logs and prevent duplicate references.
+- Evidence APIs provide paginated groups, source events, linked alerts/uploads, rule context, and completeness metadata.
+- Investigation states, escalation, and analyst notes record actors and timestamps in append-only history.
+- Incidents support active Admin/Analyst assignment, multiple linked alerts, required resolution reasons/notes, and reopening that preserves earlier decisions. Workflow changes are atomic and support `expected_version` checks.
+- All roles can read evidence/history; only Admin and Analyst can change workflows. See [Sprint 6 additions](sprint6.md).
+
 ### Alert Workflow
 
 `app/routers/alerts.py` lists persistent alerts and allows Admin/Analyst users to update alert severity or workflow status. Viewers can read alerts but cannot mutate them.
@@ -117,7 +125,8 @@ All protected endpoints require an authenticated user with the allowed role. Eac
 | Endpoint | Method | Purpose | Roles |
 | --- | --- | --- | --- |
 | `/health` | GET | Service health check | Public |
-| `/auth/login` | POST | Login and issue access/refresh tokens | Public |
+| `/auth/login` | POST | Verify password and start email OTP | Public |
+| `/auth/2fa/verify` | POST | Verify OTP and issue access/refresh tokens | Pending challenge |
 | `/auth/refresh` | POST | Rotate refresh session and issue access token | Cookie + CSRF |
 | `/auth/me` | GET | Return current user | Admin, Analyst, Viewer |
 | `/auth/logout` | POST | Revoke refresh session and clear cookies | Auth cookie |
@@ -128,6 +137,12 @@ All protected endpoints require an authenticated user with the allowed role. Eac
 | `/upload/formats` | GET | Accepted upload formats and size limit | Admin, Analyst, Viewer |
 | `/detection/rules` | GET | Active rule metadata and thresholds | Admin, Analyst, Viewer |
 | `/alerts` | GET | List persistent alerts | Admin, Analyst, Viewer |
+| `/correlation-groups` | GET | List groups; detail routes expose evidence and rule context | Admin, Analyst, Viewer |
+| `/alerts/{alert_id}/evidence` | GET | Paginated exact source events | Admin, Analyst, Viewer |
+| `/alerts/{alert_id}/investigation` | GET/PATCH | Read/update investigation; related routes expose notes and history | Read: all roles; write: Admin, Analyst |
+| `/incidents/{incident_id}/resolve` | POST | Resolve with reason and note | Admin, Analyst |
+| `/incidents/{incident_id}/reopen` | POST | Reopen with reason and preserve history | Admin, Analyst |
+| `/incidents/{incident_id}/history` | GET | Attributed lifecycle history | Admin, Analyst, Viewer |
 | `/alerts/{alert_id}` | PATCH | Update alert severity/status | Admin, Analyst |
 | `/incidents` | POST | Create incident from alert | Admin, Analyst |
 | `/incidents` | GET | List incidents | Admin, Analyst, Viewer |
@@ -252,6 +267,8 @@ Important fields:
 - `created_at`
 - `updated_at`
 
+Sprint 6 adds alert `investigation_state` and `version`. Derived evidence uses `correlation_groups`, `correlation_group_events`, `correlation_group_alerts`, `correlation_group_uploads`, and `alert_event_links`; unique links and restricted source foreign keys preserve original records.
+
 ### `incidents`
 
 Stores investigation records created from alerts.
@@ -279,6 +296,8 @@ Constraints:
 - Priority must be `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL`.
 - Status must be `OPEN`, `INVESTIGATING`, `RESOLVED`, or `FALSE_POSITIVE`.
 
+Sprint 6 adds incident `version`, resolution reason/note, and resolver identity. `incident_alert_links` retains the primary alert and additional evidence. `workflow_events` stores immutable actor/time/before/after history; `investigation_notes` stores attributed alert notes.
+
 ### `notes`
 
 Stores analyst notes attached to incidents.
@@ -298,7 +317,7 @@ Important fields:
 
 ## Persistence Behavior
 
-Upload writes are transactional. `POST /upload` stores parsed logs, generated alerts, and upload-batch metadata together. If any database write fails, the route rolls back the full upload transaction and returns `DATABASE_WRITE_ERROR`.
+Upload writes are transactional. `POST /upload` stores parsed logs, generated alerts, upload-batch metadata, correlation groups, and evidence links together. If any database write fails, the route rolls back the full upload transaction and returns `DATABASE_WRITE_ERROR`.
 
 Incident writes are transactional. Creating an incident updates both the new incident row and the source alert lifecycle in the same transaction. Duplicate incidents for the same alert return `409`.
 
@@ -327,9 +346,9 @@ Authentication refresh sessions store only hashed opaque tokens. Logout and refr
 5. Analyst adds evidence and review notes through `POST /incidents/{incident_id}/notes`.
 6. Viewer users can read alerts, incidents, and notes without mutating records.
 
-## Backend Accuracy Review
+## Historical Backend Accuracy Review
 
-Reviewed DDS descriptions against the current backend implementation on August 29, 2026.
+The following review predates Sprint 6; current additions are summarized above.
 
 Accuracy notes:
 

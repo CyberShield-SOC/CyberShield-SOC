@@ -85,6 +85,7 @@ class ImpossibleTravelRule(BaseRule):
             current = {
                 "ts": ts_to_str(ts), "ip": record.ip_address, "country": record.country,
                 "lat": record.latitude, "lon": record.longitude, "line": record.line_number,
+                "log_id": record.log_id,
             }
 
             prior_ts = parse_ts(prior.get("ts")) if prior else None
@@ -111,6 +112,7 @@ class ImpossibleTravelRule(BaseRule):
                             f"({record.country or '?'}), {distance:,.0f} km apart, {speed_text}."
                         ),
                         matched_line_numbers=lines,
+                        matched_event_ids=[identity for identity in (prior.get("log_id"), record.log_id) if identity],
                         mitre_technique=self.mitre_technique,
                         confidence=self.confidence,
                         entity_type=self.entity_type,

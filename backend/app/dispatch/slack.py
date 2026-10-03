@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import json
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+
+import httpx
 
 from app.models.alert import Alert
 
 
-def build_slack_alert_payload(alert: Alert, playbook: dict[str, Any] | None = None) -> dict:
+def build_slack_alert_payload(
+    alert: Alert, playbook: dict[str, Any] | None = None
+) -> dict:
     """Build the webhook body for a triggered alert notification."""
 
     text = f"[{alert.severity}] {alert.title}: {alert.description}"
@@ -17,7 +19,9 @@ def build_slack_alert_payload(alert: Alert, playbook: dict[str, Any] | None = No
         {"title": "Count", "value": str(alert.event_count), "short": True},
     ]
     if alert.source_ip:
-        fields.append({"title": "Source IP", "value": str(alert.source_ip), "short": True})
+        fields.append(
+            {"title": "Source IP", "value": str(alert.source_ip), "short": True}
+        )
     if alert.username:
         fields.append({"title": "User", "value": alert.username, "short": True})
     if playbook:
@@ -56,16 +60,17 @@ def dispatch_slack_webhook(
     if not webhook_url:
         return {"status": "skipped", "reason": "slack_webhook_url_not_configured"}
 
-    body = json.dumps(payload).encode("utf-8")
-    request = Request(
-        webhook_url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:
-            return {"status": "sent", "status_code": response.status}
-    except (OSError, URLError) as exc:
-        return {"status": "failed", "error": str(exc)[:200]}
+        url = urlsplit(webhook_url)
+        if url.scheme != "https" or not url.hostname or url.username or url.password:
+            return {"status": "failed", "error": "Invalid Slack webhook URL"}
+        response = httpx.post(
+            webhook_url,
+            json=payload,
+            timeout=timeout_seconds,
+            follow_redirects=False,
+        )
+        response.raise_for_status()
+        return {"status": "sent", "status_code": response.status_code}
+    except (httpx.HTTPError, ValueError):
+        return {"status": "failed", "error": "Slack webhook delivery failed"}
