@@ -408,7 +408,7 @@ export default function DashboardPage({ navigate }) {
         >
           <div className="soc-table-scroll" role="region" aria-label="Scrollable recent alerts" tabIndex="0">
             <table className="soc-table">
-              <thead><tr><th>Severity</th><th>Alert</th><th>Source</th><th>Risk</th><th>Status</th></tr></thead>
+              <thead><tr><th>Severity</th><th>Alert</th><th>Source</th><th>Rule confidence</th><th>Status</th></tr></thead>
               <tbody>
                 {alerts.slice(0, 5).map((alert) => (
                   <tr
@@ -426,7 +426,7 @@ export default function DashboardPage({ navigate }) {
                     <td><SeverityBadge severity={alert.severity} /></td>
                     <td><strong>{alert.title}</strong><small>{alert.ruleId} · {alert.ruleName}</small></td>
                     <td className="mono">{alert.sourceIp}</td>
-                    <td className="mono">{alert.risk}</td>
+                    <td className="mono">{alert.confidence ?? "—"}</td>
                     <td><StatusBadge status={alert.status} /></td>
                   </tr>
                 ))}
@@ -435,10 +435,10 @@ export default function DashboardPage({ navigate }) {
             {!alerts.length && <div className="table-empty"><strong>No recent alerts</strong><span>No detections fall inside the selected time range.</span></div>}
           </div>
         </Panel>
-        <Panel title="Suspicious IPs" subtitle={`Highest-risk sources · ${rangeLabel.toLowerCase()}`}>
+        <Panel title="Suspicious IPs" subtitle={`Highest-severity sources · ${rangeLabel.toLowerCase()}`}>
           <ul className="ip-list">
             {suspiciousIps.map((alert) => (
-              <li key={alert.sourceIp}><div><strong>{alert.sourceIp}</strong><small>{alert.risk} risk · {alert.source}</small></div><StatusBadge status={alert.status} /></li>
+              <li key={alert.sourceIp}><div><strong>{alert.sourceIp}</strong><small>{alert.severity} severity · {alert.source}</small></div><StatusBadge status={alert.status} /></li>
             ))}
           </ul>
           {!suspiciousIps.length && <p className="empty-inline">No alert source addresses fall inside the selected time range.</p>}

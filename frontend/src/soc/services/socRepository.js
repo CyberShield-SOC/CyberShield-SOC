@@ -14,6 +14,7 @@ import { restoreStoredNotes, restoreStoredSettings } from "../utils/storageValid
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
 import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
+import { buildAnomalyStat, buildMlInsight } from "../utils/mlInsight.js";
 
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
@@ -21,6 +22,8 @@ const USERS_STORAGE_KEY = "cybershield-session-users";
 const CUSTOM_RULES_STORAGE_KEY = "cybershield-session-custom-rules";
 const BUILT_IN_RULES_STORAGE_KEY = "cybershield-session-built-in-rules";
 const CUSTOM_RULE_NUMBER_BASE = 108; // R-101..R-108 are the built-in rules
+// Ordering weight only (so alerts sort by severity). The backend emits a
+// severity, not a 0-100 risk score: never display this value as a score.
 const SEVERITY_RISK = Object.freeze({ critical: 96, high: 82, medium: 58, low: 30, info: 10 });
 // Backend rule name -> catalog ID (R-101.., R-A01..), from detectionRulePack.js.
 const RULE_IDS = RULE_ID_BY_ENGINE_KEY;
@@ -395,27 +398,6 @@ function normalizeEvent(log, alerts = []) {
   };
 }
 
-/**
- * Shape reserved for a future ML anomaly-detection result attached to an
- * alert: { score: 0-100, label: string, explanation: string,
- * contributingFactors: string[] }. Returns null when the source has none of
- * these fields, which every UI reader must treat as "no ML insight yet".
- */
-function normalizeMlInsight(source) {
-  if (!source || typeof source !== "object") return null;
-  const score = Number(source.score ?? source.anomaly_score);
-  const explanation = String(source.explanation || "").trim();
-  if (!Number.isFinite(score) && !explanation) return null;
-  return {
-    score: Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null,
-    label: String(source.label || source.verdict || "").trim(),
-    explanation,
-    contributingFactors: Array.isArray(source.contributing_factors || source.contributingFactors)
-      ? (source.contributing_factors || source.contributingFactors).map(String)
-      : [],
-  };
-}
-
 function normalizeAlert(alert, latest = null) {
   const latestLogs = latest?.logs || [];
   const matchedLogs = latest?.upload?.upload_id === alert.upload_id
@@ -457,10 +439,11 @@ function normalizeAlert(alert, latest = null) {
     reason: alert.reason || alert.description || "Security rule triggered.",
     playbook: alert.response_playbook || alert.playbook || null,
     actionResults: alert.action_results || alert.actionResults || {},
-    // Placeholder for a future ML anomaly-detection integration: no backend
-    // field populates this today, so it normalizes to null and every reader
-    // must treat it as optional. See docs/backend_data_requirements_for_ml.md.
-    mlInsight: normalizeMlInsight(alert.ml_insight || alert.mlInsight),
+    engineRule: String(alert.rule || ""),
+    // Real learned-anomaly evidence (raw IsolationForest decision score,
+    // threshold, feature deviations, model version) for behavioral_anomaly_*
+    // alerts; null for every other alert. Never converted to a 0-100 scale.
+    mlInsight: buildMlInsight(alert),
     assignee: "Unassigned",
     evidenceIds: matchedLogs.map(evidenceId),
     countryCode: alert.country_code || alert.geo?.country_code || "",
@@ -609,7 +592,7 @@ function normalizeNote(note, incident = null) {
   };
 }
 
-function buildDashboard(events, alerts, incidents) {
+function buildDashboard(events, alerts, incidents, models = null) {
   const severityOrder = ["critical", "high", "medium", "low"];
   const alertVolume = Array.from({ length: 12 }, (_, index) => ({
     label: `${String(index * 2).padStart(2, "0")}:00`,
@@ -638,6 +621,8 @@ function buildDashboard(events, alerts, incidents) {
       { label: "Active alerts", value: String(alerts.filter((item) => item.status !== "resolved").length), trend: `${alerts.filter((item) => item.status === "new").length} new`, tone: "critical" },
       { label: "Open incidents", value: String(incidents.filter((item) => !isTerminalIncidentStatus(item.status)).length), trend: `${incidents.filter((item) => isTerminalIncidentStatus(item.status)).length} completed`, tone: "success" },
       { label: "Detection rules triggered", value: String(uniqueRules), trend: "Across persisted alerts" },
+      // Real learned-model alerts and the real model status from GET /ml/models.
+      buildAnomalyStat(alerts, models),
     ],
     alertVolume,
     severity,
@@ -936,7 +921,14 @@ const httpRepository = {
   },
   async getDashboard() {
     const { events, alerts, incidents } = await getApiState();
-    return buildDashboard(events, alerts, incidents);
+    // Model status is secondary information: if it can't be fetched, the
+    // dashboard still renders and the card says the status is unavailable.
+    const models = await this.getMlModels().catch(() => null);
+    return buildDashboard(events, alerts, incidents, models);
+  },
+  async getMlModels() {
+    const payload = await request("/ml/models");
+    return responseArray(payload, "models");
   },
   async getEvents() {
     const latest = await readLatestUpload();

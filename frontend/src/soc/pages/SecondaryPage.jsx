@@ -25,7 +25,7 @@ const REPORT_EXPORTERS = Object.freeze({
     download: ({ alerts }) => downloadAlertsCsv(alerts, "detection-coverage"),
   },
   "Executive risk overview": {
-    description: "Current alerts ranked by risk, highest first.",
+    description: "Current alerts ranked by severity, highest first.",
     recordLabel: "alerts",
     getRecords: ({ alerts }) => alerts,
     download: ({ alerts }) => downloadAlertsCsv(

@@ -192,21 +192,24 @@ export function ValidationMessage({ children, id }) {
   );
 }
 
-export function RiskMeter({ value, label = "Risk score" }) {
-  const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+const SEVERITY_STEPS = Object.freeze({ info: 0, low: 1, medium: 2, high: 3, critical: 4 });
+
+/**
+ * Qualitative severity indicator: four steps and the severity word, never a
+ * number. The backend emits a severity, not a 0-100 risk score, so nothing here
+ * pretends to be a measurement.
+ */
+export function SeverityMeter({ severity, label = "Severity" }) {
+  const key = Object.hasOwn(SEVERITY_STEPS, String(severity).toLowerCase()) ? String(severity).toLowerCase() : "info";
+  const steps = SEVERITY_STEPS[key];
+  const color = key === "info" ? "currentColor" : `var(--severity-${key})`;
   return (
-    <div className="risk-meter">
-      <div
-        className="risk-meter-track"
-        role="meter"
-        aria-label={label}
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow={safeValue}
-      >
-        <span style={{ width: `${safeValue}%` }} />
+    <div className="severity-meter" role="img" aria-label={`${label}: ${key}`}>
+      <div className="severity-meter-track" aria-hidden="true">
+        {[1, 2, 3, 4].map((step) => <i key={step} className={step <= steps ? "on" : ""} style={step <= steps ? { background: color } : undefined} />)}
       </div>
-      <strong>{safeValue}/100</strong>
+      <strong style={{ color }}>{key.charAt(0).toUpperCase() + key.slice(1)}</strong>
     </div>
   );
 }
+

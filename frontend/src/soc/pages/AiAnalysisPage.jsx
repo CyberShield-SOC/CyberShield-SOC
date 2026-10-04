@@ -21,8 +21,8 @@ import { formatTimestamp } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { assistantToolLabel, buildAssistantHistory } from "../utils/assistantChat";
-import { timeRangeToHours } from "../utils/timeRange";
-import { InlineNotice, PageHeader, Panel, RiskMeter, SeverityBadge } from "../components/Ui";
+import { TIME_RANGE_LABELS, timeRangeToHours } from "../utils/timeRange";
+import { InlineNotice, PageHeader, Panel, SeverityBadge } from "../components/Ui";
 
 const STARTER_MESSAGE = Object.freeze({
   id: "assistant-welcome",
@@ -165,7 +165,7 @@ export default function AiAnalysisPage({ navigate }) {
       id: nextIncidentId(incidents),
       title: analysis.verdict,
       owner: currentActor,
-      priority: analysis.riskScore >= 90 ? "critical" : "high",
+      priority: analysis.severity === "critical" ? "critical" : "high",
       status: "open",
       updated: "Just now",
       sla: "5m acknowledge target",
@@ -209,8 +209,8 @@ export default function AiAnalysisPage({ navigate }) {
                   {message.analysis && (
                     <>
                       <div className="ai-answer-summary">
-                        <div><SeverityBadge severity={message.analysis.riskScore >= 90 ? "critical" : "high"} /><strong>{message.analysis.verdict}</strong></div>
-                        <RiskMeter value={message.analysis.riskScore} />
+                        <div><SeverityBadge severity={message.analysis.severity || "high"} /><strong>{message.analysis.verdict}</strong></div>
+                        <small className="ai-sample-note">Sample analysis: illustrative demo content, not generated from your data.</small>
                       </div>
                       <div className="ai-evidence-table-wrap" role="region" aria-label="Scrollable AI evidence results" tabIndex="0">
                         <table className="ai-evidence-table">
@@ -260,7 +260,7 @@ export default function AiAnalysisPage({ navigate }) {
           <Panel title="Conversation Context">
             <dl className="ai-context-list">
               <div><Database size={17} /><dt>Data source</dt><dd>Live workspace data</dd></div>
-              <div><CalendarDays size={17} /><dt>Time range</dt><dd>Last 24 hours</dd></div>
+              <div><CalendarDays size={17} /><dt>Time range</dt><dd>{TIME_RANGE_LABELS[globalTimeRange] || TIME_RANGE_LABELS["24h"]}</dd></div>
               <div><ListChecks size={17} /><dt>Events analyzed</dt><dd>{events.length.toLocaleString()} normalized</dd></div>
               <div><AlertTriangle size={17} /><dt>Active alerts</dt><dd>{activeAlertCount}</dd></div>
               <div><UserRound size={17} /><dt>Analyst</dt><dd>{currentActor}</dd></div>

@@ -10,7 +10,7 @@ export const dashboardData = Object.freeze({
     { label: "Events ingested (24h)", value: "1.84M", trend: "2.1% vs previous 24h", direction: "up" },
     { label: "Active alerts", value: "14", trend: "5 new in the last hour", tone: "critical" },
     { label: "Open incidents", value: "3", trend: "2 resolved today", direction: "down", tone: "success" },
-    { label: "AI anomalies flagged", value: "9", trend: "Baseline trained over 14 days" },
+    { label: "Anomaly alerts", value: "—", trend: "Demo mode: connect the backend for real model status" },
   ],
   alertVolume: [
     { label: "00:00", critical: 0, high: 1, medium: 2, low: 7 },
@@ -198,7 +198,7 @@ export const securityEvents = Object.freeze([
     status: "review",
     risk: 79,
     rule: "R-710 · Data exfiltration threshold",
-    message: "Outbound upload volume exceeded the host's 30-day baseline by 940 percent.",
+    message: "Outbound upload volume exceeded the host's learned baseline (at least 5x its mean and more than 3 standard deviations above it).",
   },
 ]);
 
@@ -264,8 +264,7 @@ export const aiAnalysisSeed = Object.freeze({
   id: "ANL-2904",
   subject: "EVT-78421",
   generatedAt: "2026-07-16T14:33:18Z",
-  riskScore: 96,
-  confidence: 92,
+  severity: "critical",
   verdict: "Likely credential-access campaign",
   summary:
     "The event is part of a concentrated SSH brute-force sequence from a first-seen external address. The rate, account targeting, and geographic novelty make normal user error unlikely.",
@@ -384,14 +383,14 @@ const detectionRuleCatalog = {
   "R-710": {
     id: "R-710",
     name: "Data exfiltration threshold",
-    description: "Compares outbound transfer volume to the host and user baseline.",
+    description: "Compares a host's outbound bytes per hour to its own running baseline (an exponentially weighted mean and variance).",
     technique: "T1041 · Exfiltration Over C2 Channel",
     severity: "high",
     version: "3.6.2",
     status: "enabled",
     owner: "Network Security",
     lastUpdated: "2026-07-11",
-    query: "source=proxy direction=outbound | where bytes > baseline_bytes * 8",
+    query: "source=proxy direction=outbound | where bytes_out >= 5 * baseline_mean AND bytes_out > baseline_mean + 3 * baseline_stdev",
   },
 };
 
