@@ -2,13 +2,10 @@
 
 ## Authentication Strategy
 
-CyberShield uses short-lived JWT access tokens backed by a rotating,
-DB-persisted refresh token. `POST /auth/login` returns a signed JWT
-(`access_token`) for the client to send as `Authorization: Bearer <token>` on
-every protected request, and separately installs an opaque refresh token in an
-HttpOnly, SameSite=Strict browser cookie. Only the SHA-256 digest of the
-refresh token is stored in `auth_sessions`; the JWT itself is never persisted
-server-side — it's verified purely by signature and expiry.
+CyberShield checks the password at `POST /auth/login` and starts an email OTP
+challenge. Successful `POST /auth/2fa/verify` issues a short-lived JWT and an
+HttpOnly refresh cookie. Refresh tokens are stored as hashes in
+`auth_sessions`; OTP codes are stored as keyed hashes in `otp_verifications`.
 
 **Every protected route, including `GET /auth/me`, requires the Bearer
 header.** The refresh cookie by itself no longer grants API access; its only
@@ -45,6 +42,8 @@ for the exact behavior this guarantees.
 | Action | Admin | Analyst | Viewer |
 | --- | --- | --- | --- |
 | View dashboard/logs/alerts/incidents/notes | Allow | Allow | Allow |
+| Read correlation groups, evidence, and history | Allow | Allow | Allow |
+| Update investigations and incident lifecycle | Allow | Allow | Deny |
 | Upload/import logs | Allow | Allow | Deny |
 | Create/update incidents | Allow | Allow | Deny |
 | Add analyst notes | Allow | Allow | Deny |
@@ -54,12 +53,18 @@ for the exact behavior this guarantees.
 
 ### `POST /auth/login`
 
+Send `username`, `password`, and optional `remember_me`. Success returns
+`success: true`, `requiresTwoFactor: true`, and the masked `email`, plus a
+pending cookie. Incorrect credentials return `401`; failed email delivery
+returns `502`. No authenticated session is issued yet.
+
+### `POST /auth/2fa/verify`
+
 Request:
 
 ```json
 {
-  "username": "analyst1",
-  "password": "user-entered-password"
+  "code": "123456"
 }
 ```
 
@@ -83,15 +88,19 @@ Success:
 ```
 
 Also sets the HttpOnly refresh-token cookie and its paired non-secret CSRF
-cookie. `access_token` here is the short-lived JWT — never the refresh token.
+cookie and clears the pending cookie. `access_token` is the short-lived JWT.
+Codes expire, have an attempt limit, and cannot be reused.
 
 Failure:
 
 ```json
 {
-  "detail": "Invalid username or password"
+  "detail": "Invalid verification code. Please try again."
 }
 ```
+
+`POST /auth/2fa/resend` uses the pending cookie to replace the code. Requests
+inside the resend cooldown return `429`.
 
 ### `POST /auth/refresh`
 
@@ -154,6 +163,8 @@ regardless of the response.
 | --- | --- | --- |
 | `GET /health` | Public | Anyone |
 | `POST /auth/login` | Public | Anyone |
+| `POST /auth/2fa/verify` | Pending cookie + valid OTP | Pending login |
+| `POST /auth/2fa/resend` | Pending cookie + cooldown | Pending login |
 | `POST /auth/refresh` | Refresh cookie + CSRF | Anyone with a valid refresh token |
 | `GET /auth/me` | Bearer JWT required | Admin, Analyst, Viewer |
 | `POST /auth/logout` | Refresh cookie + CSRF (idempotent) | Anyone |
@@ -204,3 +215,6 @@ python -m app.db.seed
 
 The first Admin password must come from local environment variable
 `CYBERSHIELD_ADMIN_PASSWORD`. Do not commit real passwords or tokens.
+
+Set a random `OTP_SECRET` of at least 16 characters and configure
+`RESEND_API_KEY` / `RESEND_FROM_EMAIL` to complete email OTP sign-in.

@@ -104,6 +104,7 @@ export function getAlertRecommendations(alert) {
 
 export function incidentMatchesAlert(incident, alert) {
   if (!incident || !alert) return false;
+  if ((incident.linkedAlertIds || []).some((id) => String(id) === String(alert.sourceAlertId))) return true;
   if (incident.sourceAlertId != null && alert.sourceAlertId != null) {
     return String(incident.sourceAlertId) === String(alert.sourceAlertId);
   }

@@ -48,16 +48,19 @@ class DormantAccountActivityRule(BaseRule):
 
         alerts: list[Alert] = []
         last_seen_in_batch: dict[str, object] = {}
+        last_ids: dict[str, int | None] = {}
 
         for record, ts in candidates:
             username = record.username
             reference = last_seen_in_batch.get(username)
+            reference_id = last_ids.get(username)
             if reference is None:
                 stored = get_baseline(
                     db, entity_type="account", entity_id=username, baseline_key=BASELINE_KEY
                 )
                 if stored and stored.get("last_login_at"):
                     reference = parse_ts(stored["last_login_at"])
+                    reference_id = stored.get("log_id")
 
             if reference is not None:
                 idle_days = (ts - reference).total_seconds() / 86400
@@ -78,6 +81,9 @@ class DormantAccountActivityRule(BaseRule):
                             f"{idle_days:.0f} days of inactivity (threshold {self.threshold})."
                         ),
                         matched_line_numbers=[record.line_number],
+                        matched_event_ids=[identity for identity in (reference_id, record.log_id) if identity],
+                        evidence={"previous_login_at": ts_to_str(reference), "previous_log_id": reference_id,
+                                  "historical_source_available": reference_id is not None},
                         mitre_technique=self.mitre_technique,
                         confidence=self.confidence,
                         entity_type=self.entity_type,
@@ -85,6 +91,7 @@ class DormantAccountActivityRule(BaseRule):
                     ))
 
             last_seen_in_batch[username] = ts
+            last_ids[username] = record.log_id
 
         for username, ts in last_seen_in_batch.items():
             set_baseline(
@@ -92,7 +99,7 @@ class DormantAccountActivityRule(BaseRule):
                 entity_type="account",
                 entity_id=username,
                 baseline_key=BASELINE_KEY,
-                value={"last_login_at": ts_to_str(ts)},
+                value={"last_login_at": ts_to_str(ts), **({"log_id": last_ids[username]} if last_ids[username] else {})},
             )
 
         return alerts

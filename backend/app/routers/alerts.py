@@ -77,6 +77,9 @@ def update_alert(
             alert_id=alert_id,
             severity=updates.get("severity"),
             status=updates.get("status"),
+            actor_user_id=user.id,
+            expected_version=updates.get("expected_version"),
+            reason=updates.get("reason"),
         )
 
         db.commit()

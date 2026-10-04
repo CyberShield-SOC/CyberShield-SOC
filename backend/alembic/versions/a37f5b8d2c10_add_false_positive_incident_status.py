@@ -1,9 +1,4 @@
-"""add false-positive incident status
-
-Revision ID: a37f5b8d2c10
-Revises: d82a91f640c3
-Create Date: 2026-07-17 00:00:00.000000
-"""
+"""add false-positive incident status"""
 
 from typing import Sequence, Union
 

@@ -122,6 +122,7 @@ def update_incident_note(
             db,
             note_id=note_id,
             updates=payload.model_dump(exclude_unset=True),
+            actor_user_id=user.id,
         )
         db.commit()
         db.refresh(note)
@@ -144,7 +145,7 @@ def delete_incident_note(
     """Permanently delete one analyst note."""
 
     try:
-        delete_note_record(db, note_id=note_id)
+        delete_note_record(db, note_id=note_id, actor_user_id=user.id)
         db.commit()
     except LookupError as exc:
         db.rollback()

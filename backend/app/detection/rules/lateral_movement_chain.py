@@ -69,21 +69,21 @@ class LateralMovementChainRule(BaseRule):
                     ts = parse_ts(item.get("ts"))
                     host = item.get("host")
                     if ts is not None and host:
-                        history.append((None, ts, host))
+                        history.append((item.get("log_id"), ts, host))
 
             combined = sorted(
-                [(r, ts, r.hostname, True) for r, ts in batch_events]
-                + [(rec, ts, host, False) for rec, ts, host in history],
+                [(r, ts, r.hostname, True, r.log_id) for r, ts in batch_events]
+                + [(None, ts, host, False, identity) for identity, ts, host in history],
                 key=lambda item: item[1],
             )
 
             window: deque = deque()
-            for rec, ts, host, is_new in combined:
-                window.append((rec, ts, host, is_new))
+            for rec, ts, host, is_new, identity in combined:
+                window.append((rec, ts, host, is_new, identity))
                 while window and (ts - window[0][1]).total_seconds() > self.window_seconds:
                     window.popleft()
 
-                distinct_hosts = {h for _, _, h, _ in window}
+                distinct_hosts = {item[2] for item in window}
                 if len(distinct_hosts) >= self.threshold and is_new:
                     matched = list(window)
                     alerts.append(Alert(
@@ -103,6 +103,7 @@ class LateralMovementChainRule(BaseRule):
                         matched_line_numbers=[
                             item[0].line_number for item in matched if item[0] is not None
                         ],
+                        matched_event_ids=[item[4] for item in matched if item[4]],
                         mitre_technique=self.mitre_technique,
                         confidence=self.confidence,
                         entity_type=self.entity_type,
@@ -113,8 +114,8 @@ class LateralMovementChainRule(BaseRule):
             if db is not None and combined:
                 newest_ts = combined[-1][1]
                 recent = [
-                    {"host": host, "ts": ts_to_str(ts)}
-                    for _, ts, host, _ in combined
+                    {"host": host, "ts": ts_to_str(ts), "log_id": identity}
+                    for _, ts, host, _, identity in combined
                     if (newest_ts - ts).total_seconds() <= self.window_seconds
                 ]
                 set_baseline(
