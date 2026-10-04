@@ -43,7 +43,7 @@ sys.path.insert(0, str(BACKEND))
 from sklearn.metrics import roc_auc_score  # noqa: E402
 
 from app.db.session import SessionLocal  # noqa: E402
-from tests.anomaly_eval.metrics import wilson_ci  # noqa: E402
+from tests.anomaly_eval.metrics import environment_versions, wilson_ci  # noqa: E402
 from tests.anomaly_eval.scenarios import run_threat_log_scenario  # noqa: E402
 
 NOVELTY_LEVELS = (0.0, 0.05, 0.15, 0.30)
@@ -115,6 +115,9 @@ def build_report(results_by_level: dict[float, list[dict]]) -> str:
     lines.append("=" * 88)
     lines.append(f"{N_NORMAL} normal IPs x {len(SEEDS)} seeds per novelty level ({N_NORMAL * len(SEEDS)} observations/level)")
     lines.append(f"current provisional threshold: {CURRENT_THRESHOLD}")
+    versions = environment_versions()
+    lines.append("library versions: " + "  ".join(f"{name}={version}" for name, version in sorted(versions.items())))
+    lines.append("detection rates are shown with 95% Wilson CIs; the attacks are separable by construction (see README).")
     lines.append("")
 
     # Collected across everything, for the threshold-sensitivity table and
@@ -168,21 +171,33 @@ def build_report(results_by_level: dict[float, list[dict]]) -> str:
         lines.append(f"per-seed FP rates: {[f'{r:.0%}' for r in per_seed_fp_rates]}")
         lines.append(f"normal IPs within {MARGIN_BAND} of threshold: {margin_count}/{len(pooled_normal)} "
                       f"({margin_count / len(pooled_normal):.2%})")
-        lines.append(f"loud-attack detection rate @ {CURRENT_THRESHOLD}:   {loud_detect:.1%} ({len(pooled_loud)} instances)")
-        lines.append(f"subtle-attack detection rate @ {CURRENT_THRESHOLD}: {subtle_detect:.1%} ({len(pooled_subtle)} instances)")
+        loud_hits = sum(1 for s in pooled_loud if s < CURRENT_THRESHOLD)
+        subtle_hits = sum(1 for s in pooled_subtle if s < CURRENT_THRESHOLD)
+        loud_low, loud_high = wilson_ci(loud_hits, len(pooled_loud))
+        subtle_low, subtle_high = wilson_ci(subtle_hits, len(pooled_subtle))
+        lines.append(f"loud-attack detection rate @ {CURRENT_THRESHOLD}:   {loud_detect:.1%} ({loud_hits}/{len(pooled_loud)})  "
+                      f"95% Wilson CI: [{loud_low:.2%}, {loud_high:.2%}]")
+        lines.append(f"subtle-attack detection rate @ {CURRENT_THRESHOLD}: {subtle_detect:.1%} ({subtle_hits}/{len(pooled_subtle)})  "
+                      f"95% Wilson CI: [{subtle_low:.2%}, {subtle_high:.2%}]")
         lines.append(f"ROC-AUC (loud+subtle vs. all normals): {auc:.4f}")
         lines.append(f"false-positive causes (n={fp_count}): {dict(cause_tally) if fp_count else 'n/a'}")
         lines.append("")
 
     # --- Threshold sensitivity, pooled across all levels+seeds ---
     lines.append("--- threshold sensitivity (pooled across all novelty levels and seeds) ---")
-    header = f"{'threshold':>10} {'fp_rate':>9} {'loud_detect':>12} {'subtle_detect':>14}"
+    header = f"{'threshold':>10} {'fp_rate':>9} {'loud_detect':>12} {'loud_95ci':>20} {'subtle_detect':>14} {'subtle_95ci':>20}"
     lines.append(header)
     for t in THRESHOLDS:
         fp_rate = sum(1 for s in all_normal_scores if s < t) / len(all_normal_scores)
-        loud_rate = sum(1 for s in all_loud_scores if s < t) / len(all_loud_scores)
-        subtle_rate = sum(1 for s in all_subtle_scores if s < t) / len(all_subtle_scores)
-        lines.append(f"{t:>10} {fp_rate:>9.2%} {loud_rate:>12.1%} {subtle_rate:>14.1%}")
+        loud_hits = sum(1 for s in all_loud_scores if s < t)
+        subtle_hits = sum(1 for s in all_subtle_scores if s < t)
+        loud_rate = loud_hits / len(all_loud_scores)
+        subtle_rate = subtle_hits / len(all_subtle_scores)
+        loud_low, loud_high = wilson_ci(loud_hits, len(all_loud_scores))
+        subtle_low, subtle_high = wilson_ci(subtle_hits, len(all_subtle_scores))
+        lines.append(f"{t:>10} {fp_rate:>9.2%} {loud_rate:>12.1%} "
+                      f"{f'[{loud_low:.1%}, {loud_high:.1%}]':>20} {subtle_rate:>14.1%} "
+                      f"{f'[{subtle_low:.1%}, {subtle_high:.1%}]':>20}")
     lines.append("")
 
     # --- Exfil-to-popular-destination guard case ---

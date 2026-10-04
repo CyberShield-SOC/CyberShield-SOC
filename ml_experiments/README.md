@@ -103,36 +103,62 @@ realistic confounds held constant across levels: occasional legitimate
 volume spikes (100–300MB) and per-IP deny rates varying 5–20%. Full output
 in `reports/threat_log_false_positive_powered.txt`.
 
-| Novelty | Pooled FP rate @ −0.12 | 95% Wilson CI | Loud detect | Subtle detect | ROC-AUC |
+| Novelty | Pooled FP rate @ −0.12 | 95% Wilson CI | Loud detect (30/30) | Subtle detect (30/30) | ROC-AUC |
 |---|---|---|---|---|---|
-| 0% | 0.90% (9/1000) | [0.47%, 1.70%] | 100% | 100% | 0.9999 |
-| 5% | 0.80% (8/1000) | [0.41%, 1.57%] | 100% | 100% | 0.9999 |
-| 15% | 0.80% (8/1000) | [0.41%, 1.57%] | 100% | 100% | 1.0000 |
-| 30% | 0.70% (7/1000) | [0.34%, 1.44%] | 100% | 100% | 1.0000 |
+| 0% | 0.90% (9/1000) | [0.47%, 1.70%] | 100% [88.7%, 100%] | 100% [88.7%, 100%] | 0.9999 |
+| 5% | 0.80% (8/1000) | [0.41%, 1.57%] | 100% [88.7%, 100%] | 100% [88.7%, 100%] | 0.9999 |
+| 15% | 0.80% (8/1000) | [0.41%, 1.57%] | 100% [88.7%, 100%] | 100% [88.7%, 100%] | 1.0000 |
+| 30% | 0.70% (7/1000) | [0.34%, 1.44%] | 100% [88.7%, 100%] | 100% [88.7%, 100%] | 1.0000 |
+
+Each detection cell is 30 attack instances (3 types × 10 seeds) and shows the
+95% Wilson CI. A 30/30 result can still be as low as 88.7%. The CIs cover only
+sampling error in this synthetic population. They do not say how realistic
+the attacks are. The generator makes the attacks separable by construction (see the
+caveat at the end of §7), so these detection rates are not evidence of
+detection on real traffic.
 
 FP rate is flat (even slightly lower) as ambient novelty rises — more
 organic history gives the model a richer baseline rather than more false
-alarms. Cause breakdown across the 32 total false positives: `volume_spike`
-(14), `elevated_deny_rate` (11), `new_destination` (12), with growing
-overlap (multiple co-occurring causes) at higher novelty. **Novelty alone
-is not the dominant false-positive driver** — volume spikes and deny-rate
-variance contribute at least as much.
+alarms. Cause breakdown across the 32 total false positives, counted per
+occurrence (a false positive with two causes counts toward both):
+`volume_spike` 16, `elevated_deny_rate` 12, `new_destination` 12,
+`no_obvious_cause` 4. These are attributions from the injected generator
+labels, not a causal test of what the model responded to. Multiple causes
+overlap more at higher novelty. Within that caveat, novelty does not look like
+the dominant driver: volume spikes and deny-rate variance account for as many
+false positives as novel destinations do.
 
 ## 7. Threshold sensitivity
 
 Same powered run, pooled across all levels/seeds, scored at four candidate
 thresholds:
 
-| Threshold | FP rate | Loud detect | Subtle detect |
+| Threshold | FP rate | Loud detect (95% CI) | Subtle detect (95% CI) |
 |---|---|---|---|
-| −0.10 | 1.70% | 100% | 100% |
-| **−0.12 (chosen)** | **0.80%** | **100%** | **100%** |
-| −0.15 | 0.12% | 100% | 95.8% |
-| −0.18 | 0.00% | 98.3% | 90.8% |
+| −0.10 | 1.70% | 100% (120/120) [96.9%, 100%] | 100% (120/120) [96.9%, 100%] |
+| **−0.12 (chosen)** | **0.80%** | **100% (120/120) [96.9%, 100%]** | **100% (120/120) [96.9%, 100%]** |
+| −0.15 | 0.12% | 100% (120/120) [96.9%, 100%] | 95.8% (115/120) [90.6%, 98.2%] |
+| −0.18 | 0.00% | 98.3% (118/120) [94.1%, 99.5%] | 90.8% (109/120) [84.3%, 94.8%] |
+
+The threshold table pools all 4 novelty levels, so each class has 120
+instances (4 levels × 10 seeds × 3 types). The threshold was chosen from this
+same synthetic population, so these rates are in-sample. There is no held-out
+threshold check.
 
 −0.12 is the last point where subtle-attack detection is still 100% —
 tightening further trades subtle (then loud) detection for diminishing FP
-gains. This is why `-0.12` was chosen as the shipped default (see
+gains.
+
+**Caveat — what these detection numbers do and do not show.** The attack
+generator in `backend/tests/anomaly_eval/synthetic_threat_log.py` builds each
+attack IP with one destination and attack ports outside the normal 80/443
+set, while normal IPs use 2–3 core destinations. One feature alone, the count
+of distinct destinations, separates the two classes at AUC ≈ 0.95–0.98 on
+single seeds (checked with a single-feature AUC, not the model). The reported
+ROC-AUC of 0.9999–1.0000 therefore mostly reflects that construction. The
+result is a sanity check that the pipeline runs and catches obviously
+out-of-pattern traffic. It is not a measure of how well the model would catch
+realistic attacks on real traffic. This is why `-0.12` was chosen as the shipped default (see
 `backend/app/detection/rules/behavioral_anomaly_threat_log.py`'s
 `DEFAULT_PARAMS`).
 
