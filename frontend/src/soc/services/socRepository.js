@@ -103,7 +103,7 @@ export function getRepositoryErrorMessage(status, payload = {}) {
 }
 
 export function assistantErrorMessage(status, payload = {}) {
-  if (status === 503) return "The AI assistant is not configured on this server.";
+  if (status === 503) return "The AI assistant is not configured or its API key was rejected. Ask an administrator to check ANTHROPIC_API_KEY.";
   if (status === 429) return "The AI service is busy. Try again in a moment.";
   if (status === 502) return "The AI service is unavailable. Try again shortly.";
   return getRepositoryErrorMessage(status, payload);

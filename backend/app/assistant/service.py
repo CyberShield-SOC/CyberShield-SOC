@@ -107,6 +107,10 @@ def run_chat(
                 tools=tool_defs,
                 messages=conversation,
             )
+        except anthropic.AuthenticationError as exc:
+            # A bad key is a server configuration problem, not a transient outage.
+            logger.error("Assistant API key was rejected by the model provider")
+            raise AssistantUpstreamError("The AI assistant API key was rejected. Check ANTHROPIC_API_KEY.", 503) from exc
         except anthropic.RateLimitError as exc:
             raise AssistantUpstreamError("The AI service is rate limited. Try again shortly.", 429) from exc
         except anthropic.APIConnectionError as exc:

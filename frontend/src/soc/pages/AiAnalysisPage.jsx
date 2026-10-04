@@ -51,8 +51,10 @@ export default function AiAnalysisPage({ navigate }) {
     globalTimeRange,
     incidents,
     mutation,
+    pendingAiRequest,
     repositoryMode,
     selectedIncidentId,
+    setPendingAiRequest,
     setSelectedIncidentId,
     settings,
   } = useSocWorkspace();
@@ -128,6 +130,16 @@ export default function AiAnalysisPage({ navigate }) {
       setRunning(false);
     }
   }
+
+  // A page elsewhere (e.g. Event Logs) can queue one question. Send it once, then clear it.
+  // The ref stops React StrictMode's second effect run from asking it twice.
+  const handledRequestRef = useRef(null);
+  useEffect(() => {
+    if (!pendingAiRequest || handledRequestRef.current === pendingAiRequest) return;
+    handledRequestRef.current = pendingAiRequest;
+    setPendingAiRequest(null);
+    askQuestion(pendingAiRequest.prompt);
+  }, [pendingAiRequest]);
 
   function submitQuestion(event) {
     event.preventDefault();

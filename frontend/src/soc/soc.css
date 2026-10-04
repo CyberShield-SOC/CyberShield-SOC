@@ -788,7 +788,8 @@
 .dashboard-analytics-grid .soc-panel-header p,
 .dashboard-threat-grid .soc-panel-header p { font-size: calc(11.5px + var(--soc-font-delta)); }
 .dashboard-events-panel .soc-panel-body { display: flex; align-items: center; }
-.dashboard-events-panel .line-chart { width: 100%; }
+.dashboard-events-panel .line-chart,
+.dashboard-events-panel .chart-hbar { width: 100%; }
 .dashboard-events-panel .soc-panel-header { align-items: flex-start; flex-wrap: nowrap; }
 .dashboard-severity-panel .soc-panel-body { display: flex; min-height: 238px; flex-direction: column; }
 .dashboard-severity-panel .donut-layout { min-height: 160px; flex-wrap: nowrap; gap: 14px; }
