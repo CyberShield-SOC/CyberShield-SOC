@@ -54,7 +54,16 @@ CURRENT_THRESHOLD = -0.12
 MARGIN_BAND = 0.05  # "within 0.05 of the threshold"
 
 
-def run_once(db, *, novelty_level: float, seed: int, level_idx: int) -> dict:
+POPULATIONS = ("v2", "v1")  # v2 is the primary population; v1 is superseded (see README §7)
+PRIMARY_POPULATION = "v2"
+REPORT_FILES = {
+    "v2": "threat_log_false_positive_powered.txt",
+    "v1": "threat_log_false_positive_powered_v1_superseded.txt",
+}
+DIAGNOSTIC_FEATURES = ("record_count", "distinct_dests", "distinct_ports", "bytes_total", "deny_rate")
+
+
+def run_once(db, *, novelty_level: float, seed: int, level_idx: int, population: str) -> dict:
     """One (novelty_level, seed) scenario: 100 normal IPs + 7 attack IPs
     (3 loud, 3 subtle, 1 exfil-to-popular-destination guard case).
 
@@ -64,10 +73,14 @@ def run_once(db, *, novelty_level: float, seed: int, level_idx: int) -> dict:
     in-file implementation (8 scenarios, 856 scores) before the swap.
     """
 
-    result = run_threat_log_scenario(db, novelty_level=novelty_level, seed=seed, level_idx=level_idx, n_normal=N_NORMAL)
+    result = run_threat_log_scenario(
+        db, novelty_level=novelty_level, seed=seed, level_idx=level_idx, n_normal=N_NORMAL, population=population,
+    )
     return {
         "novelty_level": novelty_level,
         "seed": seed,
+        "features": result.meta["features"],
+        "attack_ips": result.meta["attack_ips"],
         "normal_scores": result.normal,
         "loud_scores": result.attacks_where("_loud"),
         "subtle_scores": result.attacks_where("_subtle"),
@@ -90,29 +103,64 @@ def cause_of(meta: dict) -> str:
     return "+".join(causes) if len(causes) > 1 else causes[0]
 
 
-def main() -> int:
+def run_population(population: str) -> str:
     db = SessionLocal()
     results_by_level: dict[float, list[dict]] = {level: [] for level in NOVELTY_LEVELS}
     try:
         for level_idx, level in enumerate(NOVELTY_LEVELS):
             for seed in SEEDS:
-                results_by_level[level].append(run_once(db, novelty_level=level, seed=seed, level_idx=level_idx))
-                print(f"done: novelty={level:.0%} seed={seed}")
+                results_by_level[level].append(
+                    run_once(db, novelty_level=level, seed=seed, level_idx=level_idx, population=population)
+                )
+                print(f"[{population}] done: novelty={level:.0%} seed={seed}")
     finally:
         db.rollback()
         db.close()
+    return build_report(results_by_level, population)
 
-    report = build_report(results_by_level)
-    print("\n" + report)
+
+def main() -> int:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    (REPORTS_DIR / "threat_log_false_positive_powered.txt").write_text(report, encoding="utf-8")
+    for population in POPULATIONS:
+        report = run_population(population)
+        print("\n" + report)
+        (REPORTS_DIR / REPORT_FILES[population]).write_text(report, encoding="utf-8")
     return 0
 
 
-def build_report(results_by_level: dict[float, list[dict]]) -> str:
+POPULATION_DESCRIPTIONS = {
+    "v2": "v2 PRIMARY: attacks overlap normal traffic (common ports, shared destinations, bytes and deny rates in the normal range)",
+    "v1": "v1 SUPERSEDED: attacks separable by construction (ports 20000+, single destination, 800MB/50MB transfers, 40-100% deny). Kept only to document the earlier result.",
+}
+
+
+def single_feature_section(results_by_level: dict[float, list[dict]]) -> list[str]:
+    """Diagnostic: how well each single feature separates loud+subtle attacks from normals,
+    pooled over all levels and seeds. Oriented so 0.5 is chance. A model that is not just
+    reading one of these features should leave every value near 0.5."""
+
+    lines = ["--- single-feature separability (diagnostic, not the model) ---",
+             "AUC oriented so 0.5 = chance, 1.0 = perfectly separable; 'direction' is which way attacks differ"]
+    for feature in DIAGNOSTIC_FEATURES:
+        labels, values = [], []
+        for level in NOVELTY_LEVELS:
+            for run in results_by_level[level]:
+                attack_ips = {ip for name, ip in run["attack_ips"].items() if not name.startswith("exfil")}
+                for ip, feats in run["features"].items():
+                    labels.append(1 if ip in attack_ips else 0)
+                    values.append(float(feats[feature]))
+        raw_auc = roc_auc_score(labels, values)
+        direction = "attacks higher" if raw_auc > 0.5 else "attacks lower"
+        lines.append(f"{feature:>15}: AUC {max(raw_auc, 1 - raw_auc):.4f}  ({direction})")
+    lines.append("")
+    return lines
+
+
+def build_report(results_by_level: dict[float, list[dict]], population: str) -> str:
     lines = []
     lines.append("Powered false-positive check for behavioral_anomaly_threat_log")
     lines.append("=" * 88)
+    lines.append(f"population: {POPULATION_DESCRIPTIONS[population]}")
     lines.append(f"{N_NORMAL} normal IPs x {len(SEEDS)} seeds per novelty level ({N_NORMAL * len(SEEDS)} observations/level)")
     lines.append(f"current provisional threshold: {CURRENT_THRESHOLD}")
     versions = environment_versions()
@@ -232,6 +280,7 @@ def build_report(results_by_level: dict[float, list[dict]]) -> str:
         "that change and confirm this number stays comparably negative."
     )
 
+    lines += single_feature_section(results_by_level)
     return "\n".join(lines) + "\n"
 
 
