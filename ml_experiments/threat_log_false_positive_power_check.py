@@ -18,12 +18,11 @@ eval_production_threat_log_features.py.
 
 Database safety: this opens one session against whatever
 app.core.config.settings.database_url points to (the normal dev database,
-not a disposable test database) and NEVER commits -- every write in this
-codebase's repositories flushes but does not commit (confirmed against
-app/repositories/ml_repository.py and baseline_repository.py), so every
-row this script creates is visible to its own later queries within the one
-open transaction, and a final db.rollback() discards all of it. No cleanup
-step is needed and no real data is ever touched.
+not a disposable test database) and NEVER commits. Each scenario also runs
+inside a savepoint that is rolled back when it ends (see
+backend/tests/anomaly_eval/harness.py), so scenarios cannot see each other's
+snapshots, models or per-IP history, and a final db.rollback() discards
+everything else. No cleanup step is needed and no real data is ever touched.
 
 Run:
     backend/.venv/Scripts/python.exe ml_experiments/threat_log_false_positive_power_check.py
@@ -31,12 +30,9 @@ Run:
 
 from __future__ import annotations
 
-import itertools
-import random
 import statistics
 import sys
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -46,18 +42,9 @@ sys.path.insert(0, str(BACKEND))
 
 from sklearn.metrics import roc_auc_score  # noqa: E402
 
-import app.detection.rules.behavioral_anomaly_threat_log as rule_module  # noqa: E402
-import app.ml.train_threat_detection as train_module  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
-from app.detection.models import LogRecord  # noqa: E402
-from app.repositories.ml_repository import list_feature_snapshots  # noqa: E402
-
-BASE = datetime(2026, 1, 5, tzinfo=timezone.utc)
-NORMAL_PORTS = {443: "HTTPS", 80: "HTTP"}
-CORE_POOL = [f"198.51.100.{i}" for i in range(10, 30)]
-POPULAR_POOL = [f"192.0.2.{i}" for i in range(10, 20)]
-SPIKE_PROB = 0.08
-DENY_RATE_RANGE = (0.05, 0.20)
+from tests.anomaly_eval.metrics import wilson_ci  # noqa: E402
+from tests.anomaly_eval.scenarios import run_threat_log_scenario  # noqa: E402
 
 NOVELTY_LEVELS = (0.0, 0.05, 0.15, 0.30)
 SEEDS = tuple(range(10))
@@ -66,207 +53,27 @@ THRESHOLDS = (-0.10, -0.12, -0.15, -0.18)
 CURRENT_THRESHOLD = -0.12
 MARGIN_BAND = 0.05  # "within 0.05 of the threshold"
 
-_line_counter = itertools.count(1)
-
-
-def _ts(hour: int, minute: int, second: int = 0) -> str:
-    return BASE.replace(hour=hour, minute=minute, second=second).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def mk(ts_str: str, source_ip: str, dest_ip: str, protocol: str, port: int, bytes_out: int, status: str) -> LogRecord:
-    return LogRecord(
-        line_number=next(_line_counter), timestamp=ts_str, ip_address=source_ip, dest_ip=dest_ip,
-        protocol=protocol, port=port, bytes_out=bytes_out, status=status,
-    )
-
-
-class RarePool:
-    """True long-tail destinations, disjoint from CORE_POOL/POPULAR_POOL and
-    from every attack generator's fixed destinations (203.0.113.x)."""
-
-    def __init__(self):
-        self._counter = 0
-
-    def next(self) -> str:
-        self._counter += 1
-        third = (self._counter // 254) % 50
-        fourth = (self._counter % 254) + 1
-        return f"198.18.{third}.{fourth}"
-
-
-def make_profile(rng: random.Random) -> dict:
-    core = rng.sample(CORE_POOL, k=rng.randint(2, 3))
-    return {"core": core, "deny_rate": rng.uniform(*DENY_RATE_RANGE), "seen": set(core)}
-
-
-def realistic_bucket_records(
-    rng: random.Random, rare_pool: RarePool, profile: dict, source_ip: str, hour: int, novelty_level: float,
-) -> tuple[list[LogRecord], dict]:
-    novel_this_bucket = rng.random() < novelty_level
-    new_dests: list[str] = []
-    if novel_this_bucket:
-        for _ in range(rng.randint(1, 3)):
-            candidate = rng.choice(POPULAR_POOL) if rng.random() < 0.7 else rare_pool.next()
-            if candidate not in profile["seen"]:
-                new_dests.append(candidate)
-                profile["seen"].add(candidate)
-
-    records = []
-    statuses = []
-    for i in range(rng.randint(3, 6)):
-        dest = rng.choice(new_dests) if new_dests and rng.random() < 0.5 else rng.choice(profile["core"])
-        port = rng.choice(list(NORMAL_PORTS))
-        status = "DENIED" if rng.random() < profile["deny_rate"] else "ALLOWED"
-        statuses.append(status)
-        records.append(mk(
-            _ts(hour, minute=rng.randint(0, 59), second=i), source_ip, dest,
-            NORMAL_PORTS[port], port, rng.randint(2_000, 20_000), status,
-        ))
-
-    had_spike = rng.random() < SPIKE_PROB
-    if had_spike:
-        spike_dest = rng.choice(profile["core"] + POPULAR_POOL)
-        records.append(mk(
-            _ts(hour, minute=59, second=59), source_ip, spike_dest,
-            "HTTPS", 443, rng.randint(100_000_000, 300_000_000), "ALLOWED",
-        ))
-        statuses.append("ALLOWED")
-
-    denied = sum(1 for s in statuses if s == "DENIED")
-    meta = {
-        "had_novel_dest": bool(new_dests),
-        "new_dest_count": len(new_dests),
-        "had_spike": had_spike,
-        "observed_deny_rate": (denied / len(statuses)) if statuses else 0.0,
-        "assigned_deny_rate": profile["deny_rate"],
-    }
-    return records, meta
-
-
-def port_scan_records(source_ip: str, hour: int, *, dest: str, num_ports: int) -> list[LogRecord]:
-    return [
-        mk(_ts(hour, minute=i % 60), source_ip, dest, "TCP", 20_000 + i, 100, "ALLOWED")
-        for i in range(num_ports)
-    ]
-
-
-def big_transfer_records(source_ip: str, hour: int, *, dest: str, bytes_out: int, count: int) -> list[LogRecord]:
-    return [
-        mk(_ts(hour, minute=5 * i), source_ip, dest, "HTTPS", 443, bytes_out, "ALLOWED")
-        for i in range(count)
-    ]
-
-
-def deny_burst_records(source_ip: str, hour: int, *, dest: str, count: int, deny_fraction: float) -> list[LogRecord]:
-    denied_count = round(count * deny_fraction)
-    return [
-        mk(_ts(hour, minute=i % 60), source_ip, dest, "HTTPS", 443, 500, "DENIED" if i < denied_count else "ALLOWED")
-        for i in range(count)
-    ]
-
-
-def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    if n == 0:
-        return (0.0, 0.0)
-    phat = successes / n
-    denom = 1 + z**2 / n
-    centre = phat + z**2 / (2 * n)
-    margin = z * ((phat * (1 - phat) / n + z**2 / (4 * n**2)) ** 0.5)
-    return (max(0.0, (centre - margin) / denom), min(1.0, (centre + margin) / denom))
-
 
 def run_once(db, *, novelty_level: float, seed: int, level_idx: int) -> dict:
     """One (novelty_level, seed) scenario: 100 normal IPs + 7 attack IPs
-    (3 loud, 3 subtle, 1 exfil-to-popular-destination guard case), via the
-    real rule/pipeline/training functions directly."""
+    (3 loud, 3 subtle, 1 exfil-to-popular-destination guard case).
 
-    feature_set = f"fpcheck-{int(novelty_level * 100)}-{seed}"
-    rule_module.FEATURE_SET = feature_set
-    train_module.FEATURE_SET = feature_set
+    The generators, the per-scenario FEATURE_SET isolation and the savepoint
+    rollback now live in backend/tests/anomaly_eval (shared with the login and
+    egress evals). Scores were verified bit-identical to this script's previous
+    in-file implementation (8 scenarios, 856 scores) before the swap.
+    """
 
-    rng = random.Random(seed * 1000 + level_idx)
-    rare_pool = RarePool()
-    ip_base = f"10.{200 + level_idx}.{seed}"
-    normal_ips = [f"{ip_base}.{i}" for i in range(1, N_NORMAL + 1)]
-    attack_names = [
-        "port_scan_loud", "big_transfer_loud", "deny_burst_loud",
-        "port_scan_subtle", "big_transfer_subtle", "deny_burst_subtle",
-        "exfil_popular",
-    ]
-    attack_ips = {name: f"{ip_base}.{100 + j}" for j, name in enumerate(attack_names, start=1)}
-    all_ips = normal_ips + list(attack_ips.values())
-    profiles = {ip: make_profile(rng) for ip in all_ips}
-
-    rule = rule_module.BehavioralAnomalyThreatLogRule()
-
-    history_records: list[LogRecord] = []
-    for hour in range(6):
-        for ip in all_ips:
-            recs, _meta = realistic_bucket_records(rng, rare_pool, profiles[ip], ip, hour, novelty_level)
-            history_records += recs
-    rule.analyze(history_records, db)
-
-    snapshot_count = len(list_feature_snapshots(db, feature_set=feature_set, entity_type="source_ip"))
-    assert snapshot_count >= 50, f"only {snapshot_count} snapshots for {feature_set}"
-
-    model_row = train_module.train(db, min_samples=50, random_state=42)
-    db.flush()
-    assert model_row.is_active
-
-    test_records: list[LogRecord] = []
-    injection_meta: dict[str, dict] = {}
-    for ip in normal_ips:
-        recs, meta = realistic_bucket_records(rng, rare_pool, profiles[ip], ip, hour=6, novelty_level=novelty_level)
-        test_records += recs
-        injection_meta[ip] = meta
-
-    test_records += port_scan_records(attack_ips["port_scan_loud"], hour=6, dest=CORE_POOL[0], num_ports=25)
-    test_records += big_transfer_records(
-        attack_ips["big_transfer_loud"], hour=6, dest="203.0.113.77", bytes_out=800_000_000, count=2,
-    )
-    test_records += deny_burst_records(
-        attack_ips["deny_burst_loud"], hour=6, dest=CORE_POOL[0], count=20, deny_fraction=1.0,
-    )
-    test_records += port_scan_records(attack_ips["port_scan_subtle"], hour=6, dest=CORE_POOL[1], num_ports=5)
-    test_records += big_transfer_records(
-        attack_ips["big_transfer_subtle"], hour=6, dest="203.0.113.88", bytes_out=50_000_000, count=1,
-    )
-    test_records += deny_burst_records(
-        attack_ips["deny_burst_subtle"], hour=6, dest=CORE_POOL[1], count=20, deny_fraction=0.4,
-    )
-
-    # Exfil to a destination many normal IPs already use (guard case for a
-    # future org-wide rarity feature): pick a POPULAR_POOL entry this
-    # specific attacker IP has never visited itself, so per-IP novelty is
-    # still genuinely triggered -- what's different from big_transfer_loud
-    # is that this destination is *not* rare across the organization.
-    exfil_ip = attack_ips["exfil_popular"]
-    exfil_dest = next(d for d in POPULAR_POOL if d not in profiles[exfil_ip]["seen"])
-    popularity = sum(1 for ip in normal_ips if exfil_dest in profiles[ip]["seen"])
-    test_records += big_transfer_records(exfil_ip, hour=6, dest=exfil_dest, bytes_out=500_000_000, count=1)
-
-    rule.analyze(test_records, db)
-
-    all_snapshots = list_feature_snapshots(db, feature_set=feature_set, entity_type="source_ip")
-    latest_by_ip = {}
-    for snapshot in all_snapshots:
-        latest_by_ip[snapshot.entity_id] = snapshot
-
-    normal_scores = {ip: latest_by_ip[ip].score for ip in normal_ips}
-    attack_scores = {name: latest_by_ip[ip].score for name, ip in attack_ips.items() if name != "exfil_popular"}
-    loud_scores = {k: v for k, v in attack_scores.items() if k.endswith("_loud")}
-    subtle_scores = {k: v for k, v in attack_scores.items() if k.endswith("_subtle")}
-    exfil_score = latest_by_ip[exfil_ip].score
-
+    result = run_threat_log_scenario(db, novelty_level=novelty_level, seed=seed, level_idx=level_idx, n_normal=N_NORMAL)
     return {
         "novelty_level": novelty_level,
         "seed": seed,
-        "normal_scores": normal_scores,
-        "loud_scores": loud_scores,
-        "subtle_scores": subtle_scores,
-        "exfil_score": exfil_score,
-        "exfil_dest_popularity": popularity,  # how many of the 100 normal IPs had already used this destination
-        "injection_meta": injection_meta,
+        "normal_scores": result.normal,
+        "loud_scores": result.attacks_where("_loud"),
+        "subtle_scores": result.attacks_where("_subtle"),
+        "exfil_score": result.attacks["exfil_popular"],
+        "exfil_dest_popularity": result.meta["exfil_dest_popularity"],  # how many of the 100 normal IPs had already used this destination
+        "injection_meta": result.meta["injection_meta"],
     }
 
 
