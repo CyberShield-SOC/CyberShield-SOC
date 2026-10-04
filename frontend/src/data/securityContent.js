@@ -27,7 +27,7 @@ export const SECURITY_EVENTS = Object.freeze([
     time: "14:32:09",
     severity: "MEDIUM",
     service: "ai-engine",
-    message: "anomaly score 87/100 - above threshold",
+    message: "anomaly score -0.153 - below threshold -0.020",
   },
   {
     time: "14:32:09",

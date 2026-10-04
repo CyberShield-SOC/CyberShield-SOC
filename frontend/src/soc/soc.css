@@ -670,7 +670,7 @@
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .file-button.disabled { cursor: not-allowed; opacity: .5; }
 
-.soc-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.soc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .soc-stat-card,
 .soc-panel,
 .tracking-summary {
@@ -1131,6 +1131,11 @@
 .risk-meter-track { height: 7px; flex: 1; overflow: hidden; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border); border-radius: 99px; }
 .risk-meter-track span { display: block; height: 100%; background: linear-gradient(90deg, var(--severity-medium), var(--severity-critical)); border-radius: inherit; }
 .risk-meter strong { color: var(--severity-critical); font-size: 10.5px; }
+.severity-meter { display: flex; align-items: center; gap: 10px; margin: 13px 0 17px; }
+.severity-meter-track { display: flex; flex: 1; gap: 3px; }
+.severity-meter-track i { flex: 1; height: 7px; border-radius: 2px; background: var(--soc-surface-subtle); border: 1px solid var(--soc-border, rgba(127, 127, 127, 0.25)); }
+.severity-meter strong { font-size: 10.5px; }
+.ai-sample-note { display: block; margin: 8px 0; color: var(--soc-text-muted, inherit); font-style: italic; }
 .event-detail dl,
 .incident-detail dl,
 .config-detail dl { margin: 0; }

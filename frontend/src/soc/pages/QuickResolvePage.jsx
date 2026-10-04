@@ -24,7 +24,7 @@ import { incidentMatchesAlert } from "../utils/alertRecommendations";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { assistantToolLabel } from "../utils/assistantChat";
 import { timeRangeToHours } from "../utils/timeRange";
-import { ErrorState, InlineNotice, PageHeader, Panel, RiskMeter, SeverityBadge, StatusBadge, ValidationMessage } from "../components/Ui";
+import { ErrorState, InlineNotice, PageHeader, Panel, SeverityBadge, SeverityMeter, StatusBadge, ValidationMessage } from "../components/Ui";
 
 const MAX_INCIDENT_NOTES = 5;
 const CHECKLIST = [
@@ -323,14 +323,14 @@ export default function QuickResolvePage({ navigate }) {
             <div><span>Severity</span><SeverityBadge severity={selectedAlert.severity} /></div>
             <div><span>Alert status</span><StatusBadge status={selectedAlert.status} /></div>
             <div><span>Incident</span>{linkedIncident ? <strong className="mono">{linkedIncident.id}</strong> : <em>Not created</em>}</div>
-            <div><span>Risk</span><strong>{selectedAlert.risk}/100</strong></div>
+            <div><span>Rule confidence</span><strong>{selectedAlert.confidence ?? "—"}</strong></div>
           </section>
 
           {workflowError && <InlineNotice tone="error" title="Workflow could not continue">{workflowError}</InlineNotice>}
 
           <div className="quick-resolve-grid">
             <Panel className="quick-evidence-panel span-2" title="Alert evidence" subtitle={`${evidence.length} matched records · ${selectedAlert.ruleId}`} actions={<button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.alerts)}>Open full alert <FileSearch size={13} /></button>}>
-              <div className="quick-alert-overview"><div><h3>{selectedAlert.title}</h3><p>{selectedAlert.summary}</p><dl><div><dt>Source IP</dt><dd className="mono">{selectedAlert.sourceIp}</dd></div><div><dt>Affected user</dt><dd className="mono">{selectedAlert.user || "Unknown"}</dd></div><div><dt>Observed</dt><dd>{formatTimestamp(selectedAlert.observedAt || selectedAlert.createdAt)}</dd></div></dl></div><RiskMeter value={selectedAlert.risk} /></div>
+              <div className="quick-alert-overview"><div><h3>{selectedAlert.title}</h3><p>{selectedAlert.summary}</p><dl><div><dt>Source IP</dt><dd className="mono">{selectedAlert.sourceIp}</dd></div><div><dt>Affected user</dt><dd className="mono">{selectedAlert.user || "Unknown"}</dd></div><div><dt>Observed</dt><dd>{formatTimestamp(selectedAlert.observedAt || selectedAlert.createdAt)}</dd></div></dl></div><SeverityMeter severity={selectedAlert.severity} /></div>
               <div className="quick-evidence-list">{evidence.slice(0, 5).map((event) => <article key={event.id}><div><code>{event.id}</code><StatusBadge status={event.status} /></div><strong>{event.event}</strong><p className="mono">{formatTimestamp(event.timestamp)} · {event.sourceIp} · {event.user}</p><span>{event.message}</span></article>)}{!evidence.length && <p className="empty-inline">No normalized evidence is linked to this alert.</p>}</div>
               {rule && <div className="quick-rule"><span><Sparkles size={15} />Detection rule</span><strong>{rule.id} · {rule.name}</strong><p>{rule.description}</p><code>{rule.query}</code></div>}
             </Panel>
@@ -372,7 +372,7 @@ export default function QuickResolvePage({ navigate }) {
                   )}
                   <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button>
                 </div>
-              ) : analysis ? <div className="quick-ai-result"><div><StatusBadge status="review required" /><strong>{analysis.verdict}</strong></div><p>{analysis.summary}</p><h4>Recommended actions</h4><ul>{analysis.actions.slice(0, 4).map((item) => <li key={item}><CircleCheckBig size={14} />{item}</li>)}</ul><button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button></div> : !analyzing && <div className="quick-ai-empty"><Bot size={23} /><strong>AI review is optional</strong><p>Run an analysis after checking the matched evidence and rule logic.</p></div>}
+              ) : analysis ? <div className="quick-ai-result"><div><StatusBadge status="review required" /><strong>{analysis.verdict}</strong></div><p>{analysis.summary}</p><h4>Recommended actions</h4><ul>{analysis.actions.slice(0, 4).map((item) => <li key={item}><CircleCheckBig size={14} />{item}</li>)}</ul><small className="ai-sample-note">Sample analysis: illustrative demo content, not generated from this alert.</small><button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button></div> : !analyzing && <div className="quick-ai-empty"><Bot size={23} /><strong>AI review is optional</strong><p>Run an analysis after checking the matched evidence and rule logic.</p></div>}
             </Panel>
           </div>
         </>

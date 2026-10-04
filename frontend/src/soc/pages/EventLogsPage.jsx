@@ -20,7 +20,7 @@ import {
   LoadingState,
   PageHeader,
   Panel,
-  RiskMeter,
+  SeverityMeter,
   SeverityBadge,
   StatCard,
   StatusBadge,
@@ -460,7 +460,7 @@ export default function EventLogsPage({ navigate }) {
               <header><div><SeverityBadge severity={selectedEvent.severity} /><span>{selectedEvent.id}</span></div><button type="button" onClick={() => setSelectedEventId(null)} aria-label="Close event details"><X size={17} /></button></header>
               <h2>{selectedEvent.event}</h2>
               <p>{selectedEvent.message}</p>
-              <RiskMeter value={selectedEvent.risk} />
+              <SeverityMeter severity={selectedEvent.severity} />
               <dl>
                 <div><dt>Rule</dt><dd>{selectedEvent.rule}</dd></div>
                 <div><dt>Source</dt><dd>{selectedEvent.source}</dd></div>

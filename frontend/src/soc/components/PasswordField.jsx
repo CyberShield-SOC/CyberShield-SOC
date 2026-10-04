@@ -46,7 +46,7 @@ export function PasswordRequirementsChecklist({ password }) {
   );
 }
 
-/** Weak/Medium/Strong meter, mirroring the RiskMeter track+fill visual pattern. */
+/** Weak/Medium/Strong meter, reusing the .risk-meter track+fill styles. */
 export function PasswordStrengthMeter({ password }) {
   const strength = getPasswordStrength(password);
   if (strength === "empty") return null;

@@ -65,12 +65,12 @@ export function BrandPanel() {
             <div className="flex items-center gap-2">
               <Terminal size={13} className="text-teal-300" aria-hidden="true" />
               <span className="font-mono text-[9px] uppercase tracking-[0.17em] text-slate-300">
-                Live security events
+                Example security events
               </span>
             </div>
             <span className="flex items-center gap-1.5 font-mono text-[8px] uppercase text-teal-300">
               <i className="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-300" />
-              monitoring
+              illustrative
             </span>
           </div>
 

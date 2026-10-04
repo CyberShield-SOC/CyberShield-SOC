@@ -8,13 +8,14 @@ import { paginateRecords } from "../utils/pagination";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { getAlertRecommendations, getIncidentActionLabel, incidentMatchesAlert } from "../utils/alertRecommendations";
 import { evidenceEntries } from "../utils/ruleConfig";
+import { DECISION_SCORE_HELP } from "../utils/mlInsight";
 import {
   ErrorState,
   InlineNotice,
   LoadingState,
   PageHeader,
   Panel,
-  RiskMeter,
+  SeverityMeter,
   SeverityBadge,
   StatCard,
   StatusBadge,
@@ -276,7 +277,7 @@ export default function AlertsPage({ navigate }) {
                 <div className="alert-detail-summary">
                   <h3>{selected.title}</h3>
                   <div className="alert-reason"><span>Reason</span><p>{selected.reason || selected.summary}</p></div>
-                  <RiskMeter value={selected.risk} />
+                  <SeverityMeter severity={selected.severity} />
                   <label className="status-control"><span>Alert status</span><select value={selected.status} disabled={mutation.loading || !canWrite} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => updateAlertStatus(selected.id, event.target.value)}>{availableStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
                   <dl className="alert-context-list">
                     <div><dt>Severity</dt><dd><SeverityBadge severity={selected.severity} /></dd></div>
@@ -345,18 +346,30 @@ export default function AlertsPage({ navigate }) {
                 </Panel>
               )}
 
-              {/* Placeholder for a future ML anomaly-detection integration.
-                  No backend field populates selected.mlInsight today, so
-                  this panel never renders yet — it is ready to surface a
-                  model's score and explanation the moment one exists. */}
+              {/* Real learned-anomaly evidence from the behavioral_anomaly_* rules,
+                  shown in the backend's native form: the raw IsolationForest
+                  decision score (negative = anomalous). Never rescaled to 0-100. */}
               {Boolean(selected.mlInsight) && (
-                <Panel title="ML anomaly insight" subtitle={selected.mlInsight.label || "Model-generated assessment"}>
-                  {selected.mlInsight.score !== null && <RiskMeter value={selected.mlInsight.score} />}
-                  {selected.mlInsight.explanation && <p className="alert-reason">{selected.mlInsight.explanation}</p>}
-                  {Boolean(selected.mlInsight.contributingFactors.length) && (
+                <Panel title="Learned anomaly score" subtitle="IsolationForest decision score (native scale)">
+                  <div className="alert-reason">
+                    <span>Decision score</span>
+                    <p>
+                      <strong className="mono">{selected.mlInsight.scoreText}</strong>
+                      {selected.mlInsight.thresholdText ? ` · flagged below ${selected.mlInsight.thresholdText}` : ""}
+                    </p>
+                  </div>
+                  <small className="ai-sample-note">{DECISION_SCORE_HELP}</small>
+                  {Boolean(selected.mlInsight.factors.length) && (
                     <ul className="alert-recommendations">
-                      {selected.mlInsight.contributingFactors.map((factor) => <li key={factor}><CheckCircle2 size={15} /><span>{factor}</span></li>)}
+                      {selected.mlInsight.factors.map((factor) => <li key={factor}><CheckCircle2 size={15} /><span>{factor}</span></li>)}
                     </ul>
+                  )}
+                  {selected.mlInsight.model.version !== null && (
+                    <small className="ai-sample-note">
+                      {`Model v${selected.mlInsight.model.version}`}
+                      {selected.mlInsight.model.sampleCount !== null ? ` · trained on ${selected.mlInsight.model.sampleCount} samples` : ""}
+                      {selected.mlInsight.model.trainedAt ? ` · ${String(selected.mlInsight.model.trainedAt).slice(0, 10)}` : ""}
+                    </small>
                   )}
                 </Panel>
               )}
