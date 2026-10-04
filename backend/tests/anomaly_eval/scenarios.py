@@ -37,16 +37,24 @@ THREAT_LOG_ATTACKS = (
 )
 
 
+POPULATIONS = ("v1", "v2")
+
+
 def run_threat_log_scenario(
-    db: Session, *, novelty_level: float, seed: int, level_idx: int = 0, n_normal: int = 100,
+    db: Session, *, novelty_level: float, seed: int, level_idx: int = 0, n_normal: int = 100, population: str = "v2",
 ) -> ScenarioResult:
     """One (novelty_level, seed) scenario: n_normal ordinary IPs plus 7 attack IPs
     (3 loud, 3 subtle, 1 exfil-to-popular-destination guard case).
+
+    `population="v2"` (default) uses overlapping attacks; `"v1"` reproduces the
+    separable attacks of the original study. Normal traffic is identical in both.
 
     Mirrors run_once() in ml_experiments/threat_log_false_positive_power_check.py,
     with isolation provided by the harness instead of by hand.
     """
 
+    if population not in POPULATIONS:
+        raise ValueError(f"population must be one of {POPULATIONS}, got {population!r}")
     label = f"n{int(novelty_level * 100)}-s{seed}"
     with isolated_scenario(db, "threat_log", label=label) as scenario:
         factory = tl.RecordFactory()
@@ -76,20 +84,25 @@ def run_threat_log_scenario(
             test_records += records
             injection_meta[ip] = meta
 
-        test_records += tl.port_scan_records(factory, attack_ips["port_scan_loud"], hour=6, dest=tl.CORE_POOL[0], num_ports=25)
-        test_records += tl.big_transfer_records(
-            factory, attack_ips["big_transfer_loud"], hour=6, dest="203.0.113.77", bytes_out=800_000_000, count=2,
-        )
-        test_records += tl.deny_burst_records(
-            factory, attack_ips["deny_burst_loud"], hour=6, dest=tl.CORE_POOL[0], count=20, deny_fraction=1.0,
-        )
-        test_records += tl.port_scan_records(factory, attack_ips["port_scan_subtle"], hour=6, dest=tl.CORE_POOL[1], num_ports=5)
-        test_records += tl.big_transfer_records(
-            factory, attack_ips["big_transfer_subtle"], hour=6, dest="203.0.113.88", bytes_out=50_000_000, count=1,
-        )
-        test_records += tl.deny_burst_records(
-            factory, attack_ips["deny_burst_subtle"], hour=6, dest=tl.CORE_POOL[1], count=20, deny_fraction=0.4,
-        )
+        if population == "v1":
+            test_records += tl.port_scan_records(factory, attack_ips["port_scan_loud"], hour=6, dest=tl.CORE_POOL[0], num_ports=25)
+            test_records += tl.big_transfer_records(
+                factory, attack_ips["big_transfer_loud"], hour=6, dest="203.0.113.77", bytes_out=800_000_000, count=2,
+            )
+            test_records += tl.deny_burst_records(
+                factory, attack_ips["deny_burst_loud"], hour=6, dest=tl.CORE_POOL[0], count=20, deny_fraction=1.0,
+            )
+            test_records += tl.port_scan_records(factory, attack_ips["port_scan_subtle"], hour=6, dest=tl.CORE_POOL[1], num_ports=5)
+            test_records += tl.big_transfer_records(
+                factory, attack_ips["big_transfer_subtle"], hour=6, dest="203.0.113.88", bytes_out=50_000_000, count=1,
+            )
+            test_records += tl.deny_burst_records(
+                factory, attack_ips["deny_burst_subtle"], hour=6, dest=tl.CORE_POOL[1], count=20, deny_fraction=0.4,
+            )
+        else:
+            for name in tl.OVERLAP_ATTACKS:
+                ip = attack_ips[name]
+                test_records += tl.overlap_attack_records(factory, rng, name, ip, 6, core=profiles[ip]["core"])
 
         # Exfil to a destination many normal IPs already use: per-IP novelty still
         # fires, but the destination is not rare across the organisation.
@@ -100,6 +113,9 @@ def run_threat_log_scenario(
 
         rule.analyze(test_records, db)
         latest = scenario.latest_scores()
+        by_ip: dict[str, list] = {}
+        for record in test_records:
+            by_ip.setdefault(record.ip_address, []).append(record)
 
         return ScenarioResult(
             key="threat_log",
@@ -109,7 +125,11 @@ def run_threat_log_scenario(
             attacks={name: latest[ip] for name, ip in attack_ips.items()},
             meta={
                 "novelty_level": novelty_level,
+                "population": population,
                 "exfil_dest_popularity": popularity,
                 "injection_meta": injection_meta,
+                # Test-period summary features per IP, for the single-feature diagnostic only.
+                "features": {ip: tl.ip_features(by_ip[ip]) for ip in normal_ips + list(attack_ips.values())},
+                "attack_ips": attack_ips,
             },
         )
