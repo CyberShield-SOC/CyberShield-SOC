@@ -198,6 +198,14 @@ opening summary at line 4, and "the other 28 rules" at line 304) to 31.
   by code" isn't the same as "unused" here since the whole point is manual
   upload. Did not touch.
 
+  *Update 2026-10-04:* three top-level fixtures were deleted because they had
+  no code, test, loader, or doc consumers beyond their own upload
+  instructions: `egress_volume_anomaly.csv`, `behavioral_anomaly_login.csv`,
+  and `behavioral_anomaly_egress.csv`. Their entries in
+  `NEW_RULES_README.txt` (#5, #21, #22) now read "REMOVED" and keep their
+  numbers, so the other entries' numbering is unchanged. The remaining
+  fixtures are untouched.
+
 - **`ml_experiments/` scripts, models, and `reports/*.txt`** — all cited by
   name in `ml_experiments/README.md`'s section-by-section validation
   narrative. `models/` is gitignored and not in the repo; the `.txt`

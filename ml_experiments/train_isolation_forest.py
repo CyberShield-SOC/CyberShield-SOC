@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -41,7 +42,24 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT.parent / "Dataset for anamoly detection"
+# HISTORICAL PROVENANCE: the datasets are NOT in the repository (the old folder
+# was ~924 MB, one CSV alone 874 MB). Set CYBERSHIELD_DATASET_DIR to a local
+# copy; the default is where the maintainer keeps them, outside the repo and
+# outside OneDrive. Results are frozen in reports/. Nothing in backend/tests or
+# CI needs these files (see ml_experiments/README.md, "Datasets").
+DATA_DIR = Path(os.environ.get("CYBERSHIELD_DATASET_DIR", Path.home() / "datasets" / "cybershield-anomaly-detection"))
+
+
+def require_datasets() -> None:
+    if not DATA_DIR.is_dir():
+        raise SystemExit(
+            f"Dataset folder not found: {DATA_DIR}\n"
+            "This script is historical provenance for the Kaggle-baseline findings in "
+            "ml_experiments/README.md; its results are frozen in reports/. It needs local copies "
+            "of the datasets, which are not in the repository.\n"
+            "Set CYBERSHIELD_DATASET_DIR to a folder that contains them (see ml_experiments/README.md, "
+            "'Datasets'). Nothing in backend/tests or CI depends on this folder."
+        )
 MODELS_DIR = ROOT / "models"
 REPORTS_DIR = ROOT / "reports"
 RANDOM_STATE = 42
@@ -257,6 +275,7 @@ def run_one(key: str) -> str:
 
 
 def main() -> int:
+    require_datasets()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("datasets", nargs="*", choices=list(DATASETS), default=list(DATASETS),
                          help="Subset of datasets to train (default: all)")
