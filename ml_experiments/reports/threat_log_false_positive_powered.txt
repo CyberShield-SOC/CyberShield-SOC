@@ -2,14 +2,16 @@ Powered false-positive check for behavioral_anomaly_threat_log
 ========================================================================================
 100 normal IPs x 10 seeds per novelty level (1000 observations/level)
 current provisional threshold: -0.12
+library versions: numpy=2.5.3  python=3.13.3  scikit-learn=1.9.1
+detection rates are shown with 95% Wilson CIs; the attacks are separable by construction (see README).
 
 --- novelty_level=0% (10 seeds) ---
 pooled FP rate @ -0.12: 0.90% (9/1000)  95% Wilson CI: [0.47%, 1.70%]
 FP rate spread across 10 seeds: min=0.0% max=3.0% mean=0.9% stdev=0.9%
 per-seed FP rates: ['1%', '1%', '3%', '0%', '1%', '1%', '0%', '0%', '2%', '0%']
 normal IPs within 0.05 of threshold: 46/1000 (4.60%)
-loud-attack detection rate @ -0.12:   100.0% (30 instances)
-subtle-attack detection rate @ -0.12: 100.0% (30 instances)
+loud-attack detection rate @ -0.12:   100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
+subtle-attack detection rate @ -0.12: 100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
 ROC-AUC (loud+subtle vs. all normals): 0.9999
 false-positive causes (n=9): {'volume_spike': 4, 'no_obvious_cause': 2, 'elevated_deny_rate': 3}
 
@@ -18,8 +20,8 @@ pooled FP rate @ -0.12: 0.80% (8/1000)  95% Wilson CI: [0.41%, 1.57%]
 FP rate spread across 10 seeds: min=0.0% max=2.0% mean=0.8% stdev=0.9%
 per-seed FP rates: ['0%', '1%', '0%', '2%', '2%', '2%', '0%', '0%', '0%', '1%']
 normal IPs within 0.05 of threshold: 40/1000 (4.00%)
-loud-attack detection rate @ -0.12:   100.0% (30 instances)
-subtle-attack detection rate @ -0.12: 100.0% (30 instances)
+loud-attack detection rate @ -0.12:   100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
+subtle-attack detection rate @ -0.12: 100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
 ROC-AUC (loud+subtle vs. all normals): 0.9999
 false-positive causes (n=8): {'volume_spike': 2, 'new_destination': 1, 'new_destination+elevated_deny_rate': 2, 'elevated_deny_rate': 2, 'no_obvious_cause': 1}
 
@@ -28,8 +30,8 @@ pooled FP rate @ -0.12: 0.80% (8/1000)  95% Wilson CI: [0.41%, 1.57%]
 FP rate spread across 10 seeds: min=0.0% max=3.0% mean=0.8% stdev=0.9%
 per-seed FP rates: ['1%', '0%', '0%', '0%', '1%', '1%', '1%', '0%', '1%', '3%']
 normal IPs within 0.05 of threshold: 40/1000 (4.00%)
-loud-attack detection rate @ -0.12:   100.0% (30 instances)
-subtle-attack detection rate @ -0.12: 100.0% (30 instances)
+loud-attack detection rate @ -0.12:   100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
+subtle-attack detection rate @ -0.12: 100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
 ROC-AUC (loud+subtle vs. all normals): 1.0000
 false-positive causes (n=8): {'volume_spike+elevated_deny_rate': 1, 'volume_spike': 2, 'new_destination+volume_spike': 3, 'new_destination+elevated_deny_rate': 1, 'new_destination+volume_spike+elevated_deny_rate': 1}
 
@@ -38,17 +40,17 @@ pooled FP rate @ -0.12: 0.70% (7/1000)  95% Wilson CI: [0.34%, 1.44%]
 FP rate spread across 10 seeds: min=0.0% max=2.0% mean=0.7% stdev=0.6%
 per-seed FP rates: ['1%', '1%', '1%', '1%', '1%', '2%', '0%', '0%', '0%', '0%']
 normal IPs within 0.05 of threshold: 40/1000 (4.00%)
-loud-attack detection rate @ -0.12:   100.0% (30 instances)
-subtle-attack detection rate @ -0.12: 100.0% (30 instances)
+loud-attack detection rate @ -0.12:   100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
+subtle-attack detection rate @ -0.12: 100.0% (30/30)  95% Wilson CI: [88.65%, 100.00%]
 ROC-AUC (loud+subtle vs. all normals): 1.0000
 false-positive causes (n=7): {'new_destination+volume_spike+elevated_deny_rate': 1, 'volume_spike': 2, 'new_destination+elevated_deny_rate': 1, 'new_destination': 2, 'no_obvious_cause': 1}
 
 --- threshold sensitivity (pooled across all novelty levels and seeds) ---
- threshold   fp_rate  loud_detect  subtle_detect
-      -0.1     1.70%       100.0%         100.0%
-     -0.12     0.80%       100.0%         100.0%
-     -0.15     0.12%       100.0%          95.8%
-     -0.18     0.00%        98.3%          90.8%
+ threshold   fp_rate  loud_detect            loud_95ci  subtle_detect          subtle_95ci
+      -0.1     1.70%       100.0%      [96.9%, 100.0%]         100.0%      [96.9%, 100.0%]
+     -0.12     0.80%       100.0%      [96.9%, 100.0%]         100.0%      [96.9%, 100.0%]
+     -0.15     0.12%       100.0%      [96.9%, 100.0%]          95.8%       [90.6%, 98.2%]
+     -0.18     0.00%        98.3%       [94.1%, 99.5%]          90.8%       [84.3%, 94.8%]
 
 --- exfil to a popular destination (guard case for a future org-rarity feature) ---
 Note: at novelty_level=0%, normal IPs never visit POPULAR_POOL at all by construction (novelty is off), so the chosen destination has 0 real popularity in that case -- popularity only becomes genuine at the higher novelty levels, so this is broken out per level rather than pooled.

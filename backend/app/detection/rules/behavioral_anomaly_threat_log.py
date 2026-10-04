@@ -78,8 +78,10 @@ class BehavioralAnomalyThreatLogRule(BaseRule):
     # ml_experiments/README.md and ml_experiments/reports/
     # threat_log_false_positive_powered.txt) -- a 100-normal-IP x 10-seed x
     # 4-novelty-level population gave ~0.8% false positives per bucket at
-    # this threshold with 100% detection of both loud and subtle injected
-    # attacks. It has never seen real traffic. Re-derive it from GET
+    # this threshold, and detected 120/120 loud and 120/120 subtle injected
+    # attacks (95% Wilson CI [96.9%, 100%] each). Those attacks are separable
+    # by construction, so this is not evidence of detection on real traffic.
+    # It has never seen real traffic. Re-derive it from GET
     # /ml/scores once real shadow-mode data accumulates, rather than
     # trusting this number indefinitely.
     DEFAULT_PARAMS = {"score_threshold": -0.12, "shadow_mode": True}
