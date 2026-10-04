@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     geoip_city_db_path: str | None = None
     geoip_asn_db_path: str | None = None
 
+    # Read-only AI chat assistant (see app/assistant and app/routers/assistant.py).
+    # Unset anthropic_api_key disables the endpoint (503) rather than failing startup.
+    anthropic_api_key: str | None = None
+    assistant_model: str = Field(default="claude-opus-5-5", min_length=1)
+    assistant_max_tokens: int = Field(default=4096, ge=256, le=16000)
+    assistant_max_tool_rounds: int = Field(default=4, ge=1, le=8)
+
     # Forgot-password email flow (see app/routers/auth.py).
     reset_token_expiry_minutes: int = Field(default=30, ge=5, le=1440)
     # Base URL of the deployed frontend, used to build the link emailed to

@@ -99,6 +99,26 @@ export function getRepositoryErrorMessage(status, payload = {}) {
   return `The service could not complete the request (${status}).`;
 }
 
+export function assistantErrorMessage(status, payload = {}) {
+  if (status === 503) return "The AI assistant is not configured on this server.";
+  if (status === 429) return "The AI service is busy. Try again in a moment.";
+  if (status === 502) return "The AI service is unavailable. Try again shortly.";
+  return getRepositoryErrorMessage(status, payload);
+}
+
+export function normalizeAssistantReply(payload) {
+  if (!payload || typeof payload.reply !== "string" || !payload.reply.trim()) {
+    throw new Error("The assistant returned an invalid response. Try again.");
+  }
+  const toolsUsed = Array.isArray(payload.tools_used) ? payload.tools_used : [];
+  return {
+    reply: payload.reply,
+    toolsUsed: toolsUsed
+      .filter((tool) => tool && typeof tool.name === "string")
+      .map((tool) => ({ name: tool.name, ok: tool.ok !== false })),
+  };
+}
+
 function responseArray(payload, key) {
   const value = payload?.[key];
   if (value === undefined || value === null) return [];
@@ -774,6 +794,9 @@ const mockRepository = {
   },
   async uploadLog() { throw new Error("Uploads require the connected backend."); },
   async runAiAnalysis({ subject }) { await wait(760); return { ...clone(aiAnalysisSeed), subject: subject || aiAnalysisSeed.subject }; },
+  async askAssistant() {
+    throw new Error("The AI assistant requires the connected backend.");
+  },
   async getCustomRules() {
     await wait(100);
     const rules = readSessionCustomRules();
@@ -1136,9 +1159,22 @@ const httpRepository = {
     form.append("logfile", file, file.name);
     return request("/upload", { method: "POST", body: form });
   },
-  async runAiAnalysis({ subject }) {
-    await wait(420);
-    return { ...clone(aiAnalysisSeed), subject: subject || aiAnalysisSeed.subject };
+  async runAiAnalysis() {
+    // The canned sample analysis must never be shown as analysis of real data.
+    // Connected mode uses askAssistant, which answers from read-only queries.
+    throw new Error("Sample analysis is only available in demo mode. Use the AI assistant for connected data.");
+  },
+  async askAssistant({ messages, timeRangeHours }) {
+    // The model may make several data lookups before answering, so allow far
+    // longer than the default 12s request timeout.
+    const payload = await apiRequest("/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages, time_range_hours: timeRangeHours }),
+      errorMessage: assistantErrorMessage,
+      timeoutMessage: "The assistant took too long to answer. Try a narrower question.",
+      timeoutMs: 90_000,
+    });
+    return normalizeAssistantReply(payload);
   },
   async getCustomRules() {
     const payload = await request("/custom-rules");

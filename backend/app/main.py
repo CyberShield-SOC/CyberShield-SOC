@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.routers import alerts, auth, custom_rules, detection, incidents, ml_models, notes, threat_intel, upload, users
+from app.routers import alerts, assistant, auth, custom_rules, detection, incidents, ml_models, notes, threat_intel, upload, users
 
 app = FastAPI(
     title="CyberShield SOC",
@@ -96,6 +96,7 @@ app.include_router(notes.router)
 app.include_router(custom_rules.router)
 app.include_router(threat_intel.router)
 app.include_router(ml_models.router)
+app.include_router(assistant.router)
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
@@ -106,6 +107,7 @@ app.include_router(notes.router, prefix="/api")
 app.include_router(custom_rules.router, prefix="/api")
 app.include_router(threat_intel.router, prefix="/api")
 app.include_router(ml_models.router, prefix="/api")
+app.include_router(assistant.router, prefix="/api")
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 

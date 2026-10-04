@@ -20,6 +20,14 @@ export function normalizeTimeRange(value) {
   return RANGE_CONFIG[value] ? value : "24h";
 }
 
+// The assistant API takes a look-back in hours (max 90 days), so "all" is
+// capped there rather than meaning unbounded.
+const RANGE_HOURS = Object.freeze({ "1h": 1, "24h": 24, "7d": 24 * 7, "30d": 24 * 30, all: 24 * 90 });
+
+export function timeRangeToHours(value) {
+  return RANGE_HOURS[normalizeTimeRange(value)];
+}
+
 export function recordTimestamp(record, fields) {
   const candidates = Array.isArray(fields) ? fields : [fields];
   for (const field of candidates) {
