@@ -10,7 +10,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
-import { CoverageBars, DonutChart, LineAreaChart, StackedBarChart } from "../components/Charts";
+import { CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, StackedBarChart } from "../components/Charts";
 import {
   ErrorState,
   LoadingState,
@@ -26,6 +26,16 @@ import {
   deriveTelemetryReadiness,
   deriveThreatAnalysis,
 } from "../utils/dashboardMetrics";
+import {
+  CHART_TYPE_LABELS,
+  PANEL_CHART_TYPES,
+  severityHeatmap,
+  severityTotals,
+  sortByValueDesc,
+  timeTotalItems,
+  totalPerBucket,
+  usePanelChartType,
+} from "../utils/chartTypes";
 import { formatTimestamp } from "../utils/eventUtils";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { summarizeSourceActivity } from "../utils/ipLocation";
@@ -50,6 +60,33 @@ const STACKED_SEVERITY_SERIES = Object.freeze([
   { key: "high", label: "High", color: SEVERITY_COLORS.high },
   { key: "critical", label: "Critical", color: SEVERITY_COLORS.critical },
 ]);
+
+// Same control as the time-range select, so the panel header stays consistent.
+function ChartTypeSelect({ panelKey, label, value, onChange }) {
+  return (
+    <label className="dashboard-chart-range dashboard-chart-type">
+      <span className="sr-only">{label} chart type</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {PANEL_CHART_TYPES[panelKey].map((type) => <option key={type} value={type}>{CHART_TYPE_LABELS[type]}</option>)}
+      </select>
+    </label>
+  );
+}
+
+// Renders one severity breakdown in the chosen type. Every type reads the same
+// buckets (or the same donut segments), so switching never changes the numbers.
+function SeverityPanelChart({ type, buckets, segments, title }) {
+  if (type === "donut") return <DonutChart segments={segments} totalLabel="alerts" />;
+  if (type === "line") {
+    const perBucket = totalPerBucket(buckets, STACKED_SEVERITY_SERIES);
+    return <LineAreaChart values={perBucket.map((bucket) => bucket.value)} labels={perBucket.map((bucket) => bucket.label)} title={title} />;
+  }
+  if (type === "stacked") return <StackedBarChart buckets={buckets} series={STACKED_SEVERITY_SERIES} title={title} />;
+  if (type === "horizontal") {
+    return <HorizontalBarChart items={sortByValueDesc(severityTotals(buckets, STACKED_SEVERITY_SERIES))} title={`${title}, largest first`} />;
+  }
+  return <HeatmapChart {...severityHeatmap(buckets, STACKED_SEVERITY_SERIES)} title={title} />;
+}
 
 function DashboardSummaryCard({ detail, icon: Icon, label, onClick, tone = "default", value }) {
   return (
@@ -88,6 +125,10 @@ export default function DashboardPage({ navigate }) {
   // delayed aggregate response never blocks otherwise usable backend data.
   const loading = resources.alerts.loading || resources.events.loading || resources.incidents.loading;
   const error = resources.alerts.error || resources.events.error || resources.incidents.error;
+  // Each panel keeps its own chart type, persisted in localStorage.
+  const [eventsChart, chooseEventsChart] = usePanelChartType("events");
+  const [severityChart, chooseSeverityChart] = usePanelChartType("severity");
+  const [volumeChart, chooseVolumeChart] = usePanelChartType("volume");
 
   if (loading) return <LoadingState label="Loading security posture…" />;
   if (error) {
@@ -233,22 +274,37 @@ export default function DashboardPage({ navigate }) {
           title="Events Over Time"
           subtitle={`${rangeLabel} · ${events.length.toLocaleString()} records received`}
           actions={(
-            <label className="dashboard-chart-range">
-              <span className="sr-only">Events chart time range</span>
-              <select value={globalTimeRange} onChange={(event) => setGlobalTimeRange(event.target.value)}>
-                {Object.entries(TIME_RANGE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
+            <>
+              <label className="dashboard-chart-range">
+                <span className="sr-only">Events chart time range</span>
+                <select value={globalTimeRange} onChange={(event) => setGlobalTimeRange(event.target.value)}>
+                  {Object.entries(TIME_RANGE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+              <ChartTypeSelect panelKey="events" label="Events Over Time" value={eventsChart} onChange={chooseEventsChart} />
+            </>
           )}
         >
-          <LineAreaChart
-            values={ingestion.values}
-            labels={ingestion.labels}
-            title={`Events ingested during ${rangeLabel.toLowerCase()}`}
-          />
+          {eventsChart === "horizontal" ? (
+            <HorizontalBarChart
+              items={sortByValueDesc(timeTotalItems(ingestion))}
+              title={`Events ingested during ${rangeLabel.toLowerCase()}, largest first`}
+            />
+          ) : (
+            <LineAreaChart
+              values={ingestion.values}
+              labels={ingestion.labels}
+              title={`Events ingested during ${rangeLabel.toLowerCase()}`}
+            />
+          )}
         </Panel>
-        <Panel className="dashboard-severity-panel" title="Events by severity" subtitle={`${alerts.length.toLocaleString()} alert-linked events`}>
-          <DonutChart segments={severity} totalLabel="alerts" />
+        <Panel
+          className="dashboard-severity-panel"
+          title="Events by severity"
+          subtitle={`${alerts.length.toLocaleString()} alert-linked events`}
+          actions={<ChartTypeSelect panelKey="severity" label="Events by severity" value={severityChart} onChange={chooseSeverityChart} />}
+        >
+          <SeverityPanelChart type={severityChart} buckets={severityBuckets} segments={severity} title={`Events by severity during ${rangeLabel.toLowerCase()}`} />
           <div className="dashboard-severity-footer">
             <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.alerts)}>
               Review severity queue <ArrowRight size={13} />
@@ -309,16 +365,20 @@ export default function DashboardPage({ navigate }) {
           title="Alert volume by severity"
           subtitle={`${rangeLabel} · ${alerts.length.toLocaleString()} detections`}
           actions={(
-            <div className="severity-chart-legend" aria-label="Severity series">
-              {STACKED_SEVERITY_SERIES.slice().reverse().map((item) => (
-                <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>
-              ))}
-            </div>
+            <>
+              <div className="severity-chart-legend" aria-label="Severity series">
+                {STACKED_SEVERITY_SERIES.slice().reverse().map((item) => (
+                  <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>
+                ))}
+              </div>
+              <ChartTypeSelect panelKey="volume" label="Alert volume by severity" value={volumeChart} onChange={chooseVolumeChart} />
+            </>
           )}
         >
-          <StackedBarChart
+          <SeverityPanelChart
+            type={volumeChart}
             buckets={severityBuckets}
-            series={STACKED_SEVERITY_SERIES}
+            segments={severity}
             title={`Alert volume by severity during ${rangeLabel.toLowerCase()}`}
           />
         </Panel>

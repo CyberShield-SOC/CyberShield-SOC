@@ -414,6 +414,80 @@ export function DonutChart({ segments = [], totalLabel = "alerts" }) {
   );
 }
 
+// Items are drawn in the order given, so callers sort them (see sortByValueDesc).
+export function HorizontalBarChart({ items = [], title }) {
+  const normalized = (Array.isArray(items) ? items : []).map((item, index) => ({
+    key: `${item?.label ?? ""}-${index}`,
+    label: String(item?.label ?? `Item ${index + 1}`),
+    color: item?.color || "var(--soc-accent)",
+    value: Math.max(0, finiteNumber(item?.value)),
+  }));
+  const max = normalized.reduce((top, item) => Math.max(top, item.value), 0);
+  if (!normalized.length || max <= 0) return <ChartEmpty />;
+  return (
+    <ul className="chart-hbar" aria-label={title}>
+      {normalized.map((item) => (
+        <li key={item.key} aria-label={`${item.label}: ${item.value.toLocaleString()}`}>
+          <span className="chart-hbar-label" title={item.label}>{item.label}</span>
+          <span className="chart-hbar-track" aria-hidden="true">
+            <span style={{ width: `${(item.value / max) * 100}%`, background: item.color }} />
+          </span>
+          <strong>{item.value.toLocaleString()}</strong>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Cell intensity follows the count; the row colour carries the severity.
+// The table keeps every value readable and reachable without the colour.
+export function HeatmapChart({ columns = [], rows = [], max = 0, title }) {
+  if (!rows.length || !columns.length || max <= 0) return <ChartEmpty />;
+  return (
+    <div className="chart-heatmap">
+      <div className="chart-heatmap-scroll" role="region" aria-label={title} tabIndex={0}>
+        <table>
+          <caption className="sr-only">{title}</caption>
+          <thead>
+            <tr>
+              <th scope="col"><span className="sr-only">Severity</span></th>
+              {columns.map((column, index) => <th key={`${column}-${index}`} scope="col">{column}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <th scope="row">{row.label}</th>
+                {row.cells.map((value, index) => {
+                  const description = `${row.label}, ${columns[index]}: ${value.toLocaleString()}`;
+                  const strength = value > 0 ? Math.max(12, (value / max) * 100) : 0;
+                  return (
+                    <td
+                      key={`${row.key}-${index}`}
+                      className="chart-heatmap-cell"
+                      style={value > 0 ? { background: `color-mix(in srgb, ${row.color} ${strength}%, var(--soc-surface-subtle))` } : undefined}
+                      title={description}
+                      aria-label={description}
+                    >
+                      {value.toLocaleString()}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="chart-heatmap-legend" aria-hidden="true">
+        <span>0</span>
+        <i />
+        <span>{max.toLocaleString()}</span>
+        <small>Darker cells mean more alerts. Colour follows severity.</small>
+      </div>
+    </div>
+  );
+}
+
 export function CoverageBars({ items = [] }) {
   if (!items.length) return <ChartEmpty label="No coverage data is available." />;
   return (
