@@ -22,6 +22,8 @@ import { nextIncidentId } from "../utils/recordIds";
 import { filterAlertsForPicker, isQuickResolvableAlert } from "../utils/workspaceSelectors";
 import { incidentMatchesAlert } from "../utils/alertRecommendations";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
+import { assistantToolLabel } from "../utils/assistantChat";
+import { timeRangeToHours } from "../utils/timeRange";
 import { ErrorState, InlineNotice, PageHeader, Panel, RiskMeter, SeverityBadge, StatusBadge, ValidationMessage } from "../components/Ui";
 
 const MAX_INCIDENT_NOTES = 5;
@@ -125,6 +127,7 @@ export default function QuickResolvePage({ navigate }) {
     createIncident,
     detectionRules,
     events,
+    globalTimeRange,
     incidents,
     mutation,
     notes,
@@ -264,9 +267,23 @@ export default function QuickResolvePage({ navigate }) {
     setAnalyzing(true);
     setAnalysisError("");
     try {
-      setAnalysis(await socRepository.runAiAnalysis({ subject: `${selectedAlert.id} · ${selectedAlert.title}` }));
-    } catch {
-      setAnalysisError("The analysis service is unavailable. Evidence and manual workflow controls remain available.");
+      if (repositoryMode === "api") {
+        // Connected mode: ask the real, read-only assistant about this persisted
+        // alert. It answers from tool data, so there is no canned verdict here.
+        if (!selectedAlert.sourceAlertId) throw new Error("This alert has no saved record to analyze yet.");
+        const answer = await socRepository.askAssistant({
+          messages: [{ role: "user", content: `Explain alert ${selectedAlert.sourceAlertId} and suggest next steps for the analyst.` }],
+          timeRangeHours: timeRangeToHours(globalTimeRange),
+        });
+        setAnalysis({ kind: "assistant", reply: answer.reply, toolsUsed: answer.toolsUsed });
+      } else {
+        const sample = await socRepository.runAiAnalysis({ subject: `${selectedAlert.id} · ${selectedAlert.title}` });
+        setAnalysis({ ...sample, kind: "sample" });
+      }
+    } catch (failure) {
+      setAnalysisError(repositoryMode === "api" && failure?.message
+        ? failure.message
+        : "The analysis service is unavailable. Evidence and manual workflow controls remain available.");
     } finally {
       setAnalyzing(false);
     }
@@ -344,7 +361,18 @@ export default function QuickResolvePage({ navigate }) {
             <Panel className="quick-ai-panel" title="AI analysis" subtitle="Evidence-grounded guidance with human approval" actions={<button className="soc-button secondary compact" type="button" disabled={!aiEnabled || analyzing} onClick={runAnalysis}>{analyzing ? <span className="soc-spinner small" /> : <Bot size={15} />}{analyzing ? "Analyzing…" : "Analyze alert"}</button>}>
               {!aiEnabled && <InlineNotice tone="warning" title="AI assistant disabled">Enable it in Settings to add AI guidance to this workflow.</InlineNotice>}
               {analysisError && <InlineNotice tone="error" title="Analysis unavailable">{analysisError}</InlineNotice>}
-              {analysis ? <div className="quick-ai-result"><div><StatusBadge status="review required" /><strong>{analysis.verdict}</strong></div><p>{analysis.summary}</p><h4>Recommended actions</h4><ul>{analysis.actions.slice(0, 4).map((item) => <li key={item}><CircleCheckBig size={14} />{item}</li>)}</ul><button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button></div> : !analyzing && <div className="quick-ai-empty"><Bot size={23} /><strong>AI review is optional</strong><p>Run an analysis after checking the matched evidence and rule logic.</p></div>}
+              {analysis?.kind === "assistant" ? (
+                <div className="quick-ai-result">
+                  <div><StatusBadge status="review required" /><strong>AI assistant response</strong></div>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{analysis.reply}</p>
+                  {analysis.toolsUsed?.length > 0 && (
+                    <div className="ai-evidence-chips" aria-label="Data this answer was based on">
+                      {[...new Set(analysis.toolsUsed.filter((tool) => tool.ok).map((tool) => assistantToolLabel(tool.name)))].map((label) => <span key={label}>{label}</span>)}
+                    </div>
+                  )}
+                  <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button>
+                </div>
+              ) : analysis ? <div className="quick-ai-result"><div><StatusBadge status="review required" /><strong>{analysis.verdict}</strong></div><p>{analysis.summary}</p><h4>Recommended actions</h4><ul>{analysis.actions.slice(0, 4).map((item) => <li key={item}><CircleCheckBig size={14} />{item}</li>)}</ul><button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>Continue in AI Analysis</button></div> : !analyzing && <div className="quick-ai-empty"><Bot size={23} /><strong>AI review is optional</strong><p>Run an analysis after checking the matched evidence and rule logic.</p></div>}
             </Panel>
           </div>
         </>

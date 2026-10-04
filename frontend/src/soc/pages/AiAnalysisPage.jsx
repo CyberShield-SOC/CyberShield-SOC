@@ -20,10 +20,13 @@ import { socRepository } from "../services/socRepository";
 import { formatTimestamp } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
+import { assistantToolLabel, buildAssistantHistory } from "../utils/assistantChat";
+import { timeRangeToHours } from "../utils/timeRange";
 import { InlineNotice, PageHeader, Panel, RiskMeter, SeverityBadge } from "../components/Ui";
 
 const STARTER_MESSAGE = Object.freeze({
   id: "assistant-welcome",
+  local: true,
   role: "assistant",
   body: "Hello! I’m your CyberShield AI assistant. Ask about alerts, incidents, authentication activity, or the evidence currently loaded in this workspace.",
 });
@@ -45,6 +48,7 @@ export default function AiAnalysisPage({ navigate }) {
     currentActor,
     createIncident,
     events,
+    globalTimeRange,
     incidents,
     mutation,
     repositoryMode,
@@ -93,16 +97,33 @@ export default function AiAnalysisPage({ navigate }) {
     setError("");
 
     try {
-      const analysis = await socRepository.runAiAnalysis({ subject: value });
-      setLastAnalysis(analysis);
-      setMessages((current) => [...current, {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        body: analysis.summary,
-        analysis,
-      }]);
-    } catch {
-      setError("The analysis service is unavailable. Your question was not lost; try again when the service reconnects.");
+      if (repositoryMode === "api") {
+        // Connected mode: the backend assistant answers from read-only data
+        // tools, so there is no structured analysis to save or escalate.
+        const answer = await socRepository.askAssistant({
+          messages: buildAssistantHistory([...messages, userMessage]),
+          timeRangeHours: timeRangeToHours(globalTimeRange),
+        });
+        setMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: answer.reply,
+          toolsUsed: answer.toolsUsed,
+        }]);
+      } else {
+        const analysis = await socRepository.runAiAnalysis({ subject: value });
+        setLastAnalysis(analysis);
+        setMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: analysis.summary,
+          analysis,
+        }]);
+      }
+    } catch (failure) {
+      setError(repositoryMode === "api" && failure?.message
+        ? failure.message
+        : "The analysis service is unavailable. Your question was not lost; try again when the service reconnects.");
     } finally {
       setRunning(false);
     }
@@ -178,7 +199,13 @@ export default function AiAnalysisPage({ navigate }) {
               <article className={`ai-message ${message.role}`} key={message.id}>
                 <span className="ai-message-avatar" aria-hidden="true">{message.role === "assistant" ? <Bot size={16} /> : "You"}</span>
                 <div className="ai-message-content">
-                  <p>{message.body}</p>
+                  <p style={message.toolsUsed ? { whiteSpace: "pre-wrap" } : undefined}>{message.body}</p>
+                  {message.toolsUsed?.length > 0 && (
+                    <div className="ai-evidence-chips" aria-label="Data this answer was based on">
+                      {[...new Set(message.toolsUsed.filter((tool) => tool.ok).map((tool) => assistantToolLabel(tool.name)))]
+                        .map((label) => <span key={label}>{label}</span>)}
+                    </div>
+                  )}
                   {message.analysis && (
                     <>
                       <div className="ai-answer-summary">
@@ -250,7 +277,7 @@ export default function AiAnalysisPage({ navigate }) {
       <Panel className="ai-how-it-works" title="How it works" subtitle="A review-first workflow for security analysis">
         <ol>
           <li><span>1</span><MessageSquareText size={18} /><div><strong>Ask a question</strong><p>Use natural language, an event ID, an incident ID, or an IP address.</p></div></li>
-          <li><span>2</span><Sparkles size={18} /><div><strong>AI analyzes data</strong><p>This frontend preview correlates the workspace data already loaded for the signed-in analyst.</p></div></li>
+          <li><span>2</span><Sparkles size={18} /><div><strong>AI analyzes data</strong><p>{repositoryMode === "api" ? "The assistant looks up alerts, incidents, events, and logins with read-only queries limited to your role. It never changes anything." : "This frontend preview correlates the workspace data already loaded for the signed-in analyst."}</p></div></li>
           <li><span>3</span><KeyRound size={18} /><div><strong>Review insights and actions</strong><p>An analyst verifies evidence before saving notes or creating a draft incident.</p></div></li>
         </ol>
       </Panel>
