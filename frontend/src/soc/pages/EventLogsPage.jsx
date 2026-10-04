@@ -50,6 +50,7 @@ export default function EventLogsPage({ navigate }) {
     setGlobalTimeRange,
     selectedEventId,
     setSelectedEventId,
+    setPendingAiRequest,
     setSelectedIncidentId,
     uploadLogFile,
   } = useSocWorkspace();
@@ -469,7 +470,17 @@ export default function EventLogsPage({ navigate }) {
                 <div><dt>Observed</dt><dd>{formatTimestamp(selectedEvent.timestamp)}</dd></div>
                 <div><dt>Status</dt><dd><StatusBadge status={selectedEvent.status} /></dd></div>
               </dl>
-              <button className="soc-button primary full" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}><Bot size={16} />Analyze with AI</button>
+              <button
+                className="soc-button primary full"
+                type="button"
+                onClick={() => {
+                  // Hand the selected event to the AI page so it analyzes this event right away.
+                  setPendingAiRequest({
+                    prompt: `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`,
+                  });
+                  navigate(SOC_ROUTES.aiAnalysis);
+                }}
+              ><Bot size={16} />Analyze with AI</button>
               <button
                 className="soc-button secondary full"
                 type="button"

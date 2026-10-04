@@ -280,6 +280,17 @@ def test_rate_limit_maps_to_429():
     assert ask().status_code == 429
 
 
+def test_rejected_api_key_reports_configuration_problem_not_outage():
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    error = anthropic.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
+    use("Analyst", FakeClient(error))
+
+    response = ask()
+
+    assert response.status_code == 503
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
 def test_id_lookups_ignore_the_time_window_and_report_missing_ids(db_session):
     from datetime import datetime, timedelta, timezone
 

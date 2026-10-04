@@ -271,8 +271,19 @@ export default function QuickResolvePage({ navigate }) {
         // Connected mode: ask the real, read-only assistant about this persisted
         // alert. It answers from tool data, so there is no canned verdict here.
         if (!selectedAlert.sourceAlertId) throw new Error("This alert has no saved record to analyze yet.");
+        // Give the assistant the approved playbook and the assigned analyst so its
+        // recommendation follows the playbook and names who the alert belongs to.
+        const playbookLine = selectedAlert.playbook?.id
+          ? `The approved response playbook for this alert is ${selectedAlert.playbook.id}${selectedAlert.playbook.title ? ` (${selectedAlert.playbook.title})` : ""}; follow its steps.`
+          : "No approved response playbook is linked to this alert.";
+        const ownerLine = linkedIncident?.owner && linkedIncident.owner !== "Unassigned"
+          ? `It is assigned to ${linkedIncident.owner}; name them as the analyst to refer it to.`
+          : "It is not assigned to an analyst yet; recommend who should take it.";
         const answer = await socRepository.askAssistant({
-          messages: [{ role: "user", content: `Explain alert ${selectedAlert.sourceAlertId} and suggest next steps for the analyst.` }],
+          messages: [{
+            role: "user",
+            content: `Explain alert ${selectedAlert.sourceAlertId} and recommend response actions. ${playbookLine} ${ownerLine} These are recommendations only; an analyst approves any action.`,
+          }],
           timeRangeHours: timeRangeToHours(globalTimeRange),
         });
         setAnalysis({ kind: "assistant", reply: answer.reply, toolsUsed: answer.toolsUsed });

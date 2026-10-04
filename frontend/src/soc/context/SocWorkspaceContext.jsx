@@ -75,6 +75,9 @@ export function SocWorkspaceProvider({ children, user }) {
   const [selectedAlertId, setSelectedAlertId] = useState(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  // One-shot request from another page (e.g. "Analyze with AI" on an event).
+  // The AI Analysis page sends it once on mount and then clears it.
+  const [pendingAiRequest, setPendingAiRequest] = useState(null);
   const mountedRef = useRef(true);
   const refreshVersionsRef = useRef({});
   const pendingMutationsRef = useRef(new Set());
@@ -706,6 +709,8 @@ export function SocWorkspaceProvider({ children, user }) {
     setSelectedIncidentId,
     selectedEventId,
     setSelectedEventId,
+    pendingAiRequest,
+    setPendingAiRequest,
     canWrite,
     canAdminister,
     currentUser: user,
