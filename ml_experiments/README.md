@@ -202,6 +202,35 @@ stable Wilson CI, zero detection loss) not to require one yet.
    the three (per-entity state beyond the current pooled-model design) —
    validate against a mixed-variability population before recommending it.
 
+## Datasets (not in the repository)
+
+The five public CSVs behind §1-3 are **not tracked** and are not needed by
+`backend/tests/` or CI. The folder was about 924 MB (one file alone is 874 MB),
+so it can never be committed; it used to sit inside the repo directory (and
+therefore inside OneDrive) and was moved out to a local folder, by default
+`~/datasets/cybershield-anomaly-detection`. The two scripts that read it
+(`train_isolation_forest.py`, `eval_production_threat_log_features.py`) are kept
+as **historical provenance**: their results are frozen in `reports/`, and they
+exit with a clear message if the data is absent. Point them at a copy with the
+`CYBERSHIELD_DATASET_DIR` environment variable.
+
+No Kaggle source URL was recorded when the files were first downloaded, and a
+search could not confirm one for the large file, so treat it as irreplaceable
+unless you can identify the original. To check that a re-download is the same
+file, compare against this fingerprint:
+
+| File | Size (bytes) | Notes |
+| --- | --- | --- |
+| `cybersecurity_threat_detection_logs.csv` | 874,358,689 | 6,000,001 lines incl. header; SHA-256 `D9F8FC863A68DB9A06F9EB49DDD86F72CCE63FA0EE7CF96C80F51B8E775A32BB`; columns `timestamp,source_ip,dest_ip,protocol,action,threat_label,log_type,bytes_transferred,user_agent,request_path` |
+| `advanced_cybersecurity_data.csv` | 638,918 | |
+| `embedded_system_network_security_dataset.csv` | 164,004 | |
+| `corrected.gz.zip` | 1,290,657 | KDD-99 |
+| `synthetic_network_traffic.csv.zip` | 92,188,700 | |
+
+The accuracy validation that CI can actually run is synthetic and in-repo:
+`backend/tests/anomaly_eval/` (see its README) and, for threat-log,
+`backend/tests/test_ml_threat_log_*.py`.
+
 ## Where things live
 
 - `train_isolation_forest.py` — the original 5-dataset offline evaluation (§1).

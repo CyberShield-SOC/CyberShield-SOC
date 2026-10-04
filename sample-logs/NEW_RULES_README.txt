@@ -48,12 +48,8 @@ several files together will not cause unexpected cross-file collisions.
    (threshold 30). Control: 'sylee' logs in again after only 9 days — no
    alert. Noise: ~28 unrelated single logins for other users.
 
-5. egress_volume_anomaly.csv (CSV: timestamp,hostname,src_ip,dest_ip,
-   dest_port,protocol,bytes_out,bytes_in,action — netflow-style)
-   Rule: EgressVolumeAnomalyRule (HIGH, host entity, T1041)
-   Expected: 1 alert — host fs-07 sends ~285 MB in one hour vs. a ~20 MB/hr
-   baseline built from the 7 preceding hourly buckets (needs
-   min_samples=6). Noise: host fs-08 with steady, unremarkable traffic.
+5. REMOVED (2026-10-04): egress_volume_anomaly.csv. The fixture was deleted.
+   Rule coverage now lives in backend/tests/test_network_rules.py.
 
 6. first_seen_geo_asn.csv (CSV: timestamp,username,ip_address,event_type,
    status,country,asn,latitude,longitude)
@@ -176,41 +172,15 @@ several files together will not cause unexpected cross-file collisions.
     outbound traffic to legitimate destinations (GitHub, Cloudflare, etc.)
     from several other hosts.
 
-21. behavioral_anomaly_login.csv (CSV: timestamp,username,ip_address,
-    event_type,status,country,asn,latitude,longitude)
-    Rule: BehavioralAnomalyLoginRule — ML pilot #1 (LOW, account entity,
-    T1078; see docs/ml/isolation_forest_feasibility.md)
-    ** This file is a raw training/scoring FEED, not a guaranteed
-    single-upload trigger. ** Every successful login always gets a feature
-    snapshot recorded (for the population an admin later trains on;
-    app/ml/train_login_behavior.py requires MIN_SAMPLES=50 snapshots), but
-    this rule only raises an Alert once (a) an admin has actually run that
-    training script to produce an active model, AND (b) an admin has
-    explicitly set this rule's params.shadow_mode to false — before that,
-    it silently scores and stores (reviewable via GET /ml/scores) but never
-    alerts, even against this file. With no model yet, uploading this file
-    produces zero behavioral_anomaly_login alerts (verified). It contains
-    ~15 in-hours logins for 'dpearce' from a consistent US ASN (population
-    data) plus one illustrative 03:00 UTC login from a brand-new country
-    (RU) — the kind of combination this rule is meant to eventually catch —
-    plus ~18 more population rows for a second user, fnakamura. Because
-    this reuses the geo-CSV shape, first_seen_geo_asn and off_hours_login
-    also legitimately fire on dpearce's anomalous row — that's expected,
-    not a bug.
+21. REMOVED (2026-10-04): behavioral_anomaly_login.csv. The fixture was
+    deleted. It was a raw training feed, not a single-upload trigger. The
+    rule is ML pilot #1 (docs/ml/isolation_forest_feasibility.md) and is
+    covered by synthetic tests in backend/tests/anomaly_eval/.
 
-22. behavioral_anomaly_egress.csv (CSV: timestamp,hostname,src_ip,dest_ip,
-    dest_port,protocol,bytes_out,bytes_in,action — netflow-style)
-    Rule: BehavioralAnomalyEgressRule — ML pilot #2 (LOW, host entity,
-    T1041; see docs/ml/isolation_forest_feasibility.md)
-    ** Same raw feed caveat as #21: ** needs a trained model
-    (app/ml/train_egress_volume.py, MIN_SAMPLES=50) and shadow_mode=false
-    before it will ever raise an Alert; with neither, uploading this file
-    produces zero behavioral_anomaly_egress alerts (verified). It contains
-    ~9 hours of typical hourly egress buckets for host app-node9 (varied
-    bytes/connections/distinct destinations — population data) plus one
-    illustrative 03:00 UTC hour with more connections/destinations than
-    the rest, the kind of multi-feature combination this rule is meant to
-    eventually catch.
+22. REMOVED (2026-10-04): behavioral_anomaly_egress.csv. The fixture was
+    deleted. It was a raw training feed, not a single-upload trigger. The
+    rule is ML pilot #2 (docs/ml/isolation_forest_feasibility.md) and is
+    covered by synthetic tests in backend/tests/anomaly_eval/.
 
 
 Rules that need a one-time configuration step before they will alert
@@ -221,11 +191,10 @@ Rules that need a one-time configuration step before they will alert
   ["svc-etl", "svc-backup2"]
 - threat_intel_match (#20): import sample-logs/threat_intel_feed_import.txt
   as a threat-intel feed
-- behavioral_anomaly_login (#21) / behavioral_anomaly_egress (#22): train a
-  model (see backend/app/ml/train_login_behavior.py /
-  train_egress_volume.py) and set params.shadow_mode=false — these are
-  fundamentally raw feeds, not single-upload triggers, and no fixture file
-  alone can complete this without an admin action outside the upload flow.
+- behavioral_anomaly_login (#21) / behavioral_anomaly_egress (#22): fixtures
+  removed. Both need a trained model (see backend/app/ml/train_login_behavior.py /
+  train_egress_volume.py) and params.shadow_mode=false, so no single upload can
+  trigger them.
 
 None of the above were "guessed" — each is a documented, deliberate design
 choice in the rule's own source (fail-safe with no default roster, or a
