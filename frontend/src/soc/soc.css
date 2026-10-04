@@ -1150,6 +1150,8 @@
 .config-detail dd { margin: 0; font-size: 10.5px; text-align: right; overflow-wrap: anywhere; }
 .rule-pack-notice { margin-bottom: 16px; }
 .detection-rule-list > button { grid-template-columns: 34px minmax(0, 1fr) auto auto; }
+.rule-list-meta { display: inline-flex; align-items: center; gap: 6px; }
+.rule-meta-separator { color: var(--soc-text-muted); }
 .rule-match-count { color: var(--soc-text-muted); font-size: 10px; white-space: nowrap; }
 .rule-detail-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .rule-detail-title > div { min-width: 0; }

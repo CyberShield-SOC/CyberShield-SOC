@@ -373,7 +373,10 @@ export default function ThreatDetectionPage({ navigate }) {
                 <span className="rule-list-meta">
                   <span className="rule-category-badge">{rule.categoryMeta.shortLabel}</span>
                   {rule.executable ? (
-                    <span className="rule-match-count">{rule.activity.total} match{rule.activity.total === 1 ? "" : "es"}</span>
+                    <>
+                      <span className="rule-meta-separator" aria-hidden="true">·</span>
+                      <span className="rule-match-count">{rule.activity.total} match{rule.activity.total === 1 ? "" : "es"}</span>
+                    </>
                   ) : (
                     <span className="rule-execution-label">{rule.status} · not executable</span>
                   )}
