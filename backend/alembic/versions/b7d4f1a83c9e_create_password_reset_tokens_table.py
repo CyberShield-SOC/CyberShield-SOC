@@ -1,9 +1,4 @@
-"""create password reset tokens table
-
-Revision ID: b7d4f1a83c9e
-Revises: e2f6a9c1d4b7
-Create Date: 2026-09-13 21:30:00.000000
-"""
+"""create password reset tokens table"""
 
 from typing import Sequence, Union
 

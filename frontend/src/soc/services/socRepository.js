@@ -342,6 +342,53 @@ export function apiIncidentStatus(status) {
   })[status] || null;
 }
 
+export function incidentStatusOperation(status, options = {}) {
+  const apiStatus = apiIncidentStatus(status);
+  if (!apiStatus) throw new Error("Unsupported incident status.");
+  if (isTerminalIncidentStatus(status)) {
+    if (!options.note?.trim()) throw new Error("Provide a resolution note before completing the incident.");
+    return { suffix: "/resolve", method: "POST", body: { outcome: apiStatus, reason: options.reason?.trim() || options.note.trim(), note: options.note.trim(), expected_version: options.expectedVersion } };
+  }
+  if (options.reopen) {
+    if (!options.reason?.trim()) throw new Error("Provide a reason for reopening the incident.");
+    return { suffix: "/reopen", method: "POST", body: { state: apiStatus, reason: options.reason.trim(), expected_version: options.expectedVersion } };
+  }
+  return { suffix: "", method: "PATCH", body: { status: apiStatus, expected_version: options.expectedVersion } };
+}
+
+async function readPages(path, key) {
+  const rows = [];
+  let page = 1;
+  let payload;
+  do {
+    payload = await request(`${path}?page=${page}&page_size=100`);
+    rows.push(...responseArray(payload, key));
+    page += 1;
+  } while (page <= payload.pagination?.page_count);
+  return { rows, completeness: payload.completeness };
+}
+
+async function readHistory(path) {
+  const events = [];
+  let afterId = 0;
+  do {
+    const payload = await request(`${path}?after_id=${afterId}&limit=100`);
+    events.push(...responseArray(payload, "events"));
+    afterId = payload.next_after_id;
+  } while (afterId);
+  return events.map((e) => ({ id: `HISTORY-${e.id}`, at: e.occurred_at,
+    title: e.event_type.replaceAll("_", " ").toLowerCase(),
+    detail: [e.actor_name, e.reason, e.note, JSON.stringify(e.after)].filter(Boolean).join(" · ") }));
+}
+
+function normalizeSourceEvidence(event, alert) {
+  const normalized = event.normalized || {};
+  const source = normalizeEvent({ ...event, timestamp: event.event_timestamp || normalized.timestamp || "", ip: normalized.ip_address,
+    username: normalized.username, event: normalized.event_type, status: normalized.status }, [alert]);
+  return { ...source, sourceAlertId: alert.id, rule: RULE_IDS[alert.rule] || alert.rule,
+    severity: String(alert.severity || "LOW").toLowerCase() };
+}
+
 function evidenceId(log) {
   return `EVT-${log.id || `${String(log.upload_id || "upload").slice(0, 8)}-${log.line_number || 0}`}`;
 }
@@ -359,8 +406,8 @@ function normalizeEvent(log, alerts = []) {
     id: evidenceId(log),
     backendId: log.id,
     sourceAlertId: alert?.id || null,
-    timestamp: log.timestamp || new Date().toISOString(),
-    ingestedAt: log.ingested_at || log.timestamp || new Date().toISOString(),
+    timestamp: log.timestamp || "",
+    ingestedAt: log.ingested_at || log.timestamp || "",
     source: log.source_filename || "ingested log",
     sourceIp: log.ip || "Unknown",
     user: log.username || "Unknown",
@@ -398,7 +445,8 @@ function normalizeMlInsight(source) {
 
 function normalizeAlert(alert, latest = null) {
   const latestLogs = latest?.logs || [];
-  const matchedLogs = latest?.upload?.upload_id === alert.upload_id
+  const matchingUpload = Boolean(latest?.upload?.upload_id && latest.upload.upload_id === alert.upload_id);
+  const matchedLogs = matchingUpload
     ? latestLogs.filter((log) => (alert.matched_line_numbers || []).includes(log.line_number))
     : [];
   const severity = String(alert.severity || "LOW").toLowerCase();
@@ -411,8 +459,9 @@ function normalizeAlert(alert, latest = null) {
     eventId: matchedLogs[0] ? evidenceId(matchedLogs[0]) : "",
     title: alert.title,
     severity,
-    status: normalizeAlertStatus(alert.status),
-    source: latest?.upload?.upload_id === alert.upload_id
+    status: alert.investigation_state === "FALSE_POSITIVE" ? "false positive" : alert.investigation_state === "LEGACY_CLOSED" ? "legacy closed" : normalizeAlertStatus(alert.status),
+    version: alert.version,
+    source: matchingUpload
       ? latest.upload.filename || "ingested log"
       : "ingested log",
     sourceIp: alert.source_ip || "Unknown",
@@ -546,12 +595,16 @@ function normalizeIncident(incident, alerts = [], latest = null) {
   const normalizedAlert = sourceAlert ? normalizeAlert(sourceAlert, latest) : null;
   const status = normalizeIncidentStatus(incident.status);
   const terminal = isTerminalIncidentStatus(status);
-  const completedByUserId = terminal ? Number(incident.updated_by_user_id) || null : null;
+  const completedByUserId = terminal ? Number(incident.resolved_by_user_id) || null : null;
   const completedAt = terminal ? incident.closed_at || incident.resolved_at || incident.updated_at : null;
   return {
     id: displayId("INC", incident.id),
     backendId: incident.id,
+    version: incident.version,
+    resolutionReason: incident.resolution_reason,
+    resolutionNote: incident.resolution_note,
     sourceAlertId: incident.source_alert_id,
+    linkedAlertIds: incident.linked_alert_ids || [incident.source_alert_id],
     title: incident.title,
     assignedUserId: incident.assigned_user_id || null,
     owner: incident.assigned_user_id ? `User ${incident.assigned_user_id}` : "Unassigned",
@@ -560,7 +613,7 @@ function normalizeIncident(incident, alerts = [], latest = null) {
     updated: incident.updated_at,
     completedAt,
     completedByUserId,
-    completedBy: completedByUserId ? `User ${completedByUserId}` : null,
+    completedBy: incident.resolved_by_name || (completedByUserId ? `User ${completedByUserId}` : null),
     sla: terminal ? "Completed" : "Within target",
     summary: incident.description,
     playbook: incident.response_playbook || incident.playbook || normalizedAlert?.playbook || null,
@@ -902,7 +955,35 @@ async function getApiState() {
   return { latest, rawAlerts, events, alerts, incidents };
 }
 
-const httpRepository = {
+export const httpRepository = {
+  async getAlertInvestigation(alertId) {
+    const id = requireBackendId(alertId, "Alert");
+    const [detail, source, groups, history] = await Promise.all([
+      request(`/alerts/${id}/investigation`), readPages(`/alerts/${id}/evidence`, "events"),
+      readPages(`/alerts/${id}/correlation-groups`, "groups"), readHistory(`/alerts/${id}/investigation/history`),
+    ]);
+    const events = source.rows.map((event) => normalizeSourceEvidence(event, detail.alert));
+    const captured = await Promise.all(groups.rows.map(async (group) => {
+      const [context, linked] = await Promise.all([request(`/correlation-groups/${group.id}/rule-context`), readPages(`/correlation-groups/${group.id}/alerts`, "alerts")]);
+      return { ...group, ruleContext: context.rule_context, alerts: linked.rows.map((a) => normalizeAlert(a)) };
+    }));
+    return { alert: normalizeAlert(detail.alert), events, groups: captured, history, completeness: source.completeness,
+      allowedStates: detail.allowed_states, activeIncidentId: detail.active_incident_id,
+      related: captured.flatMap((group) => group.alerts.filter((a) => a.backendId !== id).map((alert) => ({
+        alert, groupId: group.id, reason: group.reason, groupingEntity: group.entity_value,
+        timeWindow: `${group.window_seconds} seconds (inclusive)`, linkedEvents: [], linkedEventCount: group.counts.events,
+      }))) };
+  },
+  async addInvestigationNote(alertId, body, expectedVersion) {
+    return request(`/alerts/${requireBackendId(alertId, "Alert")}/investigation/notes`, { method: "POST", body: JSON.stringify({ body, expected_version: expectedVersion }) });
+  },
+  async getIncidentInvestigation(incidentId) {
+    const id = requireBackendId(incidentId, "Incident");
+    const [linked, history] = await Promise.all([readPages(`/incidents/${id}/alerts`, "alerts"), readHistory(`/incidents/${id}/history`)]);
+    const sources = await Promise.all(linked.rows.map((a) => readPages(`/alerts/${a.id}/evidence`, "events")));
+    const events = [...new Map(sources.flatMap((source, i) => source.rows.map((event) => normalizeSourceEvidence(event, linked.rows[i]))).map((e) => [e.id, e])).values()];
+    return { alerts: linked.rows.map((a) => normalizeAlert(a)), events, history };
+  },
   mode: "api",
   async getHealth() {
     const payload = await request("/health");
@@ -1026,21 +1107,22 @@ const httpRepository = {
   async deleteNote(noteId) {
     return request(`/notes/${requireBackendId(noteId, "Note")}`, { method: "DELETE" });
   },
-  async updateAlertStatus(alertId, status) {
-    const apiStatus = apiAlertStatus(status);
-    if (!apiStatus) throw new Error("That alert status is not supported by the connected service.");
-    const payload = await request(`/alerts/${requireBackendId(alertId, "Alert")}`, {
+  async updateAlertStatus(alertId, status, expectedVersion) {
+    const state = { new: "NEW", investigating: "INVESTIGATING", escalated: "ESCALATED", resolved: "RESOLVED", "false positive": "FALSE_POSITIVE" }[status];
+    if (!state) throw new Error("That alert status is not supported by the connected service.");
+    const payload = await request(`/alerts/${requireBackendId(alertId, "Alert")}/investigation`, {
       method: "PATCH",
-      body: JSON.stringify({ status: apiStatus }),
+      body: JSON.stringify({ state, expected_version: expectedVersion }),
     });
     return normalizeAlert(payload.alert);
   },
-  async updateIncidentStatus(incidentId, status) {
+  async updateIncidentStatus(incidentId, status, options = {}) {
     const apiStatus = apiIncidentStatus(status);
     if (!apiStatus) throw new Error("That incident status is not supported by the connected service.");
-    const payload = await request(`/incidents/${requireBackendId(incidentId, "Incident")}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: apiStatus }),
+    const operation = incidentStatusOperation(status, options);
+    const payload = await request(`/incidents/${requireBackendId(incidentId, "Incident")}${operation.suffix}`, {
+      method: operation.method,
+      body: JSON.stringify(operation.body),
     });
     return normalizeIncident(payload.incident);
   },
@@ -1063,10 +1145,10 @@ const httpRepository = {
       eventIds: incident.eventIds || [],
     };
   },
-  async updateIncidentAssignee(incidentId, assignedUserId) {
+  async updateIncidentAssignee(incidentId, assignedUserId, expectedVersion) {
     const payload = await request(`/incidents/${requireBackendId(incidentId, "Incident")}`, {
       method: "PATCH",
-      body: JSON.stringify({ assigned_user_id: assignedUserId ? Number(assignedUserId) : null }),
+      body: JSON.stringify({ assigned_user_id: assignedUserId ? Number(assignedUserId) : null, expected_version: expectedVersion }),
     });
     return normalizeIncident(payload.incident);
   },

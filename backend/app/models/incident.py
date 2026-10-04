@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     func,
@@ -22,6 +23,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.alert import Alert
     from app.models.user import User
+    from app.models.workflow import IncidentAlertLink
 
 
 class Incident(Base):
@@ -44,6 +46,7 @@ class Incident(Base):
         Index("ix_incidents_created_by_user_id", "created_by_user_id"),
         Index("ix_incidents_updated_by_user_id", "updated_by_user_id"),
         Index("ix_incidents_created_at", "created_at"),
+        CheckConstraint("version > 0", name="ck_incidents_version"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -51,6 +54,11 @@ class Incident(Base):
         primary_key=True,
         autoincrement=True,
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    resolution_reason: Mapped[str | None] = mapped_column(Text)
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_by_name: Mapped[str | None] = mapped_column(String(100))
 
     source_alert_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -148,6 +156,7 @@ class Incident(Base):
     )
 
     source_alert: Mapped[Alert] = relationship()
+    alert_links: Mapped[list[IncidentAlertLink]] = relationship(lazy="selectin")
 
     assigned_user: Mapped[User | None] = relationship(
         foreign_keys=[assigned_user_id],

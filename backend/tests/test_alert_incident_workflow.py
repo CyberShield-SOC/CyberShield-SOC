@@ -68,7 +68,7 @@ def make_alert(db_session, **overrides) -> Alert:
     return alert
 
 
-# ── Evidence/reference carry-over from the source alert ─────────────────────
+# â”€â”€ Evidence/reference carry-over from the source alert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_incident_created_without_overrides_inherits_alert_title_description_and_severity(db_session):
     alert = make_alert(db_session, title="Brute-force burst", description="5 failed logins.", severity="CRITICAL")
@@ -113,7 +113,7 @@ def test_promoting_an_alert_to_an_incident_escalates_the_alert_status(db_session
     assert matching["status"] == "ESCALATED"
 
 
-# ── Not-found / invalid references ───────────────────────────────────────────
+# â”€â”€ Not-found / invalid references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_creating_an_incident_for_a_nonexistent_alert_returns_404():
     response = client.post("/incidents", json={"alert_id": 999_999_999})
@@ -141,7 +141,7 @@ def test_reassigning_an_incident_to_a_nonexistent_user_returns_404(db_session):
     assert response.status_code == 404
 
 
-# ── Duplicate promotion prevention ───────────────────────────────────────────
+# â”€â”€ Duplicate promotion prevention â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_promoting_the_same_alert_twice_is_rejected_even_with_different_details(db_session):
     """Duplicate-prevention must key off the alert, not incidental payload
@@ -155,18 +155,18 @@ def test_promoting_the_same_alert_twice_is_rejected_even_with_different_details(
     assert second.status_code == 409
 
 
-# ── State transitions ─────────────────────────────────────────────────────────
+# â”€â”€ State transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_reopening_a_false_positive_incident_clears_resolved_and_closed_timestamps(db_session):
     alert = make_alert(db_session)
     created = client.post("/incidents", json={"alert_id": alert.id})
     incident_id = created.json()["incident"]["id"]
 
-    closed = client.patch(f"/incidents/{incident_id}", json={"status": "FALSE_POSITIVE"})
+    closed = client.patch(f"/incidents/{incident_id}", json={"status": "FALSE_POSITIVE", "resolution_reason": "Expected activity", "resolution_note": "Verified this activity with the system owner."})
     assert closed.json()["incident"]["resolved_at"] is not None
     assert closed.json()["incident"]["closed_at"] is not None
 
-    reopened = client.patch(f"/incidents/{incident_id}", json={"status": "OPEN"})
+    reopened = client.patch(f"/incidents/{incident_id}", json={"status": "OPEN", "reason": "Additional evidence requires review."})
 
     assert reopened.status_code == 200
     reopened_incident = reopened.json()["incident"]
@@ -180,10 +180,10 @@ def test_reopening_a_resolved_incident_to_investigating_clears_resolved_at(db_se
     created = client.post("/incidents", json={"alert_id": alert.id})
     incident_id = created.json()["incident"]["id"]
 
-    resolved = client.patch(f"/incidents/{incident_id}", json={"status": "RESOLVED"})
+    resolved = client.patch(f"/incidents/{incident_id}", json={"status": "RESOLVED", "resolution_reason": "Confirmed and contained", "resolution_note": "Reviewed supporting evidence and completed remediation."})
     assert resolved.json()["incident"]["resolved_at"] is not None
 
-    reopened = client.patch(f"/incidents/{incident_id}", json={"status": "INVESTIGATING"})
+    reopened = client.patch(f"/incidents/{incident_id}", json={"status": "INVESTIGATING", "reason": "Additional evidence requires review."})
 
     assert reopened.status_code == 200
     assert reopened.json()["incident"]["resolved_at"] is None
@@ -199,7 +199,7 @@ def test_patch_incident_rejects_status_values_outside_the_documented_enum(db_ses
     assert response.status_code == 422
 
 
-# ── Authorization for the full workflow chain ────────────────────────────────
+# â”€â”€ Authorization for the full workflow chain â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_viewer_cannot_promote_an_alert_to_an_incident(db_session):
     alert = make_alert(db_session)

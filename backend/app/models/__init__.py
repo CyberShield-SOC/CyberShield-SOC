@@ -16,6 +16,8 @@ from app.models.host_heartbeat import HostHeartbeat
 from app.models.threat_indicator import ThreatIndicator
 from app.models.ml_feature_snapshot import MLFeatureSnapshot
 from app.models.ml_model import MLModel
+from app.models.correlation import CorrelationGroup, CorrelationGroupEvent, CorrelationGroupAlert, CorrelationGroupUpload, AlertEventLink
+from app.models.workflow import WorkflowEvent, InvestigationNote, IncidentAlertLink
 
 
 
@@ -38,4 +40,12 @@ __all__ = [
     "ThreatIndicator",
     "MLFeatureSnapshot",
     "MLModel",
+    "CorrelationGroup",
+    "CorrelationGroupEvent",
+    "CorrelationGroupAlert",
+    "CorrelationGroupUpload",
+    "AlertEventLink",
+    "WorkflowEvent",
+    "InvestigationNote",
+    "IncidentAlertLink",
 ]

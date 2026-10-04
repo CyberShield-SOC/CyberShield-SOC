@@ -1,17 +1,10 @@
-"""add blocked ips and log ports
-
-Revision ID: 7c91d4e6a2b8
-Revises: f3b1c9e4a002
-Create Date: 2026-09-12 01:45:00.000000
-
-"""
+"""add blocked ips and log ports"""
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision: str = '7c91d4e6a2b8'
 down_revision: Union[str, None] = 'f3b1c9e4a002'
 branch_labels: Union[str, Sequence[str], None] = None

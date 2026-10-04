@@ -6,6 +6,8 @@ AI-Powered Log Monitoring and Threat Detection Platform
 
 CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, email-based two-factor verification, and role-based access control (Admin, Analyst, Viewer).
 
+Sprint 6 adds correlation, exact evidence APIs, investigation states, and incident assignment/resolution/reopening with history. See [Sprint 6 additions](docs/sprint6.md).
+
 ## Detection Rules
 
 The `DetectionEngine` (`backend/app/detection/engine.py`) runs every enabled rule against each uploaded batch of parsed log entries. Rules are configurable per-deployment (`DETECTION_RULE_CONFIG`) and, for the built-in set below, also live-configurable by an Admin/Analyst through `GET`/`PATCH /detection/rules` without a restart. Analysts can additionally author custom rules at runtime through the Rule Builder (`POST/PATCH/DELETE /custom-rules`), which run alongside these built-ins.
@@ -183,7 +185,7 @@ The startup task runs `start.ps1`, which:
 1. Validates the local `.env`, backend virtual environment, and frontend dependencies.
 2. Starts the PostgreSQL container and waits for it to become healthy.
 3. Applies Alembic database migrations and creates the configured initial Admin when needed.
-4. Starts FastAPI on `http://127.0.0.1:3000` and Vite on `http://127.0.0.1:5173`.
+4. Starts FastAPI on `http://127.0.0.1:3000` and Vite on `https://127.0.0.1:5173` by default.
 5. Opens the application in the browser.
 
 The VS Code startup task is currently Windows-specific. On macOS or Linux, start PostgreSQL and prepare the database from the repository root:
@@ -240,7 +242,7 @@ python main.py
 
 Open:
 
-- Frontend dashboard: `http://localhost:5173` (with Vite dev server running)
+- Frontend dashboard: `https://127.0.0.1:5173` (with Vite dev server running)
 - API docs: `http://localhost:3000/docs`
 - Health check: `http://localhost:3000/health`
 
@@ -254,7 +256,7 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173` in your browser. The Vite development server proxies `/api` requests to the FastAPI service on port `3000`.
+Open the URL printed by Vite, normally `https://127.0.0.1:5173`. The Vite development server proxies `/api` requests to the FastAPI service on port `3000`.
 
 Connected authentication requires PostgreSQL and FastAPI to be running. The complete startup task described above starts the database, applies migrations, seeds the initial Admin, and launches both application servers.
 
@@ -313,6 +315,9 @@ Returns backend service health.
 | Threat intel | `GET/POST /threat-intel/feeds`, `DELETE /threat-intel/feeds/{source}`, `GET /threat-intel/indicators` |
 | Custom rules | `GET/POST /custom-rules`, `PATCH/DELETE /custom-rules/{id}`, `POST /custom-rules/test` |
 | Alerts / Incidents / Notes | `GET/PATCH /alerts`, `GET/POST/PATCH /incidents`, `GET/POST/PATCH/DELETE /notes` |
+| Correlation / evidence | `GET /correlation-groups`, group details/events/alerts/uploads/rule context; `GET /alerts/{alert_id}/evidence`, `/correlation-groups` |
+| Investigations | `GET/PATCH /alerts/{alert_id}/investigation`, `POST /alerts/{alert_id}/escalate`, investigation notes/history |
+| Incident lifecycle | `POST /incidents/{incident_id}/resolve`, `/reopen`; incident alerts/history |
 | ML models | `GET /ml/models`, `POST /ml/models/{feature_set}/train`, `POST /ml/models/{model_id}/activate`, `GET /ml/scores` |
 
 Full request/response contracts and RBAC rules are in [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md) and the backend test suite (`backend/tests/`).

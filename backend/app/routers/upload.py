@@ -34,6 +34,7 @@ from app.repositories.alert_repository import (
     suppress_alerts_in_cooldown,
 )
 from app.repositories.custom_rule_action_repository import apply_custom_rule_actions
+from app.repositories.correlation_repository import correlate_upload, group_payloads
 from app.repositories.custom_rule_repository import list_enabled_custom_rules
 from app.repositories.detection_rule_setting_repository import effective_rule_configs
 from app.repositories.log_repository import (
@@ -124,167 +125,80 @@ def _run_upload_pipeline(
     source_filename: str,
     mime_type: str | None,
 ) -> dict:
-    """
-    Decode, parse, run detection, and persist one uploaded file.
-
-    This is CPU-bound (decode + regex parsing + rule evaluation over
-    potentially hundreds of thousands of lines) and makes synchronous DB
-    calls throughout, so the route handler runs it via run_in_threadpool
-    instead of inline on the async event loop — otherwise a single large
-    upload would stall every other concurrent request until it finished.
-    """
-
-    # --- Decode ---
+    """Parse, detect, correlate, and persist one upload in a single transaction."""
     try:
         content_str = content_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "success": False,
-                "error": (
-                    "File could not be decoded as UTF-8. "
-                    "Please upload a plain text log file."
-                ),
-                "code": "ENCODING_ERROR",
-            },
-        ) from exc
-
-    # --- Parse ---
-    parsed = parse_log(
-        content_str,
-        source_filename,
-    )
-
+        raise HTTPException(400, detail={"success": False, "error": "File could not be decoded as UTF-8. Please upload a plain text log file.", "code": "ENCODING_ERROR"}) from exc
+    parsed = parse_log(content_str, source_filename)
     if not parsed["entries"]:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "success": False,
-                "error": "No security events could be parsed. Verify the file structure and field names.",
-                "code": "NO_PARSEABLE_EVENTS",
-                "skipped_lines": len(parsed["skipped_lines"]),
-            },
-        )
-
+        raise HTTPException(422, detail={"success": False, "error": "No security events could be parsed. Verify the file structure and field names.", "code": "NO_PARSEABLE_EVENTS", "skipped_lines": len(parsed["skipped_lines"])})
     upload_id = uuid.uuid4()
-
-    # --- Run detection engine ---
-    records = enrich_records(
-        [log_record_from_entry(entry, str(parsed["format"])) for entry in parsed["entries"]],
-        get_geo_resolver(),
-    )
-
-    configs = effective_rule_configs(db, settings.detection_rule_config)
-    engine = DetectionEngine.from_config({name: config.model_dump() for name, config in configs.items()})
-    alerts = engine.run(records, db)
-
-    enabled_custom_rules = list_enabled_custom_rules(db)
-    custom_rule_titles: dict[str, str] = {}
-    for custom_rule in enabled_custom_rules:
-        if not custom_rule.actions.get("create_alert", False):
-            continue
-        runner = CustomConditionRule(
-            rule_id=custom_rule.rule_id,
-            display_name=custom_rule.name,
-            severity=custom_rule.severity,
-            conditions=custom_rule.conditions,
-            group_by=custom_rule.group_by,
-            window_seconds=custom_rule.window_seconds,
-        )
-        custom_rule_titles[custom_rule.rule_id] = custom_rule.name
-        alerts.extend(runner.analyze(records))
-
-    cooldown_by_rule = {name: config.cooldown_seconds for name, config in configs.items()}
-    alerts = suppress_alerts_in_cooldown(db, alerts, cooldown_by_rule)
-
-    def _serialize(alert):
-        data = serialize_alert(alert)
-        if alert.rule in custom_rule_titles:
-            data["title"] = custom_rule_titles[alert.rule]
-        return data
-
-    serialized_alerts = [_serialize(alert) for alert in alerts]
-
-    # --- Store logs and alerts in one transaction ---
     try:
-        saved_logs = create_logs_from_parse_result(
-            db,
-            upload_id=upload_id,
-            source_filename=source_filename,
-            parsed_result=parsed,
-        )
-
-        saved_alerts = create_alerts_from_detection(
-            db,
-            upload_id=upload_id,
-            serialized_alerts=serialized_alerts,
-        )
-
-        active_defense_summary = auto_block_from_alerts(db, saved_alerts)
-        # This whole pipeline already runs off the event loop (see
-        # upload_log below), so the Slack dispatch inside
-        # apply_custom_rule_actions can stay a plain call here.
-        custom_rule_action_summary = apply_custom_rule_actions(
-            db,
-            alerts=saved_alerts,
-            custom_rules=enabled_custom_rules,
-            slack_webhook_url=settings.slack_webhook_url,
-        )
-
+        # Source identities exist before detection so history-backed rules can
+        # retain exact provenance. Nothing commits until the complete pipeline succeeds.
         batch = create_upload_batch(
-            db,
-            upload_id=upload_id,
-            source_filename=source_filename,
-            source_format=str(parsed["format"]),
-            mime_type=mime_type,
-            size_bytes=len(content_bytes),
-            total_lines=int(parsed["total_lines"]),
-            parsed_entries=len(parsed["entries"]),
-            skipped_lines=len(parsed["skipped_lines"]),
-            stored_entries=len(saved_logs),
-            stored_alerts=len(saved_alerts),
+            db, upload_id=upload_id, source_filename=source_filename, source_format=str(parsed["format"]),
+            mime_type=mime_type, size_bytes=len(content_bytes), total_lines=int(parsed["total_lines"]),
+            parsed_entries=len(parsed["entries"]), skipped_lines=len(parsed["skipped_lines"]), stored_entries=0, stored_alerts=0,
         )
-
+        saved_logs = create_logs_from_parse_result(db, upload_id=upload_id, source_filename=source_filename, parsed_result=parsed)
+        identities = {log.line_number: log.id for log in saved_logs}
+        records = enrich_records([
+            log_record_from_entry(entry, str(parsed["format"])).model_copy(update={"log_id": identities[entry["line_number"]], "upload_id": str(upload_id)})
+            for entry in parsed["entries"]
+        ], get_geo_resolver())
+        configs = effective_rule_configs(db, settings.detection_rule_config)
+        engine = DetectionEngine.from_config({name: config.model_dump() for name, config in configs.items()})
+        alerts = engine.run(records, db)
+        rule_contexts = {
+            rule.name: {"kind": "builtin", "metadata": rule.metadata().model_dump(mode="json"),
+                        "config": configs[rule.name].model_dump(mode="json"), "correlation_entity": rule.entity_type,
+                        "correlation_window_seconds": configs[rule.name].window_seconds,
+                        "cross_upload": rule.name in {"lateral_movement_chain", "impossible_travel", "dormant_account_activity"}}
+            for rule in engine.rules
+        }
+        enabled_custom_rules = list_enabled_custom_rules(db)
+        custom_rule_titles = {}
+        for custom_rule in enabled_custom_rules:
+            if not custom_rule.actions.get("create_alert", False):
+                continue
+            runner = CustomConditionRule(rule_id=custom_rule.rule_id, display_name=custom_rule.name,
+                                         severity=custom_rule.severity, conditions=custom_rule.conditions,
+                                         group_by=custom_rule.group_by, window_seconds=custom_rule.window_seconds)
+            custom_rule_titles[custom_rule.rule_id] = custom_rule.name
+            alerts.extend(runner.analyze(records))
+            rule_contexts[custom_rule.rule_id] = {
+                "kind": "custom", "name": custom_rule.name, "rule_id": custom_rule.rule_id,
+                "conditions": custom_rule.conditions, "group_by": custom_rule.group_by,
+                "window_seconds": custom_rule.window_seconds, "severity": custom_rule.severity,
+                "correlation_entity": {"ip_address": "source_ip", "username": "account"}.get(custom_rule.group_by, "upload_batch"),
+                "correlation_window_seconds": max(60, custom_rule.window_seconds),
+            }
+        alerts = suppress_alerts_in_cooldown(db, alerts, {name: config.cooldown_seconds for name, config in configs.items()})
+        serialized_alerts = [serialize_alert(alert) for alert in alerts]
+        for data in serialized_alerts:
+            if data["rule"] in custom_rule_titles:
+                data["title"] = custom_rule_titles[data["rule"]]
+        saved_alerts = create_alerts_from_detection(db, upload_id=upload_id, serialized_alerts=serialized_alerts)
+        saved_groups = correlate_upload(db, logs=saved_logs, alerts=saved_alerts, serialized_alerts=serialized_alerts, rule_contexts=rule_contexts)
+        active_defense_summary = auto_block_from_alerts(db, saved_alerts)
+        custom_rule_action_summary = apply_custom_rule_actions(db, alerts=saved_alerts, custom_rules=enabled_custom_rules, slack_webhook_url=settings.slack_webhook_url)
+        batch.stored_entries = len(saved_logs)
+        batch.stored_alerts = len(saved_alerts)
         db.commit()
-
-        response_alerts = [
-            serialize_alert_record(alert)
-            for alert in saved_alerts
-        ]
-
     except SQLAlchemyError as exc:
         db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": (
-                    "Parsed logs and alerts could not be stored."
-                ),
-                "code": "DATABASE_WRITE_ERROR",
-            },
-        ) from exc
-
-    # --- Build response ---
+        raise HTTPException(500, detail={"success": False, "error": "Parsed logs, alerts, and correlation groups could not be stored.", "code": "DATABASE_WRITE_ERROR"}) from exc
     return {
-        "success": True,
-        "upload": serialize_upload_batch(batch),
-        "parsing": {
-            "format": parsed["format"],
-            "total_lines": parsed["total_lines"],
-            "parsed_entries": len(parsed["entries"]),
-            "stored_entries": len(saved_logs),
-            "stored_alerts": len(saved_alerts),
-            "skipped_lines": len(parsed["skipped_lines"]),
-            "fields": parsed["fields"],
-        },
-        "entries": parsed["entries"],
-        "skipped_lines": parsed["skipped_lines"],
-        "alerts": response_alerts,
-        "active_defense": active_defense_summary,
-        "custom_rule_actions": custom_rule_action_summary,
+        "success": True, "upload": serialize_upload_batch(batch),
+        "parsing": {"format": parsed["format"], "total_lines": parsed["total_lines"], "parsed_entries": len(parsed["entries"]),
+                    "stored_entries": len(saved_logs), "stored_alerts": len(saved_alerts), "stored_groups": len(saved_groups),
+                    "skipped_lines": len(parsed["skipped_lines"]), "fields": parsed["fields"]},
+        "entries": parsed["entries"], "skipped_lines": parsed["skipped_lines"],
+        "alerts": [serialize_alert_record(alert) for alert in saved_alerts],
+        "correlation_groups": group_payloads(db, saved_groups),
+        "active_defense": active_defense_summary, "custom_rule_actions": custom_rule_action_summary,
     }
 
 

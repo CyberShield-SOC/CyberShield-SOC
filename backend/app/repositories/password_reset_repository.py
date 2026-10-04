@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
-from app.security import generate_reset_token, token_digest
+from app.security import generate_reset_token, lock_auth_user, token_digest
 
 
 class PasswordResetTokenInvalidError(Exception):
@@ -24,6 +24,7 @@ def create_reset_challenge(db: Session, user: User) -> str:
     returned in an API response.
     """
 
+    lock_auth_user(db, user.id)
     db.execute(
         update(PasswordResetToken)
         .where(PasswordResetToken.user_id == user.id)
@@ -56,8 +57,19 @@ def consume_reset_token(db: Session, token: str) -> User:
 
     invalid_message = "This reset link is invalid or has already been used."
 
+    token_hash = token_digest(token)
+    user_id = db.scalar(
+        select(PasswordResetToken.user_id).where(
+            PasswordResetToken.token_hash == token_hash
+        )
+    )
+    if user_id is None:
+        raise PasswordResetTokenInvalidError(invalid_message)
+    user = lock_auth_user(db, user_id)
     record = db.scalar(
-        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_digest(token))
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == token_hash)
+        .execution_options(populate_existing=True)
     )
     if record is None or record.used:
         raise PasswordResetTokenInvalidError(invalid_message)
@@ -68,7 +80,6 @@ def consume_reset_token(db: Session, token: str) -> User:
             "This reset link has expired. Request a new one."
         )
 
-    user = db.get(User, record.user_id)
     if user is None or not user.is_active:
         record.used = True
         raise PasswordResetTokenInvalidError(invalid_message)
