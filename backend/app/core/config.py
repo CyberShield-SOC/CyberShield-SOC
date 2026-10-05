@@ -69,10 +69,11 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_starttls: bool = True
-    # Base URL of the deployed frontend, used to build the link emailed to
-    # /auth/forgot-password requesters. No trailing slash. Defaults to the
-    # Vite dev server's own HTTPS origin (see frontend/vite.config.js).
-    frontend_base_url: str = Field(default="https://127.0.0.1:5173", min_length=1)
+    # Optional public frontend URL used in password-reset emails. Leave unset
+    # for combined Railway deployments so the app can use RAILWAY_PUBLIC_DOMAIN.
+    frontend_base_url: str | None = None
+    # Railway injects this automatically for a service with a public domain.
+    railway_public_domain: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

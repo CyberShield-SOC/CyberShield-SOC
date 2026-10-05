@@ -62,9 +62,6 @@ export function RecoveryCard({ initialEmail, onBack }) {
           If an account matches <strong>{email}</strong>, recovery instructions will be sent.
         </AuthCardIntro>
 
-        <div className="info-panel">
-          For your security, the confirmation is the same whether or not an account exists.
-        </div>
         <button className="primary-button auth-primary-action" type="button" onClick={onBack}>
           Return to sign in <ArrowRight size={17} aria-hidden="true" />
         </button>

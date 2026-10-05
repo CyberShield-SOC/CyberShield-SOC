@@ -302,9 +302,44 @@ def me(user: User = Depends(current_user)):
 GENERIC_RECOVERY_MESSAGE = "If an account matches that email, recovery instructions will be sent."
 
 
+def _password_reset_frontend_base(request: Request) -> str:
+    """Return the trusted frontend origin used in emailed reset links.
+
+    Explicit FRONTEND_BASE_URL wins. Railway's injected public domain is used
+    next for the combined deployment. Local development falls back to Vite;
+    other deployments fall back to the request origin served by FastAPI.
+    """
+
+    configured = (settings.frontend_base_url or "").strip().rstrip("/")
+    railway_domain = (settings.railway_public_domain or "").strip().rstrip("/")
+
+    # If Railway is running the app, never let an old local-dev value such as
+    # https://127.0.0.1:5173 leak into a real user's reset email.
+    configured_is_local = configured.startswith((
+        "http://localhost",
+        "https://localhost",
+        "http://127.0.0.1",
+        "https://127.0.0.1",
+    ))
+    if railway_domain and (not configured or configured_is_local):
+        if railway_domain.startswith(("http://", "https://")):
+            return railway_domain
+        return f"https://{railway_domain}"
+
+    if configured:
+        return configured
+
+    host = (request.url.hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "testserver"}:
+        return "https://127.0.0.1:5173"
+
+    return str(request.base_url).rstrip("/")
+
+
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 def forgot_password(
     payload: ForgotPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
     send_reset_email=Depends(get_reset_email_sender),
 ):
@@ -322,9 +357,8 @@ def forgot_password(
 
     if user is not None and user.is_active:
         token = create_reset_challenge(db, user)
-        reset_link = (
-            f"{settings.frontend_base_url}/#/reset-password?token={quote(token)}"
-        )
+        frontend_base = _password_reset_frontend_base(request)
+        reset_link = f"{frontend_base}/#/reset-password?token={quote(token)}"
         try:
             send_reset_email(to_email=user.email, reset_link=reset_link)
         except Exception as exc:
