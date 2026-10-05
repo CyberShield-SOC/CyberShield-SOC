@@ -78,6 +78,21 @@ export default function AiAnalysisPage({ navigate }) {
     if (list) list.scrollTop = list.scrollHeight;
   }, [messages, running]);
 
+  // Restore the analyst's saved conversation (connected mode). The chat lives in
+  // the workspace context, so the saved copy only fills it while the context is empty.
+  useEffect(() => {
+    if (repositoryMode !== "api") return;
+    let cancelled = false;
+    socRepository.getAssistantMessages()
+      .then((saved) => {
+        if (!cancelled && saved.length) setAiMessages((current) => (current.length ? current : saved));
+      })
+      .catch(() => {
+        if (!cancelled) setError("Your saved conversation could not be loaded.");
+      });
+    return () => { cancelled = true; };
+  }, [repositoryMode]);
+
   const failedEvidence = useMemo(
     () => events.filter((event) => event.status === "failed").sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 5),
     [events],
@@ -89,6 +104,24 @@ export default function AiAnalysisPage({ navigate }) {
     { icon: Network, title: "Review firewall integration", detail: "Validate telemetry health before applying perimeter block recommendations.", label: "View integration", route: SOC_ROUTES.integrations },
     { icon: Users, title: "Complete user access review", detail: "Confirm analyst and administrator roles follow least-privilege policy.", label: canAdminister ? "Review users" : "Review permissions", route: canAdminister ? SOC_ROUTES.users : SOC_ROUTES.help },
   ];
+
+  // Save failures never block the chat; they are reported as a notice instead.
+  async function saveConversationMessage(message) {
+    try {
+      await socRepository.saveAssistantMessage(message);
+    } catch (failure) {
+      setError(failure?.message || "This message could not be saved to your conversation history.");
+    }
+  }
+
+  async function clearSavedConversation() {
+    if (repositoryMode !== "api") return;
+    try {
+      await socRepository.clearAssistantMessages();
+    } catch (failure) {
+      setError(failure?.message || "The saved conversation could not be cleared.");
+    }
+  }
 
   async function askQuestion(question) {
     const value = String(question || "").trim();
@@ -104,6 +137,7 @@ export default function AiAnalysisPage({ navigate }) {
       if (repositoryMode === "api") {
         // Connected mode: the backend assistant answers from read-only data
         // tools, so there is no structured analysis to save or escalate.
+        await saveConversationMessage({ role: "user", content: value });
         const answer = await socRepository.askAssistant({
           messages: buildAssistantHistory([...messages, userMessage]),
           timeRangeHours: timeRangeToHours(globalTimeRange),
@@ -114,6 +148,11 @@ export default function AiAnalysisPage({ navigate }) {
           body: answer.reply,
           toolsUsed: answer.toolsUsed,
         }]);
+        await saveConversationMessage({
+          role: "assistant",
+          content: answer.reply,
+          toolsUsed: answer.toolsUsed.map((tool) => tool.name),
+        });
       } else {
         const analysis = await socRepository.runAiAnalysis({ subject: value });
         setAiLastAnalysis(analysis);
@@ -218,7 +257,7 @@ export default function AiAnalysisPage({ navigate }) {
           className="ai-chat-panel"
           title="Chat with AI Assistant"
           subtitle={`${questionCount} analyst question${questionCount === 1 ? "" : "s"} in this session`}
-          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setAiMessages([]); setAiLastAnalysis(null); setError(""); }}>Clear chat</button>}
+          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setAiMessages([]); setAiLastAnalysis(null); setError(""); clearSavedConversation(); }}>Clear chat</button>}
         >
           <div className="ai-message-list" aria-label="Scrollable AI conversation" aria-live="polite" role="region" tabIndex="0" ref={messageListRef}>
             {messages.map((message) => (

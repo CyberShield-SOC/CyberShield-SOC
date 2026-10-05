@@ -451,6 +451,8 @@ export function SocWorkspaceProvider({ children, user }) {
     try {
       const created = await socRepository.createIncident(incident);
       setIncidents((current) => [created, ...current]);
+      // Promoting an alert copies its triage notes onto the new incident.
+      if (socRepository.mode === "api") await refresh("notes");
       setMutation({ loading: false, error: "", message: `${created.id} created` });
       return created;
     } catch (error) {
@@ -459,7 +461,7 @@ export function SocWorkspaceProvider({ children, user }) {
     } finally {
       releaseMutation(mutationKey);
     }
-  }, [canWrite]);
+  }, [canWrite, refresh]);
 
   const createCustomRule = useCallback(async (rule) => {
     if (rejectReadOnlyMutation()) return null;

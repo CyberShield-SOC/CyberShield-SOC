@@ -202,7 +202,7 @@ export default function App() {
             <BrandMark adaptive />
           </div>
 
-          <div className="auth-view" key={route}>
+          <div className="auth-view" key={isSocRoute(route) ? "soc-workspace" : route}>
             {renderAuthView()}
           </div>
 
