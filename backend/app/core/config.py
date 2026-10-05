@@ -59,6 +59,16 @@ class Settings(BaseSettings):
 
     # Forgot-password email flow (see app/routers/auth.py).
     reset_token_expiry_minutes: int = Field(default=30, ge=5, le=1440)
+    # ``auto`` prefers Resend and falls back to SMTP. Gmail SMTP works with
+    # a Google App Password, which is useful when no verified Resend domain
+    # is available.
+    reset_email_provider: str = Field(default="auto", min_length=1)
+    smtp_host: str = Field(default="smtp.gmail.com", min_length=1)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_starttls: bool = True
     # Base URL of the deployed frontend, used to build the link emailed to
     # /auth/forgot-password requesters. No trailing slash. Defaults to the
     # Vite dev server's own HTTPS origin (see frontend/vite.config.js).

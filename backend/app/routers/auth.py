@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from urllib.parse import quote
 
@@ -50,6 +51,8 @@ from app.security import (
 from app.core.config import settings
 from app.validation import mask_email, password_context_errors
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -324,8 +327,17 @@ def forgot_password(
         )
         try:
             send_reset_email(to_email=user.email, reset_link=reset_link)
-        except Exception:
+        except Exception as exc:
+            # Keep the public response generic so the endpoint cannot be used
+            # to discover which email addresses have accounts, but make the
+            # operational failure visible in backend/Railway logs. Never log
+            # the reset link or token.
             db.rollback()
+            logger.error(
+                "Password-reset email delivery failed for user_id=%s: %s",
+                user.id,
+                type(exc).__name__,
+            )
         else:
             db.commit()
 
