@@ -20,8 +20,8 @@ import { socRepository } from "../services/socRepository";
 import { formatTimestamp } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
-import { assistantToolLabel } from "../utils/assistantChat";
-import { TIME_RANGE_LABELS } from "../utils/timeRange";
+import { assistantToolLabel, buildAssistantHistory } from "../utils/assistantChat";
+import { TIME_RANGE_LABELS, timeRangeToHours } from "../utils/timeRange";
 import { InlineNotice, PageHeader, Panel, SeverityBadge } from "../components/Ui";
 
 const STARTER_MESSAGE = Object.freeze({
@@ -44,28 +44,27 @@ export default function AiAnalysisPage({ navigate }) {
     addNote,
     aiLastAnalysis,
     aiMessages,
-    aiRunning,
-    aiError,
-    askAiQuestion,
     alerts,
     canAdminister,
     canWrite,
     currentActor,
     createIncident,
     events,
+    globalTimeRange,
     incidents,
     mutation,
     repositoryMode,
     selectedIncidentId,
-    clearAiConversation,
+    setAiLastAnalysis,
+    setAiMessages,
     setSelectedIncidentId,
     settings,
   } = useSocWorkspace();
   const messages = useMemo(() => [STARTER_MESSAGE, ...aiMessages], [aiMessages]);
   const lastAnalysis = aiLastAnalysis;
   const [prompt, setPrompt] = useState("");
-  const running = aiRunning;
-  const error = aiError;
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
   const messageListRef = useRef(null);
   const questionCount = messages.filter((message) => message.role === "user").length;
   const aiEnabled = settings?.ai?.enabled !== false;
@@ -93,10 +92,68 @@ export default function AiAnalysisPage({ navigate }) {
 
   async function askQuestion(question) {
     const value = String(question || "").trim();
-    if (!value) return;
+    if (!value || running || !aiEnabled) return;
+
+    const userMessage = { id: `user-${Date.now()}`, role: "user", body: value };
+    setAiMessages((current) => [...current, userMessage]);
     setPrompt("");
-    await askAiQuestion(value);
+    setRunning(true);
+    setError("");
+
+    try {
+      if (repositoryMode === "api") {
+        // Connected mode: the backend assistant answers from read-only data
+        // tools, so there is no structured analysis to save or escalate.
+        const answer = await socRepository.askAssistant({
+          messages: buildAssistantHistory([...messages, userMessage]),
+          timeRangeHours: timeRangeToHours(globalTimeRange),
+        });
+        setAiMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: answer.reply,
+          toolsUsed: answer.toolsUsed,
+        }]);
+      } else {
+        const analysis = await socRepository.runAiAnalysis({ subject: value });
+        setAiLastAnalysis(analysis);
+        setAiMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: analysis.summary,
+          analysis,
+        }]);
+      }
+    } catch (failure) {
+      setError(repositoryMode === "api" && failure?.message
+        ? failure.message
+        : "The analysis service is unavailable. Your question was not lost; try again when the service reconnects.");
+    } finally {
+      setRunning(false);
+    }
   }
+
+  // Event Logs stores one pending AI question in sessionStorage before
+  // navigating here. Consume it once after this page mounts so the request
+  // cannot be lost during route/lazy-load transitions.
+  const handledEventRequestRef = useRef(false);
+  useEffect(() => {
+    if (handledEventRequestRef.current || !aiEnabled || running) return;
+
+    let queuedQuestion = "";
+    try {
+      queuedQuestion = window.sessionStorage.getItem("cybershield-pending-ai-question") || "";
+      if (queuedQuestion) {
+        window.sessionStorage.removeItem("cybershield-pending-ai-question");
+      }
+    } catch {
+      // If session storage is unavailable, normal AI chat still works.
+    }
+
+    if (!queuedQuestion) return;
+    handledEventRequestRef.current = true;
+    askQuestion(queuedQuestion);
+  }, [aiEnabled, running]);
 
   function submitQuestion(event) {
     event.preventDefault();
@@ -161,7 +218,7 @@ export default function AiAnalysisPage({ navigate }) {
           className="ai-chat-panel"
           title="Chat with AI Assistant"
           subtitle={`${questionCount} analyst question${questionCount === 1 ? "" : "s"} in this session`}
-          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={clearAiConversation}>Clear chat</button>}
+          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setAiMessages([]); setAiLastAnalysis(null); setError(""); }}>Clear chat</button>}
         >
           <div className="ai-message-list" aria-label="Scrollable AI conversation" aria-live="polite" role="region" tabIndex="0" ref={messageListRef}>
             {messages.map((message) => (

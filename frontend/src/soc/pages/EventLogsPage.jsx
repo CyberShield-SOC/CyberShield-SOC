@@ -50,7 +50,6 @@ export default function EventLogsPage({ navigate }) {
     setGlobalTimeRange,
     selectedEventId,
     setSelectedEventId,
-    askAiQuestion,
     setSelectedIncidentId,
     uploadLogFile,
   } = useSocWorkspace();
@@ -475,10 +474,11 @@ export default function EventLogsPage({ navigate }) {
                 type="button"
                 onClick={() => {
                   const question = `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`;
-                  // Start the assistant request from workspace context before navigation.
-                  // The request no longer depends on the AI page mounting or an effect
-                  // noticing queued state, so the first selected event runs immediately.
-                  void askAiQuestion(question);
+                  try {
+                    window.sessionStorage.setItem("cybershield-pending-ai-question", question);
+                  } catch {
+                    // The AI page remains usable even if browser storage is blocked.
+                  }
                   navigate(SOC_ROUTES.aiAnalysis);
                 }}
               ><Bot size={16} />Analyze with AI</button>
