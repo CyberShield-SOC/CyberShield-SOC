@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -9,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.incident import Incident
 from app.models.user import User
+from app.models.workflow import IncidentAlertLink
+from app.services.incident_workflow import eligible_assignee, update_incident
+from app.services.workflow import locked, record_event, transition_alert
 
 
 class AlertNotFoundError(Exception):
@@ -39,39 +41,28 @@ def create_incident_from_alert(
 ) -> Incident:
     """Create one incident from a persistent alert."""
 
-    alert = db.get(Alert, alert_id)
-
-    if alert is None:
-        raise AlertNotFoundError(
-            f"Alert {alert_id} does not exist."
-        )
+    alert = locked(db, Alert, alert_id)
 
     existing_incident = db.scalar(
         select(Incident).where(
-            Incident.source_alert_id == alert_id
+            Incident.id.in_(
+                select(IncidentAlertLink.incident_id).where(
+                    IncidentAlertLink.alert_id == alert_id
+                )
+            )
         )
     )
 
     if existing_incident is not None:
-        raise IncidentAlreadyExistsError(
-            f"Alert {alert_id} already has an incident."
-        )
+        raise IncidentAlreadyExistsError(f"Alert {alert_id} already has an incident.")
 
-    if assigned_user_id is not None:
-        assigned_user = db.get(User, assigned_user_id)
-
-        if assigned_user is None:
-            raise UserNotFoundError(
-                f"User {assigned_user_id} does not exist."
-            )
+    eligible_assignee(db, assigned_user_id)
 
     if created_by_user_id is not None:
         creator = db.get(User, created_by_user_id)
 
         if creator is None:
-            raise UserNotFoundError(
-                f"User {created_by_user_id} does not exist."
-            )
+            raise UserNotFoundError(f"User {created_by_user_id} does not exist.")
 
     incident = Incident(
         source_alert_id=alert.id,
@@ -86,11 +77,25 @@ def create_incident_from_alert(
     )
 
     # Escalating an alert into an incident updates the alert lifecycle.
-    alert.status = "ESCALATED"
+    if alert.investigation_state != "ESCALATED":
+        transition_alert(db, alert, "ESCALATED", actor_id=created_by_user_id)
 
     db.add(incident)
     db.flush()
 
+    db.add(IncidentAlertLink(incident_id=incident.id, alert_id=alert.id))
+    record_event(
+        db,
+        actor_id=created_by_user_id,
+        incident_id=incident.id,
+        event_type="CREATED",
+        after={
+            "status": incident.status,
+            "source_alert_id": alert.id,
+            "assigned_user_id": assigned_user_id,
+            "version": incident.version,
+        },
+    )
     return incident
 
 
@@ -103,9 +108,7 @@ def get_incident_record(
     incident = db.get(Incident, incident_id)
 
     if incident is None:
-        raise IncidentNotFoundError(
-            f"Incident {incident_id} does not exist."
-        )
+        raise IncidentNotFoundError(f"Incident {incident_id} does not exist.")
 
     return incident
 
@@ -123,19 +126,13 @@ def list_incident_records(
     statement = select(Incident)
 
     if status:
-        statement = statement.where(
-            Incident.status == status.upper()
-        )
+        statement = statement.where(Incident.status == status.upper())
 
     if priority:
-        statement = statement.where(
-            Incident.priority == priority.upper()
-        )
+        statement = statement.where(Incident.priority == priority.upper())
 
     if assigned_user_id is not None:
-        statement = statement.where(
-            Incident.assigned_user_id == assigned_user_id
-        )
+        statement = statement.where(Incident.assigned_user_id == assigned_user_id)
 
     statement = statement.order_by(
         Incident.created_at.desc(),
@@ -152,71 +149,8 @@ def update_incident_record(
     updates: dict[str, Any],
     updated_by_user_id: int | None = None,
 ) -> Incident:
-    """Apply allowed incident updates."""
-
-    incident = get_incident_record(
-        db,
-        incident_id,
-    )
-
-    if "assigned_user_id" in updates:
-        assigned_user_id = updates["assigned_user_id"]
-
-        if assigned_user_id is not None:
-            user = db.get(User, assigned_user_id)
-
-            if user is None:
-                raise UserNotFoundError(
-                    f"User {assigned_user_id} does not exist."
-                )
-
-        incident.assigned_user_id = assigned_user_id
-
-    if "title" in updates and updates["title"] is not None:
-        incident.title = updates["title"]
-
-    if (
-        "description" in updates
-        and updates["description"] is not None
-    ):
-        incident.description = updates["description"]
-
-    if "priority" in updates and updates["priority"] is not None:
-        incident.priority = updates["priority"].upper()
-
-    if "status" in updates and updates["status"] is not None:
-        new_status = updates["status"].upper()
-        now = datetime.now(timezone.utc)
-
-        incident.status = new_status
-
-        if new_status == "RESOLVED":
-            incident.resolved_at = now
-            incident.closed_at = None
-
-        elif new_status == "FALSE_POSITIVE":
-            if incident.resolved_at is None:
-                incident.resolved_at = now
-
-            incident.closed_at = now
-
-        elif new_status in {"OPEN", "INVESTIGATING"}:
-            incident.resolved_at = None
-            incident.closed_at = None
-
-    if updated_by_user_id is not None:
-        updater = db.get(User, updated_by_user_id)
-
-        if updater is None:
-            raise UserNotFoundError(
-                f"User {updated_by_user_id} does not exist."
-            )
-
-        incident.updated_by_user_id = updated_by_user_id
-
-    db.flush()
-
-    return incident
+    """Apply guarded, audited updates through the common lifecycle service."""
+    return update_incident(db, incident_id, updates, updated_by_user_id)
 
 
 def serialize_incident_record(
@@ -226,7 +160,13 @@ def serialize_incident_record(
 
     return {
         "id": incident.id,
+        "version": incident.version,
+        "resolution_reason": incident.resolution_reason,
+        "resolution_note": incident.resolution_note,
+        "resolved_by_user_id": incident.resolved_by_user_id,
+        "resolved_by_name": incident.resolved_by_name,
         "source_alert_id": incident.source_alert_id,
+        "linked_alert_ids": [link.alert_id for link in incident.alert_links],
         "assigned_user_id": incident.assigned_user_id,
         "created_by_user_id": incident.created_by_user_id,
         "updated_by_user_id": incident.updated_by_user_id,
@@ -236,15 +176,9 @@ def serialize_incident_record(
         "status": incident.status,
         "opened_at": incident.opened_at.isoformat(),
         "resolved_at": (
-            incident.resolved_at.isoformat()
-            if incident.resolved_at
-            else None
+            incident.resolved_at.isoformat() if incident.resolved_at else None
         ),
-        "closed_at": (
-            incident.closed_at.isoformat()
-            if incident.closed_at
-            else None
-        ),
+        "closed_at": (incident.closed_at.isoformat() if incident.closed_at else None),
         "response_playbook": incident.response_playbook,
         "playbook": incident.response_playbook,
         "created_at": incident.created_at.isoformat(),

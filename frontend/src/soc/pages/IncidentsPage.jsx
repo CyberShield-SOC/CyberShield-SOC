@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, CheckCircle2, Download, History, Plus, RefreshCw, Search, X } from "lucide-react";
+import { ArrowUpRight, BookOpenCheck, CheckCircle2, Download, History, Plus, RefreshCw, RotateCcw, Search, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
+import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { downloadIncidentsCsv, formatTimestamp } from "../utils/eventUtils";
 import { validateIncidentDraft } from "../utils/formValidation";
 import { nextIncidentId } from "../utils/recordIds";
 import { paginateRecords } from "../utils/pagination";
 import { INCIDENT_STATUSES, incidentStatusLabel, isTerminalIncidentStatus } from "../utils/incidentWorkflow";
+import { investigationHistoryForIncident } from "../utils/investigationViews";
 import {
   ErrorState,
   LoadingState,
@@ -29,11 +31,17 @@ function formatIncidentUpdated(value) {
   return formatted === "Unknown time" ? value : formatted;
 }
 
+function incidentMatchesSourceEvent(incident, alert) {
+  if (!incident || !alert) return false;
+  return (incident.eventIds || []).some((eventId) => (alert.evidenceIds || []).includes(eventId));
+}
+
 export default function IncidentsPage({ navigate }) {
   const {
     alerts,
     canWrite,
     currentActor,
+    notes,
     incidents,
     timeFilteredIncidents,
     events,
@@ -45,6 +53,7 @@ export default function IncidentsPage({ navigate }) {
     setTrackingIncidentId,
     selectedIncidentId,
     setSelectedIncidentId,
+    setSelectedAlertId,
     updateIncidentStatus,
     updateIncidentAssignee,
     createIncident: createWorkspaceIncident,
@@ -58,7 +67,11 @@ export default function IncidentsPage({ navigate }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
   const [pendingTerminalStatus, setPendingTerminalStatus] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [resolutionError, setResolutionError] = useState("");
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const [reopenTarget, setReopenTarget] = useState(null);
+  const [reopenReason, setReopenReason] = useState("");
 
   // A lightweight, role-appropriate directory for assignee pickers — kept
   // local to this page rather than in the shared workspace context, since
@@ -87,7 +100,7 @@ export default function IncidentsPage({ navigate }) {
   // available through the searchable investigation history.
   const records = timeFilteredIncidents.filter((incident) => !isTerminalIncidentStatus(incident.status));
   const availableAlerts = alerts.filter((alert) => (
-    alert.sourceAlertId && !incidents.some((incident) => incident.sourceAlertId === alert.sourceAlertId)
+    alert.sourceAlertId && !incidents.some((incident) => incident.sourceAlertId === alert.sourceAlertId || incident.linkedAlertIds?.includes(alert.sourceAlertId))
   ));
   const filtered = useMemo(() => records.filter((incident) => {
     const text = `${incident.id} ${incident.title} ${incident.owner} ${displayOwner(incident)} ${incident.summary}`.toLowerCase();
@@ -103,7 +116,12 @@ export default function IncidentsPage({ navigate }) {
   const pagination = useMemo(() => paginateRecords(filtered, page, PAGE_SIZE), [filtered, page]);
   const pageIncidents = pagination.items;
   const selected = records.find((incident) => incident.id === selectedIncidentId) || null;
-  const selectedEvents = selected ? events.filter((event) => selected.eventIds.includes(event.id)) : [];
+  const persisted = usePersistedInvestigation("incident", selected, repositoryMode, mutation.message);
+  const selectedEvents = repositoryMode === "api" ? persisted.data?.events || [] : selected ? events.filter((event) => selected.eventIds.includes(event.id)) : [];
+  const selectedLinkedAlert = selected?.sourceAlertId
+    ? alerts.find((alert) => alert.sourceAlertId === selected.sourceAlertId || alert.id === selected.sourceAlertId)
+    : alerts.find((alert) => incidentMatchesSourceEvent(selected, alert));
+  const selectedHistory = repositoryMode === "api" ? persisted.data?.history || [] : investigationHistoryForIncident(selected, notes);
   const selectedRules = [...new Set(selectedEvents.map((event) => event.rule.split(" · ")[0]))]
     .map((ruleId) => detectionRules[ruleId])
     .filter(Boolean);
@@ -137,6 +155,8 @@ export default function IncidentsPage({ navigate }) {
 
   function requestIncidentStatus(incident, nextStatus) {
     if (isTerminalIncidentStatus(nextStatus)) {
+      setResolutionNote("");
+      setResolutionError("");
       setPendingTerminalStatus({ incident: { ...incident }, status: nextStatus });
       return;
     }
@@ -146,13 +166,39 @@ export default function IncidentsPage({ navigate }) {
   async function confirmTerminalStatus() {
     if (!pendingTerminalStatus) return;
     const { incident, status: nextStatus } = pendingTerminalStatus;
+    const noteBody = resolutionNote.trim();
+    if (noteBody.length < 12) {
+      setResolutionError("Add at least 12 characters explaining the final decision.");
+      return;
+    }
 
     // Clear the active selection before the optimistic update removes the row.
     // Explicit links to an already-completed incident still open history.
     setSelectedIncidentId(null);
-    const saved = await updateIncidentStatus(incident.id, nextStatus);
-    if (!saved) setSelectedIncidentId(incident.id);
+    const saved = await updateIncidentStatus(incident.id, nextStatus, { note: noteBody });
+    if (!saved) { setSelectedIncidentId(incident.id); return; }
+    setResolutionNote("");
+    setResolutionError("");
     setPendingTerminalStatus(null);
+  }
+
+  function openLinkedAlert(alert) {
+    if (!alert) return;
+    setSelectedAlertId(alert.id);
+    navigate(SOC_ROUTES.alerts);
+  }
+
+  async function reopenIncident(incident) {
+    if (!incident || !canWrite || mutation.loading) return;
+    if (reopenTarget?.id !== incident.id) { setReopenTarget(incident); setReopenReason(""); return; }
+    if (!reopenReason.trim()) return;
+    const saved = await updateIncidentStatus(incident.id, "investigating", { reopen: true, reason: reopenReason });
+    if (saved) {
+      setReopenTarget(null);
+      setHistoryOpen(false);
+      setHistoryQuery("");
+      setSelectedIncidentId(incident.id);
+    }
   }
 
   function openTracking() {
@@ -276,6 +322,18 @@ export default function IncidentsPage({ navigate }) {
                 <div><dt>Related events</dt><dd>{selected.eventIds.length || "None linked"}</dd></div>
                 <div><dt>Last updated</dt><dd>{formatIncidentUpdated(selected.updated)}</dd></div>
               </dl>
+              <div className="linked-alert-card">
+                <h4>Linked alert</h4>
+                {selectedLinkedAlert ? (
+                  <button type="button" onClick={() => openLinkedAlert(selectedLinkedAlert)}>
+                    <span><strong>{selectedLinkedAlert.id}</strong><small>{selectedLinkedAlert.title}</small></span>
+                    <SeverityBadge severity={selectedLinkedAlert.severity} />
+                    <ArrowUpRight size={14} />
+                  </button>
+                ) : (
+                  <p className="empty-inline">No source alert is linked to this incident.</p>
+                )}
+              </div>
               <label className="status-control">
                 <span>Assignee</span>
                 <select
@@ -294,7 +352,7 @@ export default function IncidentsPage({ navigate }) {
                   ))}
                 </select>
               </label>
-              <label className="status-control"><span>Incident status</span><select value={selected.status} disabled={mutation.loading || !canWrite} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => requestIncidentStatus(selected, event.target.value)}>{INCIDENT_STATUSES.map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
+              <label className="status-control"><span>Incident status</span><select value={selected.status} disabled={mutation.loading || !canWrite} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => requestIncidentStatus(selected, event.target.value)}>{INCIDENT_STATUSES.filter((item) => repositoryMode !== "api" || selected.status !== "investigating" || item !== "open").map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
               <div className="incident-evidence-section">
                 <h4>Matched log evidence <span>{selectedEvents.length}</span></h4>
                 {selectedEvents.map((event) => <article key={event.id}><div><code>{event.id}</code><StatusBadge status={event.status} /></div><strong>{event.event}</strong><p className="mono">{formatTimestamp(event.timestamp)} · {event.sourceIp} · user={event.user}</p></article>)}
@@ -304,6 +362,17 @@ export default function IncidentsPage({ navigate }) {
                 <h4>Detection rules <span>{selectedRules.length}</span></h4>
                 {selectedRules.map((rule) => <article key={rule.id}><div><code>{rule.id}</code><StatusBadge status={rule.status} /></div><strong>{rule.name}</strong><p>{rule.technique}</p></article>)}
                 {!selectedRules.length && <p className="empty-inline">No detection rule is linked yet.</p>}
+              </div>
+              <div className="incident-timeline-section">
+                {persisted.data?.alerts.map((alert) => <button key={alert.id} className="soc-text-button" onClick={() => openLinkedAlert(alert)}>Linked alert: {alert.id} · {alert.title}</button>)}
+                {persisted.loading && <p>Loading recorded history…</p>}
+                {persisted.error && <p role="alert">{persisted.error}</p>}
+                <h4>Status and note history <span>{selectedHistory.length}</span></h4>
+                <ol className="timeline-list compact">
+                  {selectedHistory.map((item) => (
+                    <li key={item.id}><History size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>
+                  ))}
+                </ol>
               </div>
               {selected.status === "open" && <button className="soc-button primary full" type="button" disabled={mutation.loading || !canWrite} onClick={startSelectedInvestigation}><CheckCircle2 size={15} />Start investigation</button>}
               <button className="soc-button secondary full" type="button" onClick={openTracking}>Open investigation timeline</button>
@@ -362,6 +431,15 @@ export default function IncidentsPage({ navigate }) {
         </div>
       )}
 
+      {reopenTarget && (
+        <div className="soc-modal-backdrop">
+          <section className="soc-modal" role="dialog" aria-modal="true" aria-labelledby="reopen-title">
+            <header><h2 id="reopen-title">Reopen {reopenTarget.id}</h2></header>
+            <label>Reason for reopening<textarea value={reopenReason} maxLength="2000" onChange={(event) => setReopenReason(event.target.value)} autoFocus /></label>
+            <div className="soc-modal-actions"><button className="soc-button secondary" onClick={() => setReopenTarget(null)}>Cancel</button><button className="soc-button primary" disabled={mutation.loading || !reopenReason.trim()} onClick={() => reopenIncident(reopenTarget)}>Reopen investigation</button></div>
+          </section>
+        </div>
+      )}
       {historyOpen && (
         <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeHistory(); }}>
           <section className="soc-modal incident-history-modal" role="dialog" aria-modal="true" aria-labelledby="incident-history-title">
@@ -377,6 +455,7 @@ export default function IncidentsPage({ navigate }) {
                   <strong>{incident.title}</strong>
                   <p>{incident.summary}</p>
                   <footer><span>{incident.status === "false positive" ? "Marked false positive" : "Resolved"} by {incident.completedBy || "Unknown analyst"} · {incident.priority}</span><time>{formatIncidentUpdated(incident.completedAt || incident.updated)}</time></footer>
+                  <button className="soc-button secondary" type="button" disabled={!canWrite || mutation.loading} title={!canWrite ? "Viewer access is read-only." : undefined} onClick={() => reopenIncident(incident)}><RotateCcw size={15} />Reopen</button>
                 </article>
               ))}
               {!historyRecords.length && <div className="table-empty"><History size={22} /><strong>No completed incidents match</strong><span>Clear the search or complete an investigation to add it to history.</span></div>}
@@ -392,6 +471,12 @@ export default function IncidentsPage({ navigate }) {
         status={pendingTerminalStatus?.status}
         onCancel={() => setPendingTerminalStatus(null)}
         onConfirm={confirmTerminalStatus}
+        onResolutionNoteChange={(value) => {
+          setResolutionNote(value);
+          if (resolutionError) setResolutionError("");
+        }}
+        resolutionError={resolutionError}
+        resolutionNote={resolutionNote}
       />
     </>
   );

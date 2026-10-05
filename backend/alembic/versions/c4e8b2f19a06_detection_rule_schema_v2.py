@@ -1,9 +1,4 @@
-"""detection rule schema v2: mitre technique, confidence, entity pivot, cooldown/allowlist config
-
-Revision ID: c4e8b2f19a06
-Revises: b7d4f1a83c9e
-Create Date: 2026-09-13 22:00:00.000000
-"""
+"""detection rule schema v2: mitre technique, confidence, entity pivot, cooldown/allowlist config"""
 
 from typing import Sequence, Union
 

@@ -220,6 +220,7 @@ export function SocWorkspaceProvider({ children, user }) {
     try {
       const saved = await socRepository.saveNotes(next);
       setNotes(saved);
+      if (socRepository.mode === "api") await refresh("incidents");
       setMutation({ loading: false, error: "", message: successMessage });
       return true;
     } catch (error) {
@@ -283,6 +284,7 @@ export function SocWorkspaceProvider({ children, user }) {
     setMutation({ loading: true, error: "", message: "Deleting analyst note…" });
     try {
       await socRepository.deleteNote(noteId);
+      if (socRepository.mode === "api") await refresh("incidents");
       setNotes((current) => current.filter((note) => note.id !== noteId));
       setMutation({ loading: false, error: "", message: "Analyst note deleted" });
       return true;
@@ -303,9 +305,9 @@ export function SocWorkspaceProvider({ children, user }) {
     setAlerts((current) => current.map((alert) => alert.id === alertId ? { ...alert, status } : alert));
     setMutation({ loading: true, error: "", message: "Updating alert…" });
     try {
-      const updated = await socRepository.updateAlertStatus(alertId, status);
+      const updated = await socRepository.updateAlertStatus(alertId, status, previousAlert?.version);
       setAlerts((current) => current.map((alert) => (
-        alert.id === alertId ? { ...alert, status: updated.status } : alert
+        alert.id === alertId ? { ...alert, status: updated.status, version: updated.version } : alert
       )));
       setMutation({ loading: false, error: "", message: "Alert status updated" });
       return true;
@@ -324,7 +326,7 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [alerts, canWrite]);
 
-  const updateIncidentStatus = useCallback(async (incidentId, status) => {
+  const updateIncidentStatus = useCallback(async (incidentId, status, options = {}) => {
     if (rejectReadOnlyMutation()) return false;
     const mutationKey = `incident:${incidentId}`;
     if (!acquireMutation(mutationKey)) return false;
@@ -343,11 +345,15 @@ export function SocWorkspaceProvider({ children, user }) {
     } : incident));
     setMutation({ loading: true, error: "", message: "Updating incident…" });
     try {
-      const updated = await socRepository.updateIncidentStatus(incidentId, status);
+      const updated = await socRepository.updateIncidentStatus(incidentId, status, { ...options, expectedVersion: previousIncident?.version,
+        reopen: options.reopen || (isTerminalIncidentStatus(previousIncident?.status) && !isTerminalIncidentStatus(status)) });
       setIncidents((current) => current.map((incident) => (
         incident.id === incidentId
           ? {
             ...incident,
+            version: updated.version,
+            resolutionReason: updated.resolutionReason,
+            resolutionNote: updated.resolutionNote,
             status: updated.status,
             updated: updated.updated || changedAt,
             completedAt: isTerminalIncidentStatus(updated.status) ? updated.completedAt || updated.updated || changedAt : null,
@@ -357,6 +363,7 @@ export function SocWorkspaceProvider({ children, user }) {
           : incident
       )));
       const terminalAction = incidentTerminalAction(updated.status);
+      if (socRepository.mode === "api") await refresh("alerts");
       setMutation({
         loading: false,
         error: "",
@@ -385,7 +392,7 @@ export function SocWorkspaceProvider({ children, user }) {
     } finally {
       releaseMutation(mutationKey);
     }
-  }, [canWrite, currentActor, incidents, user?.id]);
+  }, [canWrite, currentActor, incidents, refresh, user?.id]);
 
   const updateIncidentAssignee = useCallback(async (incidentId, assignedUserId, assigneeLabel) => {
     if (rejectReadOnlyMutation()) return false;
@@ -400,10 +407,10 @@ export function SocWorkspaceProvider({ children, user }) {
     } : incident));
     setMutation({ loading: true, error: "", message: "Updating assignee…" });
     try {
-      const updated = await socRepository.updateIncidentAssignee(incidentId, assignedUserId);
+      const updated = await socRepository.updateIncidentAssignee(incidentId, assignedUserId, previousIncident?.version);
       setIncidents((current) => current.map((incident) => (
         incident.id === incidentId
-          ? { ...incident, assignedUserId: updated.assignedUserId ?? (assignedUserId || null), owner: nextOwner }
+          ? { ...incident, assignedUserId: updated.assignedUserId ?? (assignedUserId || null), owner: nextOwner, version: updated.version }
           : incident
       )));
       setMutation({ loading: false, error: "", message: "Assignee updated" });

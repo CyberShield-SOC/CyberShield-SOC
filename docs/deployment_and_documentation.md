@@ -2,6 +2,7 @@
 
 Use this checklist before a Sprint demo or deployment handoff. It covers clean-environment setup, environment variables, migrations, seeded accounts, and automated verification.
 
+
 ## Clean Environment Install
 
 Prerequisites:
@@ -69,6 +70,8 @@ Root `.env` variables:
 | `AUTH_COOKIE_SECURE` | No | FastAPI auth | Use `false` for local HTTP. Use `true` only when serving over HTTPS. |
 | `JWT_SECRET_KEY` | Yes | FastAPI auth | Long random signing key for JWT access tokens. Generate with `python -c "import secrets; print(secrets.token_urlsafe(64))"`. |
 | `JWT_ACCESS_TTL_MINUTES` | No | FastAPI auth | Defaults to `10`; valid range is 1 to 60. |
+| `OTP_SECRET` | Yes | FastAPI auth | Random value of at least 16 characters used to hash OTP codes. |
+| `RESEND_API_KEY` | Required for sign-in | Email delivery | Needed to deliver OTP codes; configure `RESEND_FROM_EMAIL` for the sender. |
 | `CYBERSHIELD_ADMIN_USERNAME` | No | Seed script | Initial Admin username; defaults to `admin`. |
 | `CYBERSHIELD_ADMIN_EMAIL` | No | Seed script | Initial Admin email; defaults to `admin@cybershield.io`. |
 | `CYBERSHIELD_ADMIN_PASSWORD` | Yes for first Admin | Seed script | Creates the initial Admin when no matching username exists. Set a strong local password. |
@@ -91,7 +94,7 @@ Set-Location backend
 Set-Location ..
 ```
 
-The same command is run automatically by `start.ps1` before the backend server starts.
+The same command is run automatically by `start.ps1` before the backend server starts. Sprint 6 adds correlation/evidence tables, investigation history, and incident lifecycle fields while preserving legacy source records.
 
 ## Seeded Accounts and Roles
 
@@ -155,6 +158,7 @@ Backend checks:
 docker compose up -d --wait database
 Set-Location backend
 .\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m alembic check
 .\.venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider
 Set-Location ..
 ```
@@ -168,11 +172,11 @@ npm run build
 Set-Location ..
 ```
 
-GitHub Actions runs the same backend migration/test flow and frontend test/build flow in `.github/workflows/ci.yml`.
+GitHub Actions runs migration and schema checks, backend/frontend tests, and the frontend build. It runs on pushes to `main` and pull requests targeting `main`.
 
-## Validation Record
+## Historical Validation Record
 
-Last validated on August 2, 2026 from the repository root on Windows PowerShell.
+The following August 2, 2026 record predates Sprint 6.
 
 | Sprint item | Command or check | Result |
 |---|---|---|
@@ -197,6 +201,8 @@ Before demonstrating:
 - Confirm `.env` has no `replace_me` placeholders.
 - Confirm `frontend/node_modules` exists.
 - Run `.\start.ps1` from the repository root.
-- Open `https://127.0.0.1:5173` for the SOC UI and accept the one-time self-signed certificate warning.
+- Open the Vite URL for the SOC UI; configure HTTPS certificates using `frontend/.cert/README.md`.
 - Open `http://127.0.0.1:3000/docs` for the backend API docs.
 - Use the Admin credentials from `.env` for the first login.
+
+- For Sprint 6, verify exact evidence, add an investigation note, escalate and assign an incident, resolve it with a reason/note, then reopen it and check preserved history.

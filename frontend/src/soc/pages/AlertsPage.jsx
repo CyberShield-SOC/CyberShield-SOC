@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
+import { socRepository } from "../services/socRepository";
 import { formatTimestamp } from "../utils/eventUtils";
 import { nextIncidentId } from "../utils/recordIds";
 import { paginateRecords } from "../utils/pagination";
@@ -9,6 +11,7 @@ import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { getAlertRecommendations, getIncidentActionLabel, incidentMatchesAlert } from "../utils/alertRecommendations";
 import { evidenceEntries } from "../utils/ruleConfig";
 import { DECISION_SCORE_HELP } from "../utils/mlInsight";
+import { formatEvidenceValue, investigationHistoryForIncident, normalizedEvidenceRows, rawEvidenceRows, relatedAlertsForAlert } from "../utils/investigationViews";
 import {
   ErrorState,
   InlineNotice,
@@ -24,8 +27,9 @@ import {
 } from "../components/Ui";
 
 const ALERT_STATUSES = ["new", "triaging", "investigating", "acknowledged", "escalated", "contained", "resolved"];
-const API_ALERT_STATUSES = ["new", "investigating", "escalated", "resolved"];
+const API_ALERT_STATUSES = ["new", "investigating", "escalated", "resolved", "false positive", "legacy closed"];
 const PAGE_SIZE = 10;
+const EVIDENCE_PAGE_SIZE = 4;
 
 function formatAlertTimeRange(alert) {
   const start = formatTimestamp(alert.firstSeen || alert.observedAt || alert.createdAt);
@@ -88,6 +92,7 @@ export default function AlertsPage({ navigate }) {
     canWrite,
     currentActor,
     incidents,
+    notes,
     events,
     detectionRules,
     mutation,
@@ -110,6 +115,8 @@ export default function AlertsPage({ navigate }) {
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [noteComment, setNoteComment] = useState("");
   const [noteError, setNoteError] = useState("");
+  const [evidencePage, setEvidencePage] = useState(1);
+  const [noteSaving, setNoteSaving] = useState(false);
   const loading = resources.alerts.loading || resources.events.loading;
   const error = resources.alerts.error || resources.events.error;
 
@@ -129,10 +136,17 @@ export default function AlertsPage({ navigate }) {
   // The detail card follows the analyst's explicit workspace selection, not
   // the visible table page. Pagination and route changes therefore never
   // discard the record being investigated.
-  const selected = allAlerts.find((alert) => alert.id === selectedAlertId) || null;
+  const cachedSelected = allAlerts.find((alert) => alert.id === selectedAlertId) || null;
+  const persisted = usePersistedInvestigation("alert", cachedSelected || { id: selectedAlertId }, repositoryMode, mutation.message);
+  const selected = cachedSelected || persisted.data?.alert || null;
+  const permittedStatuses = repositoryMode === "api" ? [...new Set([selected?.status,
+    ...(persisted.data?.allowedStates || []).map((state) => state.toLowerCase().replaceAll("_", " "))])].filter(Boolean) : availableStatuses;
   const rule = selected ? detectionRules[selected.ruleId] : null;
-  const evidence = selected ? events.filter((event) => selected.evidenceIds.includes(event.id)) : [];
+  const evidence = repositoryMode === "api" ? persisted.data?.events || [] : selected ? events.filter((event) => selected.evidenceIds.includes(event.id)) : [];
+  const evidencePagination = useMemo(() => paginateRecords(evidence, evidencePage, EVIDENCE_PAGE_SIZE), [evidence, evidencePage]);
+  const relatedActivity = repositoryMode === "api" ? persisted.data?.related || [] : relatedAlertsForAlert(selected, allAlerts, events);
   const linkedIncident = selected ? incidents.find((incident) => incidentMatchesAlert(incident, selected)) : null;
+  const investigationHistory = repositoryMode === "api" ? persisted.data?.history || [] : investigationHistoryForIncident(linkedIncident, notes);
   const recommendations = selected ? getAlertRecommendations(selected) : [];
   const linkedIncidentIsTerminal = linkedIncident ? isTerminalIncidentStatus(linkedIncident.status) : false;
   const incidentActionLabel = getIncidentActionLabel(linkedIncident, selected?.severity);
@@ -140,6 +154,10 @@ export default function AlertsPage({ navigate }) {
   useEffect(() => {
     setPage(1);
   }, [query, severity, source, status]);
+
+  useEffect(() => {
+    setEvidencePage(1);
+  }, [selected?.id]);
 
   if (loading) return <LoadingState label="Synchronizing active alerts and matched evidence…" />;
   if (error) return <ErrorState message={error} onRetry={() => Promise.all([refresh("alerts"), refresh("events")])} />;
@@ -179,10 +197,20 @@ export default function AlertsPage({ navigate }) {
 
   async function saveAlertNote(event) {
     event.preventDefault();
-    if (!selected || mutation.loading) return;
+    if (!selected || mutation.loading || noteSaving) return;
     const comment = noteComment.trim();
     if (comment.length < 12) {
       setNoteError("Add at least 12 characters of analyst context.");
+      return;
+    }
+    if (repositoryMode === "api") {
+      setNoteSaving(true);
+      try {
+        await socRepository.addInvestigationNote(selected.id, comment, persisted.data?.alert.version);
+        await refresh("alerts");
+        setNoteComposerOpen(false);
+      } catch (error) { setNoteError(error.message); }
+      finally { setNoteSaving(false); }
       return;
     }
 
@@ -278,7 +306,7 @@ export default function AlertsPage({ navigate }) {
                   <h3>{selected.title}</h3>
                   <div className="alert-reason"><span>Reason</span><p>{selected.reason || selected.summary}</p></div>
                   <SeverityMeter severity={selected.severity} />
-                  <label className="status-control"><span>Alert status</span><select value={selected.status} disabled={mutation.loading || !canWrite} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => updateAlertStatus(selected.id, event.target.value)}>{availableStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+                  <label className="status-control"><span>Alert status</span><select value={selected.status} disabled={mutation.loading || !canWrite || (repositoryMode === "api" && (persisted.loading || permittedStatuses.length <= 1))} title={!canWrite ? "Viewer access is read-only." : undefined} onChange={(event) => updateAlertStatus(selected.id, event.target.value)}>{permittedStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
                   <dl className="alert-context-list">
                     <div><dt>Severity</dt><dd><SeverityBadge severity={selected.severity} /></dd></div>
                     <div><dt>Affected user</dt><dd className="mono">{selected.user || "Unknown"}</dd></div>
@@ -306,18 +334,70 @@ export default function AlertsPage({ navigate }) {
                 </div>
               </Panel>
 
-              <Panel title="Matched log evidence" subtitle={`${evidence.length} normalized record${evidence.length === 1 ? "" : "s"}`}>
+              <Panel title="Matched log evidence" subtitle={`${evidence.length} normalized record${evidence.length === 1 ? "" : "s"}${evidence.length > EVIDENCE_PAGE_SIZE ? ` · page ${evidencePagination.page} of ${evidencePagination.pageCount}` : ""}`}>
+                {persisted.loading && <p>Loading original evidence…</p>}
+                {persisted.error && <p role="alert">{persisted.error}</p>}
+                {persisted.data?.completeness?.complete === false && <p role="status">Some historical source events are unavailable. Available evidence is shown below.</p>}
                 <div className="evidence-cards">
-                  {evidence.map((event) => (
+                  {evidencePagination.items.map((event) => (
                     <article key={event.id}>
                       <header><strong className="mono">{event.id}</strong><StatusBadge status={event.status} /></header>
-                      <p className="mono">{formatTimestamp(event.timestamp)} {event.source} {event.sourceIp} user={event.user}</p>
-                      <span>{event.message}</span>
+                      <div className="evidence-field-groups">
+                        <section>
+                          <h4>Normalized fields</h4>
+                          <dl>
+                            {normalizedEvidenceRows(event).map(([key, value]) => (
+                              <div key={key}><dt>{key}</dt><dd>{formatEvidenceValue(value)}</dd></div>
+                            ))}
+                          </dl>
+                        </section>
+                        <section>
+                          <h4>Preserved raw evidence</h4>
+                          <dl>
+                            {rawEvidenceRows(selected, event).map(([key, value]) => (
+                              <div key={key}><dt>{key}</dt><dd>{formatEvidenceValue(value)}</dd></div>
+                            ))}
+                          </dl>
+                          {!rawEvidenceRows(selected, event).length && <p className="empty-inline">No raw evidence fields were supplied by the source API.</p>}
+                        </section>
+                      </div>
                     </article>
                   ))}
                   {!evidence.length && <p className="empty-inline">No normalized log evidence is linked to this alert yet.</p>}
                 </div>
+                <TablePagination label="evidence records" page={evidencePagination.page} pageSize={EVIDENCE_PAGE_SIZE} totalItems={evidence.length} onPageChange={setEvidencePage} />
                 <button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.eventLogs)}>Open complete event log <ArrowUpRight size={13} /></button>
+              </Panel>
+
+              <Panel title="Correlated activity" subtitle={repositoryMode === "api" ? "Recorded correlation groups and their rule context" : "Related activity in the sample dataset"}>
+                {persisted.data?.groups.map((group) => <article key={group.id}><strong>Group {group.id}</strong><p>{group.reason}</p><details><summary>Rule context when detected</summary><pre>{JSON.stringify(group.ruleContext, null, 2)}</pre></details></article>)}
+                <div className="correlation-list">
+                  {relatedActivity.map((item) => (
+                    <article key={`${item.groupId || "sample"}-${item.alert.id}`}>
+                      <header><span><GitBranch size={14} />{item.reason}</span><SeverityBadge severity={item.alert.severity} /></header>
+                      <strong>{item.alert.id} · {item.alert.title}</strong>
+                      <dl>
+                        <div><dt>Grouping entity</dt><dd className="mono">{item.groupingEntity}</dd></div>
+                        <div><dt>Time window</dt><dd>{item.timeWindow}</dd></div>
+                        <div><dt>Linked events</dt><dd>{item.linkedEventCount ?? item.linkedEvents.length}</dd></div>
+                      </dl>
+                      <button className="soc-text-button" type="button" onClick={() => setSelectedAlertId(item.alert.id)}>Inspect related alert <ArrowUpRight size={13} /></button>
+                    </article>
+                  ))}
+                  {!relatedActivity.length && <p className="empty-inline">No additional alert belongs to this alert's recorded correlation groups.</p>}
+                </div>
+              </Panel>
+
+              <Panel title="Investigation history" subtitle={repositoryMode === "api" ? `${investigationHistory.length} recorded changes` : linkedIncident ? `${linkedIncident.id} · ${investigationHistory.length} timeline items` : "No incident has been opened yet"}>
+                {linkedIncident || repositoryMode === "api" ? (
+                  <ol className="timeline-list compact">
+                    {investigationHistory.map((item) => (
+                      <li key={item.id}><Clock3 size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="empty-inline">Promote this alert or save an analyst note to begin investigation history.</p>
+                )}
               </Panel>
 
               <Panel
@@ -387,10 +467,10 @@ export default function AlertsPage({ navigate }) {
           <section className="soc-modal alert-note-modal" role="dialog" aria-modal="true" aria-labelledby="alert-note-title">
             <header><div><h2 id="alert-note-title">Add alert triage note</h2><p>Save analyst context with the selected alert and its persisted investigation record.</p></div><button type="button" disabled={mutation.loading} onClick={() => setNoteComposerOpen(false)} aria-label="Close"><X size={18} /></button></header>
             <div className="alert-note-context"><span><MessageSquareText size={16} /></span><div><strong>{selected.id} · {selected.title}</strong><p>{selected.sourceIp} · {selected.ruleId} · {evidence.length} matched event{evidence.length === 1 ? "" : "s"}</p></div></div>
-            {!linkedIncident && <InlineNotice tone="info" title="Investigation record required">Saving will first create an incident for this alert because backend analyst notes are incident-scoped.</InlineNotice>}
+            {!linkedIncident && repositoryMode !== "api" && <InlineNotice tone="info" title="Investigation record required">Saving will first create an incident for this sample alert.</InlineNotice>}
             <form onSubmit={saveAlertNote} noValidate>
               <label className={noteError ? "has-error" : undefined}>Analyst comment<textarea value={noteComment} onChange={(event) => { setNoteComment(event.target.value); if (noteError) setNoteError(""); }} maxLength="1200" rows="6" autoFocus placeholder="Record what you verified, why it matters, and the recommended next step…" aria-invalid={Boolean(noteError)} aria-describedby={noteError ? "alert-note-comment-error" : undefined} /><ValidationMessage id="alert-note-comment-error">{noteError}</ValidationMessage></label>
-              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={mutation.loading} onClick={() => setNoteComposerOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={mutation.loading || !noteComment.trim()}><Save size={15} />{mutation.loading ? "Saving…" : linkedIncident ? "Save note" : "Create incident & save"}</button></div>
+              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={mutation.loading || noteSaving} onClick={() => setNoteComposerOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={mutation.loading || noteSaving || !noteComment.trim()}><Save size={15} />{mutation.loading || noteSaving ? "Saving…" : repositoryMode === "api" || linkedIncident ? "Save note" : "Create incident & save"}</button></div>
             </form>
           </section>
         </div>

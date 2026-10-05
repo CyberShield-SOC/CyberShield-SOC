@@ -140,6 +140,8 @@ def list_assignable_users(
         select(User)
         .options(joinedload(User.role))
         .where(User.is_active.is_(True))
+        .join(Role, Role.id == User.role_id)
+        .where(Role.name.in_(["Admin", "Analyst"]))
         .order_by(User.full_name, User.username)
     ).all()
     return {

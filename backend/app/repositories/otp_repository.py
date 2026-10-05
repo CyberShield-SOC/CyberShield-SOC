@@ -12,6 +12,7 @@ from app.security import (
     generate_otp_code,
     generate_pending_login_token,
     hash_otp_code,
+    lock_auth_user,
     token_digest,
     verify_otp_code,
 )
@@ -38,7 +39,19 @@ class OtpVerifyError(Exception):
         super().__init__(message)
 
 
-def _latest_otp_for_pending_token(db: Session, pending_token_hash: str) -> OtpVerification | None:
+def _latest_otp_for_pending_token(
+    db: Session, pending_token_hash: str
+) -> OtpVerification | None:
+    user_id = db.scalar(
+        select(OtpVerification.user_id)
+        .where(OtpVerification.pending_token_hash == pending_token_hash)
+        .order_by(OtpVerification.created_at.desc(), OtpVerification.id.desc())
+        .limit(1)
+    )
+    if user_id is None:
+        return None
+    # Lock the stable account before re-reading challenges that a resend can replace.
+    lock_auth_user(db, user_id)
     # Postgres's now()/func.now() is transaction-scoped, not per-statement,
     # so two rows inserted in the same transaction (e.g. login then an
     # immediate resend in one test, or just a fast request path) can get an
@@ -50,10 +63,13 @@ def _latest_otp_for_pending_token(db: Session, pending_token_hash: str) -> OtpVe
         .where(OtpVerification.pending_token_hash == pending_token_hash)
         .order_by(OtpVerification.created_at.desc(), OtpVerification.id.desc())
         .limit(1)
+        .execution_options(populate_existing=True)
     )
 
 
-def create_otp_challenge(db: Session, user: User, *, remember_me: bool) -> tuple[str, str]:
+def create_otp_challenge(
+    db: Session, user: User, *, remember_me: bool
+) -> tuple[str, str]:
     """
     Start a brand-new pending login for `user`.
 
@@ -102,7 +118,9 @@ def resend_otp_challenge(db: Session, pending_token: str) -> tuple[str, User]:
     elapsed_seconds = (now - current.created_at).total_seconds()
     if elapsed_seconds < settings.otp_resend_cooldown_seconds:
         raise OtpResendCooldownError(
-            retry_after_seconds=int(settings.otp_resend_cooldown_seconds - elapsed_seconds)
+            retry_after_seconds=int(
+                settings.otp_resend_cooldown_seconds - elapsed_seconds
+            )
         )
 
     user = db.get(User, current.user_id)
@@ -127,7 +145,9 @@ def resend_otp_challenge(db: Session, pending_token: str) -> tuple[str, User]:
     return code, user
 
 
-def verify_otp_challenge(db: Session, pending_token: str, code: str) -> tuple[User, bool]:
+def verify_otp_challenge(
+    db: Session, pending_token: str, code: str
+) -> tuple[User, bool]:
     """
     Check `code` against the active OTP for this pending login.
 
@@ -155,7 +175,11 @@ def verify_otp_challenge(db: Session, pending_token: str, code: str) -> tuple[Us
         record.used = True
         raise OtpVerifyError("Too many incorrect attempts. Request a new code.")
 
-    if len(code) != 6 or not code.isdigit() or not verify_otp_code(code, record.otp_hash):
+    if (
+        len(code) != 6
+        or not code.isdigit()
+        or not verify_otp_code(code, record.otp_hash)
+    ):
         record.attempt_count += 1
         if record.attempt_count >= settings.otp_max_attempts:
             record.used = True
