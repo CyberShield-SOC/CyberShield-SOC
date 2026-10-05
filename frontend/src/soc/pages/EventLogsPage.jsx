@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Bot, ChevronLeft, ChevronRight, Database, Download, Files, FileUp, RefreshCw, Search, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
@@ -474,11 +475,16 @@ export default function EventLogsPage({ navigate }) {
                 className="soc-button primary full"
                 type="button"
                 onClick={() => {
-                  // Hand the selected event to the AI page so it analyzes this event right away.
-                  setPendingAiRequest({
-                    id: `event-${selectedEvent.id}-${Date.now()}`,
-                    eventId: selectedEvent.id,
-                    prompt: `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`,
+                  // Commit the selected event before changing routes. Without this,
+                  // React can batch the context update with navigation and the AI
+                  // page may mount one request behind, causing the first event to
+                  // run only after a second event is selected.
+                  flushSync(() => {
+                    setPendingAiRequest({
+                      id: `event-${selectedEvent.id}-${Date.now()}`,
+                      eventId: selectedEvent.id,
+                      prompt: `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`,
+                    });
                   });
                   navigate(SOC_ROUTES.aiAnalysis);
                 }}
