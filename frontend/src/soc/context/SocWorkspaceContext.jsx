@@ -368,9 +368,11 @@ export function SocWorkspaceProvider({ children, user }) {
           : incident
       )));
       const terminalAction = incidentTerminalAction(updated.status);
-      if (socRepository.mode === "api") {
-        await Promise.all([refresh("incidents"), refresh("alerts")]);
-      }
+      // The mutation response already contains the authoritative incident state.
+      // Refetching incidents here can reuse an older in-flight GET and overwrite
+      // the reopened incident with stale terminal data. Only linked alerts need
+      // an immediate refresh after the incident state change.
+      if (socRepository.mode === "api") await refresh("alerts");
       setMutation({
         loading: false,
         error: "",
