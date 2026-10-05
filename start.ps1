@@ -175,7 +175,9 @@ else {
         -RedirectStandardOutput (Join-Path $backendRoot "uvicorn.out.log") `
         -RedirectStandardError (Join-Path $backendRoot "uvicorn.err.log")
 
-    Wait-ForService -Name "FastAPI" -Uri $backendHealthUrl
+    # Cold imports take ~40s here (scikit-learn is loaded at import time),
+    # so allow more than the 30s default before declaring startup failed.
+    Wait-ForService -Name "FastAPI" -Uri $backendHealthUrl -TimeoutSeconds 120
 }
 
 if (Test-TcpPort -ComputerName "127.0.0.1" -Port $frontendPort) {
