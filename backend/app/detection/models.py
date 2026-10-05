@@ -20,6 +20,8 @@ class LogRecord(BaseModel):
     """
 
     line_number: int
+    log_id: Optional[int] = Field(default=None, gt=0)
+    upload_id: Optional[str] = None
     timestamp: Optional[str] = None
     ip_address: Optional[str] = None
     username: Optional[str] = None
@@ -78,6 +80,7 @@ class Alert(BaseModel):
     last_seen: Optional[str] = None
     description: str
     matched_line_numbers: list[int]
+    matched_event_ids: list[int] = Field(default_factory=list)
     # MITRE ATT&CK technique ID this alert corresponds to (e.g. "T1110.001").
     mitre_technique: Optional[str] = None
     # Detection-confidence, independent of severity: how sure the rule is

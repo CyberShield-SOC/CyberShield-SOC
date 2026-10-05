@@ -1,10 +1,4 @@
-"""create auth sessions table
-
-Revision ID: f94d3c72a91b
-Revises: e106be1e97bd
-Create Date: 2026-07-13 00:00:00.000000
-
-"""
+"""create auth sessions table"""
 from typing import Sequence, Union
 
 from alembic import op

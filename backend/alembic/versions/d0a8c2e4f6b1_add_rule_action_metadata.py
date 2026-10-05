@@ -1,9 +1,4 @@
-"""add rule action metadata
-
-Revision ID: d0a8c2e4f6b1
-Revises: b4a1f6c9d3e7
-Create Date: 2026-09-12 18:15:00.000000
-"""
+"""add rule action metadata"""
 
 from typing import Sequence, Union
 

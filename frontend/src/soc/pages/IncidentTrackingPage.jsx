@@ -3,8 +3,10 @@ import { Check, Clock3, ListFilter, MessageSquareText, PlayCircle, ShieldCheck, 
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { formatTimestamp } from "../utils/eventUtils";
 import { INCIDENT_STATUSES, incidentStatusLabel, isTerminalIncidentStatus, nextIncidentWorkflowAction } from "../utils/incidentWorkflow";
+import { investigationHistoryForIncident } from "../utils/investigationViews";
 import { ErrorState, InlineNotice, LoadingState, PageHeader, Panel, SeverityBadge, StatusBadge, ValidationMessage } from "../components/Ui";
 
 const MAX_INCIDENT_NOTES = 5;
@@ -35,6 +37,7 @@ function defaultTasks(incident) {
 export default function IncidentTrackingPage({ navigate }) {
   const {
     canWrite,
+    repositoryMode,
     notes,
     mutation,
     resources,
@@ -50,11 +53,15 @@ export default function IncidentTrackingPage({ navigate }) {
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState("");
   const [pendingTerminalStatus, setPendingTerminalStatus] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [resolutionError, setResolutionError] = useState("");
   const incidents = allIncidents.filter((item) => !isTerminalIncidentStatus(item.status));
   const incident = incidents.find((item) => item.id === trackingIncidentId) || incidents[0] || null;
   const tasks = incident ? tasksByIncident[incident.id] || defaultTasks(incident) : [];
   const allIncidentNotes = notes.filter((item) => item.linkedType === "incident" && item.linkedId === incident?.id);
   const visibleIncidentNotes = allIncidentNotes.filter((item) => !item.archived);
+  const persisted = usePersistedInvestigation("incident", incident, repositoryMode, mutation.message);
+  const incidentHistory = repositoryMode === "api" ? persisted.data?.history || [] : investigationHistoryForIncident(incident, notes);
   const noteLimitReached = allIncidentNotes.length >= MAX_INCIDENT_NOTES;
   const statusAction = incident ? nextIncidentWorkflowAction(incident.status) : null;
   const currentWorkflowIndex = incident ? workflowIndex(incident.status) : 0;
@@ -88,6 +95,8 @@ export default function IncidentTrackingPage({ navigate }) {
 
   function requestIncidentStatus(nextStatus) {
     if (isTerminalIncidentStatus(nextStatus)) {
+      setResolutionNote("");
+      setResolutionError("");
       setPendingTerminalStatus({ incident: { ...incident }, status: nextStatus });
       return;
     }
@@ -97,12 +106,13 @@ export default function IncidentTrackingPage({ navigate }) {
   async function confirmTerminalStatus() {
     if (!pendingTerminalStatus) return;
     const { incident: target, status: nextStatus } = pendingTerminalStatus;
+    if (resolutionNote.trim().length < 12) { setResolutionError("Add at least 12 characters explaining the final decision."); return; }
 
     // A tracking selection may also be the Incidents page selection. Clearing
     // it prevents a terminal workflow update from masquerading as a history link.
     setSelectedIncidentId(null);
-    const saved = await updateIncidentStatus(target.id, nextStatus);
-    if (!saved) setTrackingIncidentId(target.id);
+    const saved = await updateIncidentStatus(target.id, nextStatus, { note: resolutionNote.trim() });
+    if (!saved) { setTrackingIncidentId(target.id); return; }
     setPendingTerminalStatus(null);
   }
 
@@ -112,7 +122,7 @@ export default function IncidentTrackingPage({ navigate }) {
 
     // Dedicated workflow buttons are deliberate actions. Only terminal values
     // chosen from a dropdown require the additional confirmation dialog.
-    if (isTerminalIncidentStatus(nextStatus)) setSelectedIncidentId(null);
+    if (isTerminalIncidentStatus(nextStatus)) { requestIncidentStatus(nextStatus); return; }
     const saved = await updateIncidentStatus(incident.id, nextStatus);
     if (!saved && isTerminalIncidentStatus(nextStatus)) setTrackingIncidentId(incident.id);
   }
@@ -170,15 +180,18 @@ export default function IncidentTrackingPage({ navigate }) {
             <header><span><Workflow size={18} /></span><div><h3>Response workflow</h3><p>Move this incident through the persisted investigation lifecycle.</p></div></header>
             <ol key={`${incident.id}-${incident.status}`} className="incident-state-track" aria-label="Incident workflow progress">{WORKFLOW_STATES.map((label, index) => <li key={label} style={{ "--step-index": index }} className={index < currentWorkflowIndex ? "complete" : index === currentWorkflowIndex ? "current" : ""}><i>{index < currentWorkflowIndex ? <Check size={11} /> : index + 1}</i><span>{label}</span></li>)}</ol>
             <div className="incident-current-state"><span>Current state</span><StatusBadge status={incident.status} /></div>
-            <label className="status-control"><span>Incident status</span><select value={incident.status} disabled={!canWrite || mutation.loading} onChange={(event) => requestIncidentStatus(event.target.value)}>{INCIDENT_STATUSES.map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
+            <label className="status-control"><span>Incident status</span><select value={incident.status} disabled={!canWrite || mutation.loading} onChange={(event) => requestIncidentStatus(event.target.value)}>{INCIDENT_STATUSES.filter((item) => repositoryMode !== "api" || incident.status !== "investigating" || item !== "open").map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
             {statusAction ? <button className="soc-button primary full" type="button" disabled={!canWrite || mutation.loading} title={!canWrite ? "Viewer access is read-only." : undefined} onClick={applyWorkflowStatusAction}>{statusAction[1]}</button> : <p className="empty-inline">No further status action is required.</p>}
           </div>
         </Panel>
         <Panel title="Investigation timeline">
+          {persisted.loading && <p>Loading recorded history…</p>}
+          {persisted.error && <p role="alert">{persisted.error}</p>}
           <ol className="timeline-list">
-            <li><PlayCircle size={16} /><div><strong>Incident record available</strong><span>{formatTimestamp(incident.updated)} · {incident.sourceAlertId ? `Alert ${incident.sourceAlertId}` : "SOC queue"}</span></div></li>
-            <li><Clock3 size={16} /><div><strong>Status: {incident.status}</strong><span>{incident.owner || "Unassigned"} · current assignee</span></div></li>
-            {visibleIncidentNotes.slice(0, 3).map((item) => <li key={item.id}><MessageSquareText size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.updatedAt)} · {item.author}</span></div></li>)}
+            {incidentHistory.slice(0, 6).map((item, index) => {
+              const Icon = index === 0 ? PlayCircle : item.id.startsWith("NOTE-") ? MessageSquareText : Clock3;
+              return <li key={item.id}><Icon size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>;
+            })}
           </ol>
         </Panel>
         <Panel className="span-2" title="Analyst notes" subtitle={allIncidentNotes.length > MAX_INCIDENT_NOTES ? `${allIncidentNotes.length} existing · ${MAX_INCIDENT_NOTES}-note limit enforced` : `${allIncidentNotes.length} of ${MAX_INCIDENT_NOTES} notes used`}>
@@ -194,6 +207,9 @@ export default function IncidentTrackingPage({ navigate }) {
         status={pendingTerminalStatus?.status}
         onCancel={() => setPendingTerminalStatus(null)}
         onConfirm={confirmTerminalStatus}
+        resolutionNote={resolutionNote}
+        resolutionError={resolutionError}
+        onResolutionNoteChange={setResolutionNote}
       />
     </>
   );

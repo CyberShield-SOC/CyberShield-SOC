@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 IncidentPriority = Literal[
@@ -20,6 +20,7 @@ IncidentStatus = Literal[
 
 class IncidentCreate(BaseModel):
     """Request body for creating an incident from an alert."""
+    model_config = ConfigDict(extra="forbid")
 
     alert_id: int = Field(
         gt=0,
@@ -58,6 +59,11 @@ class IncidentCreate(BaseModel):
 
 class IncidentUpdate(BaseModel):
     """Fields that may be changed during an investigation."""
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int | None = Field(None, gt=0)
+    reason: str | None = Field(None, min_length=1, max_length=2000)
+    resolution_reason: str | None = Field(None, min_length=1, max_length=2000)
+    resolution_note: str | None = Field(None, min_length=1, max_length=5000)
 
     assigned_user_id: int | None = Field(
         default=None,
@@ -87,6 +93,6 @@ class IncidentUpdate(BaseModel):
 
     @model_validator(mode="after")
     def require_update(self):
-        if not self.model_fields_set:
+        if "assigned_user_id" not in self.model_fields_set and not any(field in self.model_fields_set and getattr(self, field) is not None for field in ("title", "description", "priority", "status")):
             raise ValueError("Provide at least one incident field to update.")
         return self

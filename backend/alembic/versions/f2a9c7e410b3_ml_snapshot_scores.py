@@ -1,9 +1,4 @@
-"""ml feature snapshots: add score column for shadow-mode review
-
-Revision ID: f2a9c7e410b3
-Revises: e3f8b1a4c962
-Create Date: 2026-09-14 01:15:00.000000
-"""
+"""ml feature snapshots: add score column for shadow-mode review"""
 
 from typing import Sequence, Union
 

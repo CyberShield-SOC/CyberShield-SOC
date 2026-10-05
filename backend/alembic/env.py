@@ -58,6 +58,18 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations using a live database connection."""
 
+    provided_connection = config.attributes.get("connection")
+    if provided_connection is not None:
+        context.configure(
+            connection=provided_connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            version_table_schema=config.attributes.get("version_table_schema"),
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     configuration = config.get_section(
         config.config_ini_section,
         {},

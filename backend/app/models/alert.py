@@ -48,6 +48,8 @@ class Alert(Base):
         # Cooldown suppression looks up the most recent alert for the same
         # (rule, entity_type, entity_id) — see app/repositories/alert_repository.py.
         Index("ix_alerts_rule_entity", "rule", "entity_type", "entity_id"),
+        CheckConstraint("investigation_state IN ('NEW', 'INVESTIGATING', 'ESCALATED', 'RESOLVED', 'FALSE_POSITIVE', 'LEGACY_CLOSED')", name="ck_alerts_investigation_state"),
+        CheckConstraint("version > 0", name="ck_alerts_version"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -55,6 +57,8 @@ class Alert(Base):
         primary_key=True,
         autoincrement=True,
     )
+    investigation_state: Mapped[str] = mapped_column(String(30), nullable=False, default="NEW", server_default="NEW")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     upload_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),

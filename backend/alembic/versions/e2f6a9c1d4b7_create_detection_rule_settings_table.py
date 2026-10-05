@@ -1,9 +1,4 @@
-"""create detection rule settings table
-
-Revision ID: e2f6a9c1d4b7
-Revises: a1c3e7f92b4d
-Create Date: 2026-09-13 00:00:00.000000
-"""
+"""create detection rule settings table"""
 
 from typing import Sequence, Union
 

@@ -89,8 +89,11 @@ def create_refresh_token(
         AuthSession(
             user_id=user.id,
             token_hash=token_digest(token),
-            expires_at=now + timedelta(
-                minutes=ttl_minutes if ttl_minutes is not None else settings.auth_session_ttl_minutes,
+            expires_at=now
+            + timedelta(
+                minutes=ttl_minutes
+                if ttl_minutes is not None
+                else settings.auth_session_ttl_minutes,
             ),
         )
     )
@@ -112,12 +115,33 @@ def mint_access_token(user: User) -> tuple[str, int]:
         "exp": expires_at,
         "jti": secrets.token_hex(16),
     }
-    token = jwt.encode(claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode(
+        claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
     return token, settings.jwt_access_ttl_minutes * 60
 
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    claims = jwt.decode(
+        token,
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+        options={"require": ["sub", "exp", "iat", "type"]},
+    )
+    if claims["type"] != "access":
+        raise jwt.InvalidTokenError("Invalid token type")
+    return claims
+
+
+def lock_auth_user(db: Session, user_id: int) -> User | None:
+    """Serialize account authentication changes before locking individual tokens."""
+    return db.scalar(
+        select(User)
+        .options(joinedload(User.role))
+        .where(User.id == user_id)
+        .with_for_update(of=User)
+        .execution_options(populate_existing=True)
+    )
 
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
@@ -193,18 +217,29 @@ def rotate_refresh_token(
     token is missing, revoked, expired, or its user is no longer active.
     """
 
+    user_id = db.scalar(
+        select(AuthSession.user_id).where(
+            AuthSession.token_hash == token_digest(raw_token)
+        )
+    )
+    if user_id is None:
+        return None
+    user = lock_auth_user(db, user_id)
+    if user is None or not user.is_active:
+        return None
+
     session = db.scalar(
         select(AuthSession)
-        .options(joinedload(AuthSession.user).joinedload(User.role))
         .where(AuthSession.token_hash == token_digest(raw_token))
         .where(AuthSession.revoked_at.is_(None))
         .where(AuthSession.expires_at > datetime.now(timezone.utc))
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
-    if session is None or session.user is None or not session.user.is_active:
+    if session is None:
         return None
 
-    user = session.user
     ttl_minutes = max(
         1,
         round((session.expires_at - session.created_at).total_seconds() / 60),
@@ -236,6 +271,8 @@ def revoke_refresh_token(db: Session, raw_token: str) -> None:
 def revoke_user_sessions(db: Session, user_id: int) -> int:
     """Revoke every currently active session for an account."""
 
+    db.flush()
+    lock_auth_user(db, user_id)
     result = db.execute(
         update(AuthSession)
         .where(AuthSession.user_id == user_id)

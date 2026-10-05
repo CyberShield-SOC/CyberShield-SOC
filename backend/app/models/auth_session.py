@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -16,6 +16,10 @@ class AuthSession(Base):
     """Revocable bearer token session for login/logout."""
 
     __tablename__ = "auth_sessions"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="auth_sessions_token_hash_key"),
+        Index("ix_auth_sessions_token_hash", "token_hash"),
+    )
 
     id: Mapped[int] = mapped_column(
         BigInteger,
@@ -33,8 +37,6 @@ class AuthSession(Base):
     token_hash: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
-        unique=True,
-        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

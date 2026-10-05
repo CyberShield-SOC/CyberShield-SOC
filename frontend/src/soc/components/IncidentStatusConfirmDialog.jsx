@@ -5,7 +5,16 @@ import { incidentTerminalAction } from "../utils/incidentWorkflow";
  * Guards terminal incident transitions so a stray select or button click
  * cannot silently remove an investigation from the active queue.
  */
-export default function IncidentStatusConfirmDialog({ disabled, incident, onCancel, onConfirm, status }) {
+export default function IncidentStatusConfirmDialog({
+  disabled,
+  incident,
+  onCancel,
+  onConfirm,
+  onResolutionNoteChange,
+  resolutionError,
+  resolutionNote,
+  status,
+}) {
   const action = incidentTerminalAction(status);
   if (!incident || !action) return null;
 
@@ -39,6 +48,22 @@ export default function IncidentStatusConfirmDialog({ disabled, incident, onCanc
           <AlertTriangle size={18} aria-hidden="true" />
           <p>{action.description}</p>
         </div>
+        {onResolutionNoteChange && (
+          <label className={`resolution-note-control${resolutionError ? " has-error" : ""}`}>
+            Resolution note
+            <textarea
+              value={resolutionNote}
+              disabled={disabled}
+              rows="4"
+              maxLength="800"
+              onChange={(event) => onResolutionNoteChange(event.target.value)}
+              placeholder="Summarize the validation, containment, and final decision."
+              aria-invalid={Boolean(resolutionError)}
+              aria-describedby={resolutionError ? "resolution-note-error" : undefined}
+            />
+            {resolutionError && <span id="resolution-note-error" role="alert">{resolutionError}</span>}
+          </label>
+        )}
         <div className="soc-modal-actions">
           <button className="soc-button secondary" type="button" autoFocus disabled={disabled} onClick={onCancel}>
             Keep investigating

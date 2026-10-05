@@ -50,7 +50,7 @@ def authenticated_admin(db_session):
     db_session.commit()
 
     app.dependency_overrides[current_user] = lambda: admin_user
-    yield
+    yield admin_user
     app.dependency_overrides.pop(current_user, None)
 
 
@@ -355,10 +355,12 @@ def test_upload_brute_force_alert_shape_and_alerts_endpoint():
     assert alerts_data["alerts"][0]["rule"] == "brute_force_login"
 
 
-def test_analyst_can_update_alert_status_and_severity():
+def test_analyst_can_update_alert_status_and_severity(authenticated_admin, db_session):
     from io import BytesIO
 
-    app.dependency_overrides[current_user] = lambda: fake_user("Analyst")
+    authenticated_admin.role = db_session.scalar(select(Role).where(Role.name == "Analyst"))
+    db_session.commit()
+    app.dependency_overrides[current_user] = lambda: authenticated_admin
 
     log_content = (
         b"Jun 14 02:11:43 server01 sshd[1]: Failed password for root from 203.0.113.4 port 22 ssh2\n"
@@ -458,7 +460,7 @@ def test_complete_persisted_investigation_workflow():
     incident_notes = client.get(f"/incidents/{incident_id}/notes")
 
     investigating = client.patch(f"/incidents/{incident_id}", json={"status": "INVESTIGATING"})
-    resolved = client.patch(f"/incidents/{incident_id}", json={"status": "RESOLVED"})
+    resolved = client.patch(f"/incidents/{incident_id}", json={"status": "RESOLVED", "resolution_reason": "Confirmed and contained", "resolution_note": "Reviewed supporting evidence and completed remediation."})
     persisted = client.get(f"/incidents/{incident_id}")
     notes = client.get("/notes")
 
@@ -655,7 +657,7 @@ def test_note_limit_delete_reuse_and_false_positive_completion():
     )
     completed = client.patch(
         f"/incidents/{incident_id}",
-        json={"status": "FALSE_POSITIVE"},
+        json={"status": "FALSE_POSITIVE", "resolution_reason": "Expected activity", "resolution_note": "Verified this activity with the system owner."},
     )
 
     assert all(response.status_code == 201 for response in created_notes)

@@ -75,7 +75,11 @@ def login_with_otp(*, username: str, password: str, remember_me: bool = False):
     try:
         pending = client.post(
             "/auth/login",
-            json={"username": username, "password": password, "remember_me": remember_me},
+            json={
+                "username": username,
+                "password": password,
+                "remember_me": remember_me,
+            },
         )
         if pending.status_code != 200:
             return pending
@@ -93,7 +97,9 @@ def login_with_otp(*, username: str, password: str, remember_me: bool = False):
         app.dependency_overrides.pop(get_otp_email_sender, None)
 
 
-def create_and_login(db_session: Session, *, role_name: str = "Analyst") -> tuple[User, dict]:
+def create_and_login(
+    db_session: Session, *, role_name: str = "Analyst"
+) -> tuple[User, dict]:
     role = ensure_role(db_session, role_name)
     suffix = uuid4().hex[:8]
     username = f"jwt-{suffix}"
@@ -150,7 +156,9 @@ def test_refresh_without_a_cookie_is_unauthorized():
     assert response.status_code == 401
 
 
-def test_protected_route_rejects_cookie_only_requests_with_no_bearer_header(db_session: Session):
+def test_protected_route_rejects_cookie_only_requests_with_no_bearer_header(
+    db_session: Session,
+):
     """The refresh cookie is real and unexpired, but resource routes now
     require an explicit Authorization header — cookies alone no longer
     authorize API access."""
@@ -202,5 +210,62 @@ def test_expired_jwt_is_rejected(db_session: Session):
 
 
 def test_malformed_bearer_token_is_rejected():
-    response = client.get("/auth/me", headers={"Authorization": "Bearer not-a-real-jwt"})
+    response = client.get(
+        "/auth/me", headers={"Authorization": "Bearer not-a-real-jwt"}
+    )
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("claim", ["sub", "exp", "iat", "type"])
+def test_signed_access_token_requires_security_claims(db_session: Session, claim):
+    _, login = create_and_login(db_session)
+    claims = jwt.decode(
+        login["access_token"],
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )
+    del claims[claim]
+    token = jwt.encode(
+        claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired token"
+
+
+@pytest.mark.parametrize("purpose", ["refresh", "reset", None])
+def test_signed_token_for_another_purpose_is_rejected(db_session: Session, purpose):
+    _, login = create_and_login(db_session)
+    claims = jwt.decode(
+        login["access_token"],
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )
+    claims["type"] = purpose
+    token = jwt.encode(
+        claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "path", ["/auth/refresh", "/api/auth/refresh", "/auth/logout", "/api/auth/logout"]
+)
+@pytest.mark.parametrize("bearer", ["invalid", "valid"])
+def test_cookie_endpoints_require_csrf_even_with_bearer_header(
+    db_session: Session, path, bearer
+):
+    _, login = create_and_login(db_session)
+    original_cookie = client.cookies.get(settings.auth_cookie_name)
+    token = login["access_token"] if bearer == "valid" else "not-a-real-jwt"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    rejected = client.post(path, headers=headers)
+    assert rejected.status_code == 403
+    assert client.cookies.get(settings.auth_cookie_name) == original_cookie
+
+    accepted = client.post(path, headers={**headers, **csrf_headers()})
+    assert accepted.status_code == 200
