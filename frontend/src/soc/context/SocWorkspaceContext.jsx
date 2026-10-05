@@ -75,6 +75,11 @@ export function SocWorkspaceProvider({ children, user }) {
   const [selectedAlertId, setSelectedAlertId] = useState(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  // Keep the AI conversation at workspace scope so route changes do not wipe
+  // the analyst's current chat. The provider is recreated on sign-out, so SOC
+  // conversation data does not carry into another authenticated session.
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiLastAnalysis, setAiLastAnalysis] = useState(null);
   // One-shot request from another page (e.g. "Analyze with AI" on an event).
   // The AI Analysis page sends it once on mount and then clears it.
   const [pendingAiRequest, setPendingAiRequest] = useState(null);
@@ -363,6 +368,10 @@ export function SocWorkspaceProvider({ children, user }) {
           : incident
       )));
       const terminalAction = incidentTerminalAction(updated.status);
+      // The mutation response already contains the authoritative incident state.
+      // Refetching incidents here can reuse an older in-flight GET and overwrite
+      // the reopened incident with stale terminal data. Only linked alerts need
+      // an immediate refresh after the incident state change.
       if (socRepository.mode === "api") await refresh("alerts");
       setMutation({
         loading: false,
@@ -716,6 +725,10 @@ export function SocWorkspaceProvider({ children, user }) {
     setSelectedIncidentId,
     selectedEventId,
     setSelectedEventId,
+    aiMessages,
+    setAiMessages,
+    aiLastAnalysis,
+    setAiLastAnalysis,
     pendingAiRequest,
     setPendingAiRequest,
     canWrite,
@@ -792,6 +805,8 @@ export function SocWorkspaceProvider({ children, user }) {
     timeFilteredIngestedEvents,
     timeFilteredIncidents,
     trackingIncidentId,
+    aiMessages,
+    aiLastAnalysis,
     selectedAlertId,
     selectedIncidentId,
     selectedEventId,

@@ -22,8 +22,6 @@ import { SESSION_EXPIRED_MESSAGE } from "./services/apiClient";
 
 const SocApp = lazy(() => import("./soc/SocApp"));
 
-const DEMO_EMAIL = "admin@cybershield.io";
-
 export default function App() {
   const { route, navigate } = useAuthRoute();
   const { theme, toggleTheme } = useTheme();
@@ -40,7 +38,7 @@ export default function App() {
     beginDemoSession,
     signOut,
   } = useSession();
-  const [email, setEmail] = useState(DEMO_EMAIL);
+  const [email, setEmail] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [mfaPending, setMfaPending] = useState(false);
   const [intendedRoute, setIntendedRoute] = useState(() => (
@@ -158,7 +156,7 @@ export default function App() {
       case AUTH_ROUTES.forgotPassword:
         return (
           <RecoveryCard
-            initialEmail={email}
+            initialEmail=""
             onBack={() => navigate(AUTH_ROUTES.login)}
           />
         );
@@ -176,7 +174,7 @@ export default function App() {
       default:
         return (
           <LoginCard
-            initialEmail={DEMO_EMAIL}
+            initialEmail=""
             sessionMessage={authNotice}
             onContinue={submitCredentials}
             onForgotPassword={() => navigate(AUTH_ROUTES.forgotPassword)}

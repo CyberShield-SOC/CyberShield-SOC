@@ -5,8 +5,14 @@ import { normalizeEmail, validateEmail } from "../utils/authValidation";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 import { FormField } from "./FormField";
 
+function safeInitialRecoveryEmail(initialEmail) {
+  const candidate = typeof initialEmail === "string" ? initialEmail.trim() : "";
+  if (!candidate || candidate.includes("*")) return "";
+  return validateEmail(candidate) ? "" : normalizeEmail(candidate);
+}
+
 export function RecoveryCard({ initialEmail, onBack }) {
-  const [email, setEmail] = useState(initialEmail);
+  const [email, setEmail] = useState(() => safeInitialRecoveryEmail(initialEmail));
   const [error, setError] = useState("");
   const [requestError, setRequestError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -59,12 +65,9 @@ export function RecoveryCard({ initialEmail, onBack }) {
           title="Check your inbox"
           titleId="recovery-ready-title"
         >
-          If an account matches <strong>{email}</strong>, recovery instructions will be sent.
+          Check your inbox for password reset instructions.
         </AuthCardIntro>
 
-        <div className="info-panel">
-          For your security, the confirmation is the same whether or not an account exists.
-        </div>
         <button className="primary-button auth-primary-action" type="button" onClick={onBack}>
           Return to sign in <ArrowRight size={17} aria-hidden="true" />
         </button>
@@ -86,7 +89,7 @@ export function RecoveryCard({ initialEmail, onBack }) {
         title="Reset your password"
         titleId="recovery-title"
       >
-        Enter your email and we'll send recovery instructions if an account matches.
+        Enter your email to request password reset instructions.
       </AuthCardIntro>
 
       <div className="form-stack compact-stack">
