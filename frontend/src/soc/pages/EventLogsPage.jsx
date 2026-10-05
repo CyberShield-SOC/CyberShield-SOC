@@ -476,6 +476,8 @@ export default function EventLogsPage({ navigate }) {
                 onClick={() => {
                   // Hand the selected event to the AI page so it analyzes this event right away.
                   setPendingAiRequest({
+                    id: `event-${selectedEvent.id}-${Date.now()}`,
+                    eventId: selectedEvent.id,
                     prompt: `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`,
                   });
                   navigate(SOC_ROUTES.aiAnalysis);
