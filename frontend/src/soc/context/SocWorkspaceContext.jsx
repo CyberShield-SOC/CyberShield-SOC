@@ -8,11 +8,12 @@ import {
   useState,
 } from "react";
 import { canAdministerWorkspace, canMutateInvestigations } from "../../utils/permissions";
+import { buildAssistantHistory } from "../utils/assistantChat";
 import { detectionRules } from "../data/mockData";
 import { socRepository } from "../services/socRepository";
 import { nextSequentialId } from "../utils/recordIds";
 import { incidentTerminalAction, isTerminalIncidentStatus } from "../utils/incidentWorkflow";
-import { filterRecordsByTimeRange, normalizeTimeRange } from "../utils/timeRange";
+import { filterRecordsByTimeRange, normalizeTimeRange, timeRangeToHours } from "../utils/timeRange";
 import { deriveWorkspaceCounts } from "../utils/workspaceSelectors";
 
 const SocWorkspaceContext = createContext(null);
@@ -80,6 +81,9 @@ export function SocWorkspaceProvider({ children, user }) {
   // conversation data does not carry into another authenticated session.
   const [aiMessages, setAiMessages] = useState([]);
   const [aiLastAnalysis, setAiLastAnalysis] = useState(null);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const aiRunningRef = useRef(false);
   // One-shot request from another page (e.g. "Analyze with AI" on an event).
   // The AI Analysis page sends it once on mount and then clears it.
   const [pendingAiRequest, setPendingAiRequest] = useState(null);
@@ -661,6 +665,60 @@ export function SocWorkspaceProvider({ children, user }) {
     setMutation({ loading: false, error: "", message: "Notifications cleared" });
   }, [notifications]);
 
+
+  const askAiQuestion = useCallback(async (question) => {
+    const value = String(question || "").trim();
+    const aiEnabled = settings?.ai?.enabled !== false;
+    if (!value || aiRunningRef.current || !aiEnabled) return false;
+
+    aiRunningRef.current = true;
+    setAiRunning(true);
+    setAiError("");
+
+    const userMessage = { id: `user-${Date.now()}`, role: "user", body: value };
+    const historyMessages = [...aiMessages, userMessage];
+    setAiMessages((current) => [...current, userMessage]);
+
+    try {
+      if (socRepository.mode === "api") {
+        const answer = await socRepository.askAssistant({
+          messages: buildAssistantHistory(historyMessages),
+          timeRangeHours: timeRangeToHours(globalTimeRange),
+        });
+        setAiMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: answer.reply,
+          toolsUsed: answer.toolsUsed,
+        }]);
+      } else {
+        const analysis = await socRepository.runAiAnalysis({ subject: value });
+        setAiLastAnalysis(analysis);
+        setAiMessages((current) => [...current, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          body: analysis.summary,
+          analysis,
+        }]);
+      }
+      return true;
+    } catch (failure) {
+      setAiError(socRepository.mode === "api" && failure?.message
+        ? failure.message
+        : "The analysis service is unavailable. Your question was not lost; try again when the service reconnects.");
+      return false;
+    } finally {
+      aiRunningRef.current = false;
+      setAiRunning(false);
+    }
+  }, [aiMessages, globalTimeRange, settings?.ai?.enabled]);
+
+  const clearAiConversation = useCallback(() => {
+    setAiMessages([]);
+    setAiLastAnalysis(null);
+    setAiError("");
+  }, []);
+
   const timeFilteredEvents = useMemo(
     () => filterRecordsByTimeRange(events, globalTimeRange, "timestamp"),
     [events, globalTimeRange],
@@ -722,9 +780,11 @@ export function SocWorkspaceProvider({ children, user }) {
     selectedEventId,
     setSelectedEventId,
     aiMessages,
-    setAiMessages,
     aiLastAnalysis,
-    setAiLastAnalysis,
+    aiRunning,
+    aiError,
+    askAiQuestion,
+    clearAiConversation,
     pendingAiRequest,
     setPendingAiRequest,
     canWrite,
@@ -803,6 +863,10 @@ export function SocWorkspaceProvider({ children, user }) {
     trackingIncidentId,
     aiMessages,
     aiLastAnalysis,
+    aiRunning,
+    aiError,
+    askAiQuestion,
+    clearAiConversation,
     selectedAlertId,
     selectedIncidentId,
     selectedEventId,
