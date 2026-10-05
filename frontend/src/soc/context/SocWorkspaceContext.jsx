@@ -368,7 +368,9 @@ export function SocWorkspaceProvider({ children, user }) {
           : incident
       )));
       const terminalAction = incidentTerminalAction(updated.status);
-      if (socRepository.mode === "api") await refresh("alerts");
+      if (socRepository.mode === "api") {
+        await Promise.all([refresh("incidents"), refresh("alerts")]);
+      }
       setMutation({
         loading: false,
         error: "",
