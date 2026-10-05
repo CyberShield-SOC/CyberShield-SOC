@@ -156,7 +156,7 @@ export default function App() {
       case AUTH_ROUTES.forgotPassword:
         return (
           <RecoveryCard
-            initialEmail={email}
+            initialEmail=""
             onBack={() => navigate(AUTH_ROUTES.login)}
           />
         );
