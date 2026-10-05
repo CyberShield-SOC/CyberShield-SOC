@@ -27,6 +27,12 @@ import {
 } from "../data/ruleBuilderMockData";
 import "./RuleBuilderPage.css";
 import { RULE_CATEGORIES } from "../data/ruleCategories";
+import {
+  TIMEZONE_OPTIONS,
+  conditionToDsl as buildConditionDsl,
+  conditionTimezonePayload,
+  supportsTimezone,
+} from "../utils/ruleConditions";
 
 const FIELD_TYPES = Object.fromEntries(FIELD_CATALOG.map((field) => [field.value, field.type]));
 const VALID_SEVERITIES = new Set(SEVERITY_OPTIONS.map((option) => option.value));
@@ -37,66 +43,6 @@ function fieldTypeOf(field) {
 
 function operatorsFor(field) {
   return OPERATORS_BY_TYPE[fieldTypeOf(field)] || OPERATORS_BY_TYPE.string;
-}
-
-/** "00:00 – 06:00" (also accepts "-"/"–" with loose spacing) -> { from: "00", to: "06" } */
-function parseHourRange(value) {
-  const match = String(value || "").match(/^\s*(\d{1,2}):\d{2}\s*[–-]\s*(\d{1,2}):\d{2}\s*$/);
-  if (!match) return null;
-  return { from: match[1].padStart(2, "0"), to: match[2].padStart(2, "0") };
-}
-
-/**
- * Turns one condition into DSL fragments: [{ text, kind }].
- * Kinds map to syntax-highlight classes: field, op, value, fn, punct.
- */
-function conditionToDsl(condition) {
-  const type = fieldTypeOf(condition.field);
-  const value = String(condition.value || "").trim();
-  const field = { text: condition.field, kind: "field" };
-
-  if (type === "number") {
-    const compact = { text: value.replace(/\s+/g, ""), kind: "value" };
-    if (condition.operator === "sum >" || condition.operator === "avg >") {
-      const fn = condition.operator === "sum >" ? "sum" : "avg";
-      return [
-        { text: `${fn}(`, kind: "fn" }, field, { text: ")", kind: "fn" },
-        { text: " > ", kind: "op" }, compact,
-      ];
-    }
-    return [field, { text: ` ${condition.operator} `, kind: "op" }, compact];
-  }
-
-  if (type === "timestamp") {
-    if (condition.operator === "between") {
-      const range = parseHourRange(value);
-      if (range) {
-        return [
-          { text: "hour(", kind: "fn" }, { text: "ts", kind: "field" }, { text: ")", kind: "fn" },
-          { text: " in ", kind: "op" }, { text: `${range.from}..${range.to}`, kind: "value" },
-        ];
-      }
-      return [
-        { text: "ts", kind: "field" }, { text: " between ", kind: "op" },
-        { text: `"${value}"`, kind: "value" },
-      ];
-    }
-    const symbol = condition.operator === "before" ? "<" : ">";
-    return [{ text: "ts", kind: "field" }, { text: ` ${symbol} `, kind: "op" }, { text: `"${value}"`, kind: "value" }];
-  }
-
-  if (condition.operator === "contains") {
-    return [
-      { text: "contains(", kind: "fn" }, field, { text: ", ", kind: "punct" },
-      { text: `"${value}"`, kind: "value" }, { text: ")", kind: "fn" },
-    ];
-  }
-  if (condition.operator === "in") {
-    const items = value.split(",").map((item) => `"${item.trim()}"`).join(", ");
-    return [field, { text: " in ", kind: "op" }, { text: `(${items})`, kind: "value" }];
-  }
-  const symbol = condition.operator === "not equals" ? "!=" : "==";
-  return [field, { text: ` ${symbol} `, kind: "op" }, { text: `"${value}"`, kind: "value" }];
 }
 
 function validateDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }) {
@@ -172,7 +118,7 @@ export default function RuleBuilderPage({ navigate }) {
     conditions.forEach((condition, index) => {
       lines.push([
         { text: index === 0 ? "  when " : "   and ", kind: "keyword" },
-        ...conditionToDsl(condition),
+        ...buildConditionDsl(condition, fieldTypeOf(condition.field)),
       ]);
     });
     lines.push([{ text: "  group by ", kind: "keyword" }, { text: groupBy, kind: "field" }]);
@@ -204,7 +150,7 @@ export default function RuleBuilderPage({ navigate }) {
     // The old value's format (e.g. "00:00 – 06:00") is almost never valid
     // for the new field's type, so clear it rather than leave a stale value
     // that would silently never match once the rule runs.
-    updateCondition(key, { field, operator: operatorsFor(field)[0], value: "" });
+    updateCondition(key, { field, operator: operatorsFor(field)[0], value: "", timezone: "" });
   }
 
   function addCondition() {
@@ -213,6 +159,7 @@ export default function RuleBuilderPage({ navigate }) {
       field: FIELD_CATALOG[0].value,
       operator: operatorsFor(FIELD_CATALOG[0].value)[0],
       value: "",
+      timezone: "",
     }]);
     setConfirmation("");
   }
@@ -230,7 +177,12 @@ export default function RuleBuilderPage({ navigate }) {
       category,
       severity,
       tactic,
-      conditions: conditions.map(({ field, operator, value }) => ({ field, operator, value })),
+      conditions: conditions.map((condition) => ({
+        field: condition.field,
+        operator: condition.operator,
+        value: condition.value,
+        timezone: conditionTimezonePayload(condition, fieldTypeOf(condition.field)),
+      })),
       groupBy,
       windowSeconds: WINDOW_SECONDS_BY_VALUE[windowValue] || 600,
       actions,
@@ -410,8 +362,9 @@ export default function RuleBuilderPage({ navigate }) {
               {conditions.map((condition, index) => {
                 const rowId = `${baseId}-${condition.key}`;
                 const isFirst = index === 0;
+                const hasTimezone = supportsTimezone(condition.field, fieldTypeOf(condition.field), condition.operator);
                 return (
-                  <div className="rule-builder-condition-row" key={condition.key}>
+                  <div className={`rule-builder-condition-row${hasTimezone ? " has-timezone" : ""}`} key={condition.key}>
                     <span className="rule-builder-chip" data-chip={isFirst ? "where" : "and"}>
                       {isFirst ? "WHERE" : "AND"}
                     </span>
@@ -431,7 +384,7 @@ export default function RuleBuilderPage({ navigate }) {
                       id={`${rowId}-operator`}
                       className="rule-builder-mono"
                       value={condition.operator}
-                      onChange={(event) => updateCondition(condition.key, { operator: event.target.value })}
+                      onChange={(event) => updateCondition(condition.key, { operator: event.target.value, timezone: "" })}
                     >
                       {operatorsFor(condition.field).map((operator) => (
                         <option key={operator} value={operator}>{operator}</option>
@@ -448,6 +401,22 @@ export default function RuleBuilderPage({ navigate }) {
                       placeholder="value"
                       onChange={(event) => updateCondition(condition.key, { value: event.target.value })}
                     />
+                    {hasTimezone && (
+                      <>
+                        <label className="sr-only" htmlFor={`${rowId}-timezone`}>Condition {index + 1} timezone</label>
+                        <select
+                          id={`${rowId}-timezone`}
+                          data-part="timezone"
+                          className="rule-builder-mono"
+                          value={condition.timezone || ""}
+                          onChange={(event) => updateCondition(condition.key, { timezone: event.target.value })}
+                        >
+                          {TIMEZONE_OPTIONS.map((zone) => (
+                            <option key={zone.value || "utc"} value={zone.value}>{zone.label}</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                     <button
                       className="rule-builder-remove"
                       type="button"

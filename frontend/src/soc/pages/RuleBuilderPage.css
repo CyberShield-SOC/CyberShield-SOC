@@ -98,6 +98,9 @@
   gap: 8px;
   align-items: center;
 }
+.rule-builder-condition-row.has-timezone {
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1fr) minmax(0, .9fr) 32px;
+}
 .rule-builder-chip {
   display: inline-flex;
   align-items: center;
@@ -294,9 +297,18 @@
       ". operator operator"
       ". value value";
   }
+  .rule-builder-condition-row.has-timezone {
+    grid-template-columns: 52px minmax(0, 1fr) 32px;
+    grid-template-areas:
+      "chip field remove"
+      ". operator operator"
+      ". value value"
+      ". timezone timezone";
+  }
   .rule-builder-condition-row .rule-builder-chip { grid-area: chip; }
   .rule-builder-condition-row select:first-of-type { grid-area: field; }
-  .rule-builder-condition-row select:last-of-type { grid-area: operator; }
+  .rule-builder-condition-row select:nth-of-type(2) { grid-area: operator; }
+  .rule-builder-condition-row select[data-part="timezone"] { grid-area: timezone; }
   .rule-builder-condition-row input { grid-area: value; }
   .rule-builder-condition-row .rule-builder-remove { grid-area: remove; }
 }
