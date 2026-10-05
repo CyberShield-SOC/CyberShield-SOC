@@ -42,6 +42,8 @@ export default function AiAnalysisPage({ navigate }) {
   const {
     activeAlertCount,
     addNote,
+    aiLastAnalysis,
+    aiMessages,
     alerts,
     canAdminister,
     canWrite,
@@ -51,18 +53,18 @@ export default function AiAnalysisPage({ navigate }) {
     globalTimeRange,
     incidents,
     mutation,
-    pendingAiRequest,
     repositoryMode,
     selectedIncidentId,
-    setPendingAiRequest,
+    setAiLastAnalysis,
+    setAiMessages,
     setSelectedIncidentId,
     settings,
   } = useSocWorkspace();
-  const [messages, setMessages] = useState([STARTER_MESSAGE]);
+  const messages = useMemo(() => [STARTER_MESSAGE, ...aiMessages], [aiMessages]);
+  const lastAnalysis = aiLastAnalysis;
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
-  const [lastAnalysis, setLastAnalysis] = useState(null);
   const messageListRef = useRef(null);
   const questionCount = messages.filter((message) => message.role === "user").length;
   const aiEnabled = settings?.ai?.enabled !== false;
@@ -76,14 +78,14 @@ export default function AiAnalysisPage({ navigate }) {
     if (list) list.scrollTop = list.scrollHeight;
   }, [messages, running]);
 
-  // Restore the analyst's saved conversation when the page opens (connected mode only).
+  // Restore the analyst's saved conversation (connected mode). The chat lives in
+  // the workspace context, so the saved copy only fills it while the context is empty.
   useEffect(() => {
     if (repositoryMode !== "api") return;
     let cancelled = false;
     socRepository.getAssistantMessages()
       .then((saved) => {
-        if (cancelled || !saved.length) return;
-        setMessages((current) => (current.some((message) => !message.local) ? current : [STARTER_MESSAGE, ...saved]));
+        if (!cancelled && saved.length) setAiMessages((current) => (current.length ? current : saved));
       })
       .catch(() => {
         if (!cancelled) setError("Your saved conversation could not be loaded.");
@@ -126,7 +128,7 @@ export default function AiAnalysisPage({ navigate }) {
     if (!value || running || !aiEnabled) return;
 
     const userMessage = { id: `user-${Date.now()}`, role: "user", body: value };
-    setMessages((current) => [...current, userMessage]);
+    setAiMessages((current) => [...current, userMessage]);
     setPrompt("");
     setRunning(true);
     setError("");
@@ -140,7 +142,7 @@ export default function AiAnalysisPage({ navigate }) {
           messages: buildAssistantHistory([...messages, userMessage]),
           timeRangeHours: timeRangeToHours(globalTimeRange),
         });
-        setMessages((current) => [...current, {
+        setAiMessages((current) => [...current, {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           body: answer.reply,
@@ -153,8 +155,8 @@ export default function AiAnalysisPage({ navigate }) {
         });
       } else {
         const analysis = await socRepository.runAiAnalysis({ subject: value });
-        setLastAnalysis(analysis);
-        setMessages((current) => [...current, {
+        setAiLastAnalysis(analysis);
+        setAiMessages((current) => [...current, {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           body: analysis.summary,
@@ -170,15 +172,27 @@ export default function AiAnalysisPage({ navigate }) {
     }
   }
 
-  // A page elsewhere (e.g. Event Logs) can queue one question. Send it once, then clear it.
-  // The ref stops React StrictMode's second effect run from asking it twice.
-  const handledRequestRef = useRef(null);
+  // Event Logs stores one pending AI question in sessionStorage before
+  // navigating here. Consume it once after this page mounts so the request
+  // cannot be lost during route/lazy-load transitions.
+  const handledEventRequestRef = useRef(false);
   useEffect(() => {
-    if (!pendingAiRequest || handledRequestRef.current === pendingAiRequest) return;
-    handledRequestRef.current = pendingAiRequest;
-    setPendingAiRequest(null);
-    askQuestion(pendingAiRequest.prompt);
-  }, [pendingAiRequest]);
+    if (handledEventRequestRef.current || !aiEnabled || running) return;
+
+    let queuedQuestion = "";
+    try {
+      queuedQuestion = window.sessionStorage.getItem("cybershield-pending-ai-question") || "";
+      if (queuedQuestion) {
+        window.sessionStorage.removeItem("cybershield-pending-ai-question");
+      }
+    } catch {
+      // If session storage is unavailable, normal AI chat still works.
+    }
+
+    if (!queuedQuestion) return;
+    handledEventRequestRef.current = true;
+    askQuestion(queuedQuestion);
+  }, [aiEnabled, running]);
 
   function submitQuestion(event) {
     event.preventDefault();
@@ -243,7 +257,7 @@ export default function AiAnalysisPage({ navigate }) {
           className="ai-chat-panel"
           title="Chat with AI Assistant"
           subtitle={`${questionCount} analyst question${questionCount === 1 ? "" : "s"} in this session`}
-          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setMessages([STARTER_MESSAGE]); setLastAnalysis(null); setError(""); clearSavedConversation(); }}>Clear chat</button>}
+          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setAiMessages([]); setAiLastAnalysis(null); setError(""); clearSavedConversation(); }}>Clear chat</button>}
         >
           <div className="ai-message-list" aria-label="Scrollable AI conversation" aria-live="polite" role="region" tabIndex="0" ref={messageListRef}>
             {messages.map((message) => (

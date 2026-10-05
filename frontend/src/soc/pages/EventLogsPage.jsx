@@ -50,7 +50,6 @@ export default function EventLogsPage({ navigate }) {
     setGlobalTimeRange,
     selectedEventId,
     setSelectedEventId,
-    setPendingAiRequest,
     setSelectedIncidentId,
     uploadLogFile,
   } = useSocWorkspace();
@@ -474,10 +473,12 @@ export default function EventLogsPage({ navigate }) {
                 className="soc-button primary full"
                 type="button"
                 onClick={() => {
-                  // Hand the selected event to the AI page so it analyzes this event right away.
-                  setPendingAiRequest({
-                    prompt: `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`,
-                  });
+                  const question = `Analyze event ${selectedEvent.id} (${selectedEvent.event}) from source IP ${selectedEvent.sourceIp || "unknown"} for user ${selectedEvent.user || "unknown"}. Explain whether it is suspicious and what the analyst should check next.`;
+                  try {
+                    window.sessionStorage.setItem("cybershield-pending-ai-question", question);
+                  } catch {
+                    // The AI page remains usable even if browser storage is blocked.
+                  }
                   navigate(SOC_ROUTES.aiAnalysis);
                 }}
               ><Bot size={16} />Analyze with AI</button>

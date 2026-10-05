@@ -124,7 +124,6 @@ export default function DashboardPage({ navigate }) {
     timeFilteredIncidents: incidents,
     resources,
     refresh,
-    setPendingAiRequest,
     setSelectedAlertId,
     setGlobalTimeRange,
   } = useSocWorkspace();
@@ -245,14 +244,6 @@ export default function DashboardPage({ navigate }) {
     },
   ];
 
-  function analyzeThreatWithAi() {
-    // Hand the threat to the AI page so it analyzes it right away, as Event Logs does.
-    setPendingAiRequest({
-      prompt: `Analyze this threat: ${threatAnalysis.title} Rule: ${threatAnalysis.ruleId}. Source IP: ${threatAnalysis.sourceIp}. User: ${threatAnalysis.user}. Evidence: ${threatAnalysis.evidenceCount} records over ${threatAnalysis.windowLabel}. Explain whether it is suspicious and what the analyst should check next.`,
-    });
-    navigate(SOC_ROUTES.aiAnalysis);
-  }
-
   function openThreatEvidence() {
     if (threatAnalysis.alertId) {
       setSelectedAlertId(threatAnalysis.alertId);
@@ -262,13 +253,45 @@ export default function DashboardPage({ navigate }) {
     navigate(SOC_ROUTES.eventLogs);
   }
 
+  function openAiAnalysis(question) {
+    const value = String(question || "").trim();
+    if (!value) return;
+    try {
+      window.sessionStorage.setItem("cybershield-pending-ai-question", value);
+    } catch {
+      // Navigation still works if session storage is unavailable.
+    }
+    navigate(SOC_ROUTES.aiAnalysis);
+  }
+
+  function analyzeDashboard() {
+    openAiAnalysis(
+      `Analyze the current CyberShield dashboard for ${rangeLabel.toLowerCase()}. `
+      + `Summarize the most important security risks and patterns using the loaded evidence. `
+      + `Current totals: ${events.length} events, ${alerts.length} alerts, ${openIncidents.length} open incidents, `
+      + `${criticalActiveAlerts} critical active alerts, and ${unassignedAlerts} unassigned alerts. `
+      + `Prioritize what an analyst should investigate next and explain why.`,
+    );
+  }
+
+  function analyzeThreatFinding() {
+    openAiAnalysis(
+      `Analyze this dashboard threat finding and explain what it means, why it matters, and what the analyst should check next. `
+      + `Category: ${threatAnalysis.category}. Severity: ${threatAnalysis.severity}. `
+      + `Finding: ${threatAnalysis.title}. Description: ${threatAnalysis.description}. `
+      + `User: ${threatAnalysis.user}. Source IP: ${threatAnalysis.sourceIp}. `
+      + `Window: ${threatAnalysis.windowLabel}. Evidence records: ${threatAnalysis.evidenceCount}. `
+      + `Rule: ${threatAnalysis.ruleId || "not specified"}.`,
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Security overview"
         description={`Operational posture across connected sources · ${rangeLabel.toLowerCase()}.`}
         actions={(
-          <button className="soc-button secondary dashboard-ai-action" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>
+          <button className="soc-button secondary dashboard-ai-action" type="button" onClick={analyzeDashboard}>
             AI analysis <ArrowRight size={15} />
           </button>
         )}
@@ -422,7 +445,7 @@ export default function DashboardPage({ navigate }) {
             <button className="soc-button primary compact" type="button" onClick={openThreatEvidence}>
               {threatAnalysis.alertId ? "Review alert" : "Review evidence"} <ArrowRight size={14} />
             </button>
-            <button className="soc-button secondary compact" type="button" onClick={analyzeThreatWithAi}>
+            <button className="soc-button secondary compact" type="button" onClick={analyzeThreatFinding}>
               Analyze with AI
             </button>
             <span>{threatAnalysis.ruleId}</span>

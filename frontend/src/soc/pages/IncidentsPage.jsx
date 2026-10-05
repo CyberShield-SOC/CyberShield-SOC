@@ -190,7 +190,13 @@ export default function IncidentsPage({ navigate }) {
 
   async function reopenIncident(incident) {
     if (!incident || !canWrite || mutation.loading) return;
-    if (reopenTarget?.id !== incident.id) { setReopenTarget(incident); setReopenReason(""); return; }
+    if (reopenTarget?.id !== incident.id) {
+      setHistoryOpen(false);
+      setHistoryQuery("");
+      setReopenTarget(incident);
+      setReopenReason("");
+      return;
+    }
     if (!reopenReason.trim()) return;
     const saved = await updateIncidentStatus(incident.id, "investigating", { reopen: true, reason: reopenReason });
     if (saved) {

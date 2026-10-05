@@ -59,10 +59,21 @@ class Settings(BaseSettings):
 
     # Forgot-password email flow (see app/routers/auth.py).
     reset_token_expiry_minutes: int = Field(default=30, ge=5, le=1440)
-    # Base URL of the deployed frontend, used to build the link emailed to
-    # /auth/forgot-password requesters. No trailing slash. Defaults to the
-    # Vite dev server's own HTTPS origin (see frontend/vite.config.js).
-    frontend_base_url: str = Field(default="https://127.0.0.1:5173", min_length=1)
+    # ``auto`` prefers Resend and falls back to SMTP. Gmail SMTP works with
+    # a Google App Password, which is useful when no verified Resend domain
+    # is available.
+    reset_email_provider: str = Field(default="auto", min_length=1)
+    smtp_host: str = Field(default="smtp.gmail.com", min_length=1)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_starttls: bool = True
+    # Optional public frontend URL used in password-reset emails. Leave unset
+    # for combined Railway deployments so the app can use RAILWAY_PUBLIC_DOMAIN.
+    frontend_base_url: str | None = None
+    # Railway injects this automatically for a service with a public domain.
+    railway_public_domain: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
