@@ -87,6 +87,85 @@ def test_timestamp_before_and_after():
     assert evaluate_condition(rec(1, ts="2026-06-14T03:00:00Z"), after) is True
 
 
+# ── Timezone-aware hour-of-day conditions ───────────────────────────────────
+#
+# America/Chicago is UTC-5 in June (CDT) and UTC-6 in January (CST), so the
+# same UTC hour lands on different local hours in the two seasons. The
+# summer/winter pair below is what proves the zone is applied per event
+# rather than as a fixed offset.
+
+_CHICAGO_OFF_HOURS = {"field": "timestamp", "operator": "between", "value": "00:00 – 06:00", "timezone": "America/Chicago"}
+
+
+def test_local_window_matches_summer_events_under_cdt():
+    # 05:30Z on 14 June is 00:30 CDT, inside the local 00:00–06:00 window.
+    assert evaluate_condition(rec(1, ts="2026-06-14T05:30:00Z"), _CHICAGO_OFF_HOURS) is True
+    # 10:59Z is 05:59 CDT, still inside the window.
+    assert evaluate_condition(rec(1, ts="2026-06-14T10:59:00Z"), _CHICAGO_OFF_HOURS) is True
+    # The end is exclusive: 11:00Z is exactly 06:00 CDT.
+    assert evaluate_condition(rec(1, ts="2026-06-14T11:00:00Z"), _CHICAGO_OFF_HOURS) is False
+    # 12:00Z is 07:00 CDT, outside the window.
+    assert evaluate_condition(rec(1, ts="2026-06-14T12:00:00Z"), _CHICAGO_OFF_HOURS) is False
+
+
+def test_local_window_matches_winter_events_under_cst():
+    # 05:30Z on 14 January is 23:30 CST the previous day, outside the window.
+    # A fixed UTC-5 offset would wrongly put it at 00:30 and match.
+    assert evaluate_condition(rec(1, ts="2026-01-14T05:30:00Z"), _CHICAGO_OFF_HOURS) is False
+    # 06:30Z is 00:30 CST, inside the window.
+    assert evaluate_condition(rec(1, ts="2026-01-14T06:30:00Z"), _CHICAGO_OFF_HOURS) is True
+    # 11:59Z is 05:59 CST, still inside; 12:00Z is 06:00 CST, outside.
+    assert evaluate_condition(rec(1, ts="2026-01-14T11:59:00Z"), _CHICAGO_OFF_HOURS) is True
+    assert evaluate_condition(rec(1, ts="2026-01-14T12:00:00Z"), _CHICAGO_OFF_HOURS) is False
+
+
+def test_no_timezone_keeps_utc_behaviour():
+    no_zone = {"field": "timestamp", "operator": "between", "value": "00:00 – 06:00"}
+    utc_zone = {**no_zone, "timezone": "UTC"}
+    # The same event, 05:30Z: inside the UTC window, whether or not "UTC" is named.
+    for condition in (no_zone, utc_zone):
+        assert evaluate_condition(rec(1, ts="2026-06-14T05:30:00Z"), condition) is True
+        assert evaluate_condition(rec(1, ts="2026-01-14T05:30:00Z"), condition) is True
+    # A condition saved before the timezone field existed has no "timezone" key at all.
+    assert "timezone" not in no_zone
+    assert evaluate_condition(rec(1, ts="2026-06-14T12:00:00Z"), no_zone) is False
+
+
+def test_naive_timestamp_is_treated_as_utc():
+    # parse_ts can return a naive datetime; it must be read as UTC, not local time.
+    assert evaluate_condition(rec(1, ts="2026-06-14T05:30:00"), _CHICAGO_OFF_HOURS) is True
+
+
+def test_unknown_timezone_at_runtime_never_matches():
+    bad = {**_CHICAGO_OFF_HOURS, "timezone": "Mars/Olympus"}
+    assert evaluate_condition(rec(1, ts="2026-06-14T05:30:00Z"), bad) is False
+
+
+def test_local_window_in_rule_bucketing_keeps_only_local_off_hours_events():
+    rule = CustomConditionRule(
+        rule_id="R-TZ",
+        display_name="Off-hours failed logins (Chicago)",
+        severity="high",
+        conditions=[
+            {"field": "status", "operator": "equals", "value": "FAILED"},
+            _CHICAGO_OFF_HOURS,
+        ],
+        group_by="ip_address",
+        window_seconds=600,
+    )
+    records = [
+        rec(1, ts="2026-06-14T05:30:00Z", ip="10.0.0.1"),  # 00:30 CDT, match
+        rec(2, ts="2026-06-14T05:40:00Z", ip="10.0.0.1"),  # 00:40 CDT, match, inside the 10-min window
+        rec(3, ts="2026-06-14T12:00:00Z", ip="10.0.0.2"),  # 07:00 CDT, no
+        rec(4, ts="2026-06-14T05:30:00Z", ip="10.0.0.3", status="SUCCESS"),  # wrong status
+    ]
+    alerts = rule.analyze(records)
+    assert len(alerts) == 1
+    assert alerts[0].source_ip == "10.0.0.1"
+    assert alerts[0].count == 2
+    assert alerts[0].matched_line_numbers == [1, 2]
+
+
 def test_unknown_field_never_matches():
     condition = {"field": "bytes_out", "operator": "equals", "value": "500"}
     assert evaluate_condition(rec(1), condition) is False
@@ -177,3 +256,39 @@ def test_no_matches_returns_no_alerts():
     )
     records = [rec(1, event="login_attempt")]
     assert rule.analyze(records) == []
+
+
+# ── Schema validation for the timezone option ───────────────────────────────
+
+def test_schema_accepts_iana_timezone_on_timestamp_between():
+    from app.schemas.custom_rule import ConditionPayload
+
+    cond = ConditionPayload(field="timestamp", operator="between", value="00:00 – 06:00", timezone="America/Chicago")
+    assert cond.timezone == "America/Chicago"
+
+
+def test_schema_timezone_defaults_to_none():
+    from app.schemas.custom_rule import ConditionPayload
+
+    cond = ConditionPayload(field="timestamp", operator="between", value="00:00 – 06:00")
+    assert cond.timezone is None
+
+
+def test_schema_rejects_unknown_timezone_name():
+    from pydantic import ValidationError
+
+    from app.schemas.custom_rule import ConditionPayload
+
+    with pytest.raises(ValidationError, match="Unknown timezone"):
+        ConditionPayload(field="timestamp", operator="between", value="00:00 – 06:00", timezone="Mars/Olympus")
+
+
+def test_schema_rejects_timezone_on_non_hour_range_conditions():
+    from pydantic import ValidationError
+
+    from app.schemas.custom_rule import ConditionPayload
+
+    with pytest.raises(ValidationError, match="timezone can only be set"):
+        ConditionPayload(field="timestamp", operator="before", value="2026-06-14T02:00:00Z", timezone="America/Chicago")
+    with pytest.raises(ValidationError, match="timezone can only be set"):
+        ConditionPayload(field="status", operator="equals", value="FAILED", timezone="America/Chicago")

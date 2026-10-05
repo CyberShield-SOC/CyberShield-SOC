@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.detection.rules.custom_condition import KNOWN_FIELDS, OPERATORS_BY_TYPE, field_type
@@ -27,6 +29,9 @@ class ConditionPayload(BaseModel):
     field: str = Field(min_length=1, max_length=40)
     operator: str = Field(min_length=1, max_length=20)
     value: str = Field(min_length=1, max_length=200)
+    # IANA zone name (e.g. "America/Chicago") for hour-of-day conditions.
+    # None means UTC, which is what conditions saved before this field used.
+    timezone: str | None = Field(default=None, max_length=64)
 
     @field_validator("field")
     @classmethod
@@ -37,6 +42,17 @@ class ConditionPayload(BaseModel):
             )
         return value
 
+    @field_validator("timezone")
+    @classmethod
+    def timezone_must_be_known(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"Unknown timezone {value!r}. Use an IANA name such as 'America/Chicago'.") from exc
+        return value
+
     @model_validator(mode="after")
     def operator_must_match_field_type(self):
         allowed = OPERATORS_BY_TYPE[field_type(self.field)]
@@ -44,6 +60,14 @@ class ConditionPayload(BaseModel):
             raise ValueError(
                 f"Operator {self.operator!r} is not valid for field {self.field!r}. "
                 f"Allowed operators: {', '.join(allowed)}."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def timezone_only_applies_to_hour_ranges(self):
+        if self.timezone is not None and (self.field != "timestamp" or self.operator != "between"):
+            raise ValueError(
+                "A timezone can only be set on a timestamp condition with the 'between' operator."
             )
         return self
 
