@@ -135,15 +135,24 @@ export default function AiAnalysisPage({ navigate }) {
     }
   }
 
-  // A page elsewhere (e.g. Event Logs) can queue one question. Send it once, then clear it.
-  // The ref stops React StrictMode's second effect run from asking it twice.
+  // A page elsewhere (e.g. Event Logs) can queue one question. Keep the
+  // request pending until the AI page is ready to accept it. This avoids a
+  // first-navigation race where the request could be consumed before the page
+  // was ready, forcing the analyst to select a second event.
   const handledRequestRef = useRef(null);
   useEffect(() => {
-    if (!pendingAiRequest || handledRequestRef.current === pendingAiRequest) return;
-    handledRequestRef.current = pendingAiRequest;
-    setPendingAiRequest(null);
+    if (!pendingAiRequest || !aiEnabled || running) return;
+
+    const requestId = pendingAiRequest.id || pendingAiRequest.prompt;
+    if (!requestId || handledRequestRef.current === requestId) return;
+
+    handledRequestRef.current = requestId;
+    setPendingAiRequest((current) => {
+      const currentId = current?.id || current?.prompt;
+      return currentId === requestId ? null : current;
+    });
     askQuestion(pendingAiRequest.prompt);
-  }, [pendingAiRequest]);
+  }, [pendingAiRequest, aiEnabled, running]);
 
   function submitQuestion(event) {
     event.preventDefault();
