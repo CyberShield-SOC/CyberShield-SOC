@@ -174,7 +174,7 @@ export default function App() {
       default:
         return (
           <LoginCard
-            initialEmail={DEMO_EMAIL}
+            initialEmail=""
             sessionMessage={authNotice}
             onContinue={submitCredentials}
             onForgotPassword={() => navigate(AUTH_ROUTES.forgotPassword)}
