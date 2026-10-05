@@ -88,6 +88,13 @@ function SeverityPanelChart({ type, buckets, segments, title }) {
   return <HeatmapChart {...severityHeatmap(buckets, STACKED_SEVERITY_SERIES)} title={title} />;
 }
 
+// Each finding type gets its own heading treatment; unmatched types keep the default.
+function threatTitleClass(threat) {
+  if (/^Impossible travel\b/.test(threat.title)) return "dashboard-threat-title-mono";
+  if (threat.category === "Privilege escalation") return "dashboard-threat-title-privilege";
+  return undefined;
+}
+
 function DashboardSummaryCard({ detail, icon: Icon, label, onClick, tone = "default", value }) {
   return (
     <button
@@ -393,7 +400,7 @@ export default function DashboardPage({ navigate }) {
           </header>
           <div className="dashboard-threat-content">
             <span>{threatAnalysis.category}</span>
-            <h2>{threatAnalysis.title}</h2>
+            <h2 className={threatTitleClass(threatAnalysis)}>{threatAnalysis.title}</h2>
             <p>{threatAnalysis.description}</p>
           </div>
           <dl className="dashboard-threat-metadata">
