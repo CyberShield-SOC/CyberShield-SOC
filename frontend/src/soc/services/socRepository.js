@@ -517,6 +517,7 @@ function normalizeCustomRule(rule) {
       field: condition.field,
       operator: condition.operator,
       value: condition.value,
+      timezone: condition.timezone ?? null,
     })),
     groupBy: rule.group_by || rule.groupBy || "none",
     windowSeconds: Number(rule.window_seconds ?? rule.windowSeconds) || 600,
