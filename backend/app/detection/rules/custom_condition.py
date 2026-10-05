@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.detection._ts import parse_ts, ts_to_str
 from app.detection.models import Alert, LogRecord
@@ -81,7 +82,21 @@ def _parse_hour_range(value: str) -> tuple[int, int] | None:
     return int(match.group(1)), int(match.group(2))
 
 
-def _match_timestamp(actual: Any, operator: str, expected: str) -> bool:
+def _local_hour(dt: datetime, tz_name: str | None) -> int | None:
+    """Hour of day in the condition's timezone; UTC when no timezone is set."""
+
+    if not tz_name:
+        return dt.hour
+    try:
+        zone = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    # Naive timestamps are treated as UTC, matching the rest of the pipeline.
+    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return aware.astimezone(zone).hour
+
+
+def _match_timestamp(actual: Any, operator: str, expected: str, tz_name: str | None = None) -> bool:
     dt = parse_ts(actual)
     if dt is None:
         return False
@@ -90,7 +105,9 @@ def _match_timestamp(actual: Any, operator: str, expected: str) -> bool:
         if hour_range is None:
             return False
         start, end = hour_range
-        hour = dt.hour
+        hour = _local_hour(dt, tz_name)
+        if hour is None:
+            return False
         if start <= end:
             return start <= hour < end
         return hour >= start or hour < end
@@ -114,7 +131,7 @@ def evaluate_condition(record: LogRecord, condition: dict) -> bool:
     if kind == "number":
         return _match_number(actual, operator, value)
     if kind == "timestamp":
-        return _match_timestamp(actual, operator, value)
+        return _match_timestamp(actual, operator, value, condition.get("timezone"))
     return _match_string(actual, operator, value)
 
 

@@ -19,3 +19,6 @@ anthropic>=0.94.0
 # Pulls in numpy/scipy — noticeably heavier than the rest of this list.
 scikit-learn>=1.5,<2
 joblib>=1.4,<2
+
+# IANA timezone database for timezone-aware rule conditions (Windows has no system zoneinfo).
+tzdata>=2024.1
