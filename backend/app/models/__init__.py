@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.alert import Alert
 from app.models.incident import Incident
 from app.models.note import Note
+from app.models.assistant_message import AssistantMessage
 from app.models.custom_rule import CustomRule
 from app.models.otp_verification import OtpVerification
 from app.models.password_reset_token import PasswordResetToken
@@ -31,6 +32,7 @@ __all__ = [
     "Alert",
     "Incident",
     "Note",
+    "AssistantMessage",
     "CustomRule",
     "OtpVerification",
     "PasswordResetToken",
