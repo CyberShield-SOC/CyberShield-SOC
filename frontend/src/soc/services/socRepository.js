@@ -946,7 +946,10 @@ const mockRepository = {
 
 const readLatestUpload = () => runApiReadOnce("latest-upload", () => request("/upload/latest"));
 const readAlerts = () => runApiReadOnce("alerts", () => request("/alerts"));
-const readIncidents = () => runApiReadOnce("incidents", () => request("/incidents"));
+// Incident lifecycle mutations can change queue membership immediately. Do not
+// coalesce incident reads across that boundary or a post-mutation refresh can
+// inherit a pre-mutation response and temporarily restore stale terminal state.
+const readIncidents = () => request("/incidents");
 
 async function getApiState() {
   // Dashboard, event, alert, and incident refreshes start together. Sharing

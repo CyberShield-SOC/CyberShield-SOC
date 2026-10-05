@@ -352,6 +352,10 @@ export function SocWorkspaceProvider({ children, user }) {
     try {
       const updated = await socRepository.updateIncidentStatus(incidentId, status, { ...options, expectedVersion: previousIncident?.version,
         reopen: options.reopen || (isTerminalIncidentStatus(previousIncident?.status) && !isTerminalIncidentStatus(status)) });
+      // Discard any incident refresh that began before this successful mutation.
+      // Otherwise its pre-reopen response can arrive later and overwrite the
+      // authoritative incident returned by the mutation.
+      refreshVersionsRef.current.incidents = (refreshVersionsRef.current.incidents || 0) + 1;
       setIncidents((current) => current.map((incident) => (
         incident.id === incidentId
           ? {
