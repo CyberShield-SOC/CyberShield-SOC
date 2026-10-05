@@ -42,6 +42,8 @@ export default function AiAnalysisPage({ navigate }) {
   const {
     activeAlertCount,
     addNote,
+    aiLastAnalysis,
+    aiMessages,
     alerts,
     canAdminister,
     canWrite,
@@ -54,15 +56,17 @@ export default function AiAnalysisPage({ navigate }) {
     pendingAiRequest,
     repositoryMode,
     selectedIncidentId,
+    setAiLastAnalysis,
+    setAiMessages,
     setPendingAiRequest,
     setSelectedIncidentId,
     settings,
   } = useSocWorkspace();
-  const [messages, setMessages] = useState([STARTER_MESSAGE]);
+  const messages = useMemo(() => [STARTER_MESSAGE, ...aiMessages], [aiMessages]);
+  const lastAnalysis = aiLastAnalysis;
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
-  const [lastAnalysis, setLastAnalysis] = useState(null);
   const messageListRef = useRef(null);
   const questionCount = messages.filter((message) => message.role === "user").length;
   const aiEnabled = settings?.ai?.enabled !== false;
@@ -93,7 +97,7 @@ export default function AiAnalysisPage({ navigate }) {
     if (!value || running || !aiEnabled) return;
 
     const userMessage = { id: `user-${Date.now()}`, role: "user", body: value };
-    setMessages((current) => [...current, userMessage]);
+    setAiMessages((current) => [...current, userMessage]);
     setPrompt("");
     setRunning(true);
     setError("");
@@ -106,7 +110,7 @@ export default function AiAnalysisPage({ navigate }) {
           messages: buildAssistantHistory([...messages, userMessage]),
           timeRangeHours: timeRangeToHours(globalTimeRange),
         });
-        setMessages((current) => [...current, {
+        setAiMessages((current) => [...current, {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           body: answer.reply,
@@ -114,8 +118,8 @@ export default function AiAnalysisPage({ navigate }) {
         }]);
       } else {
         const analysis = await socRepository.runAiAnalysis({ subject: value });
-        setLastAnalysis(analysis);
-        setMessages((current) => [...current, {
+        setAiLastAnalysis(analysis);
+        setAiMessages((current) => [...current, {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           body: analysis.summary,
@@ -204,7 +208,7 @@ export default function AiAnalysisPage({ navigate }) {
           className="ai-chat-panel"
           title="Chat with AI Assistant"
           subtitle={`${questionCount} analyst question${questionCount === 1 ? "" : "s"} in this session`}
-          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setMessages([STARTER_MESSAGE]); setLastAnalysis(null); setError(""); }}>Clear chat</button>}
+          actions={<button className="soc-button secondary compact" type="button" disabled={messages.length === 1 || running || mutation.loading} onClick={() => { setAiMessages([]); setAiLastAnalysis(null); setError(""); }}>Clear chat</button>}
         >
           <div className="ai-message-list" aria-label="Scrollable AI conversation" aria-live="polite" role="region" tabIndex="0" ref={messageListRef}>
             {messages.map((message) => (
