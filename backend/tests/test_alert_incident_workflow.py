@@ -210,3 +210,40 @@ def test_viewer_cannot_promote_an_alert_to_an_incident(db_session):
 
     response = client.post("/incidents", json={"alert_id": alert.id})
     assert response.status_code == 403
+
+
+# ---- Alert analyst notes carry over to the promoted incident ----
+
+def test_promoting_an_alert_copies_its_triage_notes_to_the_incident(db_session, authenticated_admin):
+    from app.models.note import Note
+    from app.models.workflow import InvestigationNote
+
+    alert = make_alert(db_session)
+    db_session.add(InvestigationNote(alert_id=alert.id, author_user_id=authenticated_admin.id, body="Verified in matched evidence."))
+    db_session.commit()
+
+    created = client.post("/incidents", json={"alert_id": alert.id})
+    assert created.status_code == 201
+    incident_id = created.json()["incident"]["id"]
+
+    copied = db_session.scalars(select(Note).where(Note.incident_id == incident_id)).all()
+    assert [(note.body, note.author_user_id) for note in copied] == [
+        ("Verified in matched evidence.", authenticated_admin.id)
+    ]
+    assert copied[0].title == f"Alert {alert.id} analyst note"
+
+
+def test_promoting_an_alert_keeps_only_the_newest_notes_within_the_incident_limit(db_session, authenticated_admin):
+    from app.models.note import Note
+    from app.models.workflow import InvestigationNote
+
+    alert = make_alert(db_session)
+    for number in range(7):
+        db_session.add(InvestigationNote(alert_id=alert.id, author_user_id=authenticated_admin.id, body=f"note {number}"))
+    db_session.commit()
+
+    created = client.post("/incidents", json={"alert_id": alert.id})
+    incident_id = created.json()["incident"]["id"]
+
+    bodies = [note.body for note in db_session.scalars(select(Note).where(Note.incident_id == incident_id).order_by(Note.id)).all()]
+    assert bodies == ["note 2", "note 3", "note 4", "note 5", "note 6"]
