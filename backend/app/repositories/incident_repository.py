@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.models.alert import Alert
 from app.models.incident import Incident
+from app.models.note import Note
 from app.models.user import User
-from app.models.workflow import IncidentAlertLink
+from app.models.workflow import IncidentAlertLink, InvestigationNote
 from app.services.incident_workflow import eligible_assignee, update_incident
 from app.services.workflow import locked, record_event, transition_alert
 
@@ -96,6 +97,28 @@ def create_incident_from_alert(
             "version": incident.version,
         },
     )
+
+    # Analyst Notes lists incident-linked notes only, so carry the alert's
+    # triage notes over. Keep the newest ones within the per-incident limit.
+    # Imported here because note_repository imports this module.
+    from app.repositories.note_repository import MAX_NOTES_PER_INCIDENT
+
+    alert_notes = db.scalars(
+        select(InvestigationNote)
+        .where(InvestigationNote.alert_id == alert.id)
+        .order_by(InvestigationNote.id)
+    ).all()
+    for alert_note in alert_notes[-MAX_NOTES_PER_INCIDENT:]:
+        db.add(
+            Note(
+                incident_id=incident.id,
+                author_user_id=alert_note.author_user_id,
+                title=f"Alert {alert.id} analyst note",
+                body=alert_note.body,
+                tags=[],
+            )
+        )
+    db.flush()
     return incident
 
 
