@@ -109,6 +109,16 @@ export function assistantErrorMessage(status, payload = {}) {
   return getRepositoryErrorMessage(status, payload);
 }
 
+export function normalizeSavedAssistantMessage(message) {
+  return {
+    id: `saved-${message.id}`,
+    backendId: message.id,
+    role: message.role === "assistant" ? "assistant" : "user",
+    body: String(message.content || ""),
+    toolsUsed: (Array.isArray(message.tools_used) ? message.tools_used : []).map((name) => ({ name: String(name), ok: true })),
+  };
+}
+
 export function normalizeAssistantReply(payload) {
   if (!payload || typeof payload.reply !== "string" || !payload.reply.trim()) {
     throw new Error("The assistant returned an invalid response. Try again.");
@@ -836,6 +846,9 @@ const mockRepository = {
   async askAssistant() {
     throw new Error("The AI assistant requires the connected backend.");
   },
+  async getAssistantMessages() { return []; },
+  async saveAssistantMessage(message) { return { ...message, id: `local-${Date.now()}`, toolsUsed: [] }; },
+  async clearAssistantMessages() { return null; },
   async getCustomRules() {
     await wait(100);
     const rules = readSessionCustomRules();
@@ -1250,6 +1263,20 @@ export const httpRepository = {
       timeoutMs: 90_000,
     });
     return normalizeAssistantReply(payload);
+  },
+  async getAssistantMessages() {
+    const payload = await request("/assistant/messages");
+    return responseArray(payload, "messages").map(normalizeSavedAssistantMessage);
+  },
+  async saveAssistantMessage({ role, content, toolsUsed = [] }) {
+    const payload = await request("/assistant/messages", {
+      method: "POST",
+      body: JSON.stringify({ role, content, tools_used: toolsUsed }),
+    });
+    return normalizeSavedAssistantMessage(payload.message);
+  },
+  async clearAssistantMessages() {
+    return request("/assistant/messages", { method: "DELETE" });
   },
   async getCustomRules() {
     const payload = await request("/custom-rules");

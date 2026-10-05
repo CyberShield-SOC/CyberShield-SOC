@@ -124,6 +124,7 @@ export default function DashboardPage({ navigate }) {
     timeFilteredIncidents: incidents,
     resources,
     refresh,
+    setPendingAiRequest,
     setSelectedAlertId,
     setGlobalTimeRange,
   } = useSocWorkspace();
@@ -243,6 +244,14 @@ export default function DashboardPage({ navigate }) {
       tone: securityGrade.tone,
     },
   ];
+
+  function analyzeThreatWithAi() {
+    // Hand the threat to the AI page so it analyzes it right away, as Event Logs does.
+    setPendingAiRequest({
+      prompt: `Analyze this threat: ${threatAnalysis.title} Rule: ${threatAnalysis.ruleId}. Source IP: ${threatAnalysis.sourceIp}. User: ${threatAnalysis.user}. Evidence: ${threatAnalysis.evidenceCount} records over ${threatAnalysis.windowLabel}. Explain whether it is suspicious and what the analyst should check next.`,
+    });
+    navigate(SOC_ROUTES.aiAnalysis);
+  }
 
   function openThreatEvidence() {
     if (threatAnalysis.alertId) {
@@ -413,7 +422,7 @@ export default function DashboardPage({ navigate }) {
             <button className="soc-button primary compact" type="button" onClick={openThreatEvidence}>
               {threatAnalysis.alertId ? "Review alert" : "Review evidence"} <ArrowRight size={14} />
             </button>
-            <button className="soc-button secondary compact" type="button" onClick={() => navigate(SOC_ROUTES.aiAnalysis)}>
+            <button className="soc-button secondary compact" type="button" onClick={analyzeThreatWithAi}>
               Analyze with AI
             </button>
             <span>{threatAnalysis.ruleId}</span>
