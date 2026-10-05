@@ -3,6 +3,7 @@ from typing import Literal
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.assistant.service import (
@@ -13,6 +14,7 @@ from app.assistant.service import (
 )
 from app.assistant.tools import MAX_HOURS
 from app.db.session import get_db
+from app.models.assistant_message import AssistantMessage
 from app.models.user import User
 from app.security import require_roles
 
@@ -20,6 +22,7 @@ router = APIRouter(tags=["Assistant"])
 
 MAX_MESSAGES = 20
 MAX_MESSAGE_CHARS = 4000
+SAVED_HISTORY_LIMIT = 100
 
 
 class ChatMessage(BaseModel):
@@ -77,3 +80,71 @@ def assistant_chat(
         "model": result.model,
         "tools_used": result.tools_used,
     }
+
+
+class SavedMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    tools_used: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Message content cannot be blank.")
+        return value
+
+
+def _serialize_saved_message(row: AssistantMessage) -> dict:
+    return {
+        "id": row.id,
+        "role": row.role,
+        "content": row.body,
+        "tools_used": list(row.tools_used or []),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/assistant/messages")
+def list_saved_messages(
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
+    db: Session = Depends(get_db),
+):
+    """Return the caller's most recent saved assistant messages, oldest first."""
+    rows = db.scalars(
+        select(AssistantMessage)
+        .where(AssistantMessage.user_id == user.id)
+        .order_by(AssistantMessage.id.desc())
+        .limit(SAVED_HISTORY_LIMIT)
+    ).all()
+    return {"success": True, "messages": [_serialize_saved_message(row) for row in reversed(rows)]}
+
+
+@router.post("/assistant/messages", status_code=201)
+def save_message(
+    payload: SavedMessage,
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
+    db: Session = Depends(get_db),
+):
+    """Save one message to the caller's assistant conversation."""
+    row = AssistantMessage(
+        user_id=user.id,
+        role=payload.role,
+        body=payload.content.strip(),
+        tools_used=payload.tools_used,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"success": True, "message": _serialize_saved_message(row)}
+
+
+@router.delete("/assistant/messages")
+def clear_saved_messages(
+    user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),
+    db: Session = Depends(get_db),
+):
+    """Delete the caller's saved assistant conversation."""
+    db.execute(delete(AssistantMessage).where(AssistantMessage.user_id == user.id))
+    db.commit()
+    return {"success": True}
