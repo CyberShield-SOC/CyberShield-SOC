@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from tests.anomaly_eval import synthetic_egress as eg
+from tests.anomaly_eval import synthetic_login as lg
 from tests.anomaly_eval import synthetic_threat_log as tl
 from tests.anomaly_eval.harness import SPECS, isolated_scenario
 
@@ -131,5 +133,194 @@ def run_threat_log_scenario(
                 # Test-period summary features per IP, for the single-feature diagnostic only.
                 "features": {ip: tl.ip_features(by_ip[ip]) for ip in normal_ips + list(attack_ips.values())},
                 "attack_ips": attack_ips,
+            },
+        )
+
+
+# -------------------------------------------------------------- login
+
+LOGIN_ATTACKS = (
+    "odd_hour_loud", "odd_hour_subtle", "new_geo_loud", "new_geo_subtle",
+    "combined_loud", "combined_subtle", "new_geo_common_country",
+)
+LOGIN_GUARD_CASE = "new_geo_common_country"
+
+
+def run_login_scenario(
+    db: Session, *, seed: int, n_normal: int = 100, history_days: int = 14, logins_per_user: int = 5,
+    population: str = "v2",
+) -> ScenarioResult:
+    """One seeded scenario: n_normal accounts with their own login history, plus 7
+    attack accounts (3 loud/subtle pairs + 1 new-geo-common-country guard case).
+
+    Same shape as run_threat_log_scenario: build history, train, inject a test
+    period, read back scores. Mirrors synthetic_login.py's overlap design.
+    """
+
+    if population != "v2":
+        raise ValueError(f"login only has population 'v2', got {population!r}")
+    label = f"s{seed}"
+    with isolated_scenario(db, "login", label=label) as scenario:
+        factory = lg.RecordFactory()
+        rng = random.Random(seed * 1000)
+        acct_base = f"acct-{seed}"
+        normal_users = [f"{acct_base}-{i}" for i in range(1, n_normal + 1)]
+        attack_users = {name: f"{acct_base}-atk-{name}" for name in LOGIN_ATTACKS}
+        profiles = {u: lg.make_profile(rng) for u in normal_users}
+        attacker_home = {u: rng.choice(lg.HOME_COUNTRIES) for u in attack_users.values()}
+
+        rule = scenario.rule()
+
+        history: list = []
+        for user in normal_users:
+            for _ in range(logins_per_user):
+                day = lg.weighted_day_offset(rng, history_days)
+                records, _meta = lg.normal_login_records(factory, rng, profiles[user], user, day)
+                history += records
+        rule.analyze(history, db)
+        assert scenario.snapshot_count() >= SPECS["login"].min_samples
+        scenario.train()
+
+        test_day = history_days  # one calendar day after the history window
+        test_records: list = []
+        injection_meta: dict[str, dict] = {}
+        diagnostic_features: dict[str, dict] = {}
+        for user in normal_users:
+            records, meta = lg.normal_login_records(factory, rng, profiles[user], user, test_day)
+            test_records += records
+            injection_meta[user] = meta
+            diagnostic_features[user] = lg.account_login_features(meta["hour"], meta["is_new_geo"])
+
+        for name in LOGIN_ATTACKS:
+            if name == LOGIN_GUARD_CASE:
+                continue
+            user = attack_users[name]
+            record, meta = lg.overlap_attack_record(factory, rng, name, user, test_day, home_country=attacker_home[user])
+            test_records.append(record)
+            diagnostic_features[user] = lg.account_login_features(meta["hour"], meta["is_new_geo"])
+
+        # Guard case: a country that's new for this attacker account but common
+        # across the normal population -- there is no org-wide country-rarity
+        # feature, so this is expected to evade (same blind spot as threat_log's
+        # exfil_popular, for destinations instead of countries).
+        common_country = max(
+            lg.HOME_COUNTRIES, key=lambda c: sum(1 for u in normal_users if c in profiles[u]["seen"]),
+        )
+        common_country_popularity = sum(1 for u in normal_users if common_country in profiles[u]["seen"])
+        guard_user = attack_users[LOGIN_GUARD_CASE]
+        record, meta = lg.guard_case_record(factory, rng, guard_user, test_day, common_country=common_country)
+        test_records.append(record)
+        diagnostic_features[guard_user] = lg.account_login_features(meta["hour"], meta["is_new_geo"])
+
+        rule.analyze(test_records, db)
+        latest = scenario.latest_scores()
+
+        return ScenarioResult(
+            key="login",
+            seed=seed,
+            shipped_threshold=SPECS["login"].shipped_threshold(),
+            normal={u: latest[u] for u in normal_users},
+            attacks={name: latest[attack_users[name]] for name in LOGIN_ATTACKS},
+            meta={
+                "population": population,
+                "common_country_popularity": common_country_popularity,
+                "injection_meta": injection_meta,
+                "features": diagnostic_features,
+                "attack_ids": attack_users,
+            },
+        )
+
+
+# -------------------------------------------------------------- egress
+
+EGRESS_ATTACKS = (
+    "volume_loud", "volume_subtle", "spread_loud", "spread_subtle",
+    "offhour_loud", "offhour_subtle", "popular_dest_exfil",
+)
+EGRESS_GUARD_CASE = "popular_dest_exfil"
+
+
+def run_egress_scenario(
+    db: Session, *, seed: int, n_normal: int = 100, history_days: int = 10, population: str = "v2",
+) -> ScenarioResult:
+    """One seeded scenario: n_normal hosts with their own hourly egress history, plus
+    7 attack hosts (3 loud/subtle pairs + 1 popular-destination guard case).
+
+    Same shape as run_threat_log_scenario. Mirrors synthetic_egress.py's overlap
+    design. day_offset (not just hour) distinguishes buckets so repeated
+    weighted-random hours across history rounds for the same host don't collide
+    into a single merged bucket (see synthetic_egress.py's module docstring).
+    """
+
+    if population != "v2":
+        raise ValueError(f"egress only has population 'v2', got {population!r}")
+    label = f"s{seed}"
+    with isolated_scenario(db, "egress", label=label) as scenario:
+        factory = eg.RecordFactory()
+        rng = random.Random(seed * 1000 + 7)
+        rare_pool = eg.RarePool()
+        host_base = f"10.{60 + seed}.0"
+        normal_hosts = [f"{host_base}.{i}" for i in range(1, n_normal + 1)]
+        attack_hosts = {name: f"{host_base}.{100 + j}" for j, name in enumerate(EGRESS_ATTACKS, start=1)}
+        profiles = {h: eg.make_profile(rng) for h in normal_hosts}
+        attacker_profiles = {h: eg.make_profile(rng) for h in attack_hosts.values()}
+
+        rule = scenario.rule()
+
+        history: list = []
+        for day in range(history_days):
+            for host in normal_hosts:
+                records, _meta = eg.normal_bucket(factory, rng, rare_pool, profiles[host], host, day)
+                history += records
+        rule.analyze(history, db)
+        assert scenario.snapshot_count() >= SPECS["egress"].min_samples
+        scenario.train()
+
+        test_day = history_days  # one calendar day after the history window
+        test_records: list = []
+        injection_meta: dict[str, dict] = {}
+        diagnostic_features: dict[str, dict] = {}
+        for host in normal_hosts:
+            records, meta = eg.normal_bucket(factory, rng, rare_pool, profiles[host], host, test_day)
+            test_records += records
+            injection_meta[host] = meta
+            diagnostic_features[host] = eg.host_egress_features(records)
+
+        for name in EGRESS_ATTACKS:
+            if name == EGRESS_GUARD_CASE:
+                continue
+            host = attack_hosts[name]
+            records, _meta = eg.overlap_attack_records(factory, rng, name, host, test_day, core=attacker_profiles[host]["core"])
+            test_records += records
+            diagnostic_features[host] = eg.host_egress_features(records)
+
+        # Guard case: a large transfer to a destination common across the other
+        # hosts' core sets -- there is no org-wide destination-rarity feature, so
+        # this is expected to evade (same blind spot threat_log's exfil_popular
+        # documents).
+        popular_dest = max(
+            eg.POPULAR_POOL, key=lambda d: sum(1 for h in normal_hosts if d in profiles[h]["seen"]),
+        )
+        popular_dest_popularity = sum(1 for h in normal_hosts if popular_dest in profiles[h]["seen"])
+        guard_host = attack_hosts[EGRESS_GUARD_CASE]
+        records, _meta = eg.guard_case_records(factory, rng, guard_host, test_day, popular_dest=popular_dest)
+        test_records += records
+        diagnostic_features[guard_host] = eg.host_egress_features(records)
+
+        rule.analyze(test_records, db)
+        latest = scenario.latest_scores()
+
+        return ScenarioResult(
+            key="egress",
+            seed=seed,
+            shipped_threshold=SPECS["egress"].shipped_threshold(),
+            normal={h: latest[h] for h in normal_hosts},
+            attacks={name: latest[attack_hosts[name]] for name in EGRESS_ATTACKS},
+            meta={
+                "population": population,
+                "popular_dest_popularity": popular_dest_popularity,
+                "injection_meta": injection_meta,
+                "features": diagnostic_features,
+                "attack_ids": attack_hosts,
             },
         )
