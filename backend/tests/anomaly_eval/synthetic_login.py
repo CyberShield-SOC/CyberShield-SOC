@@ -132,8 +132,12 @@ def normal_login_records(
 #   - combined_loud:    new country (certain) AND hour from TAIL_HOURS
 #   - combined_subtle:  new country at NEW_GEO_ELEVATED_RATE AND hour from MODERATE_HOURS
 #   - new_geo_common_country (guard case): new for this account, but the country
-#     is common across the other accounts in the scenario -- this feature set has
-#     no org-wide country-rarity signal, so this case is expected to evade.
+#     is common across the other accounts in the scenario. This feature set has no
+#     org-wide country-rarity signal, so today it's detected via is_new_geo alone,
+#     regardless of how common the country is -- a regression guard, not a
+#     demonstrated blind spot: a future org-wide-rarity feature must not use this
+#     country's popularity to suppress a real new-geo login, or this case silently
+#     stops being caught.
 
 OVERLAP_ATTACKS = {
     "odd_hour_loud": {"hour_pool": TAIL_HOURS, "new_geo_rate": 0.0},
