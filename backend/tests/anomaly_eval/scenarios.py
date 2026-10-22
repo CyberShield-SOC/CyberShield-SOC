@@ -201,8 +201,9 @@ def run_login_scenario(
 
         # Guard case: a country that's new for this attacker account but common
         # across the normal population -- there is no org-wide country-rarity
-        # feature, so this is expected to evade (same blind spot as threat_log's
-        # exfil_popular, for destinations instead of countries).
+        # feature, so this is caught via is_new_geo alone today, regardless of
+        # the country's popularity. A regression guard (see synthetic_login.py),
+        # not a demonstrated blind spot.
         common_country = max(
             lg.HOME_COUNTRIES, key=lambda c: sum(1 for u in normal_users if c in profiles[u]["seen"]),
         )
@@ -296,8 +297,9 @@ def run_egress_scenario(
 
         # Guard case: a large transfer to a destination common across the other
         # hosts' core sets -- there is no org-wide destination-rarity feature, so
-        # this is expected to evade (same blind spot threat_log's exfil_popular
-        # documents).
+        # this is caught via volume alone today, regardless of the destination's
+        # popularity. A regression guard (see synthetic_egress.py), not a
+        # demonstrated blind spot.
         popular_dest = max(
             eg.POPULAR_POOL, key=lambda d: sum(1 for h in normal_hosts if d in profiles[h]["seen"]),
         )

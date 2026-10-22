@@ -136,8 +136,12 @@ def normal_bucket(
 #   - offhour_loud:   normal bytes/conns/dests, hour from DEEP_TAIL_HOURS
 #   - offhour_subtle: normal bytes/conns/dests, hour from EDGE_HOURS
 #   - popular_dest_exfil (guard case): large transfer to a destination common across
-#     many OTHER hosts in the scenario -- no org-wide destination-rarity feature
-#     exists, so this is expected to evade (same blind spot as threat_log's exfil_popular)
+#     many OTHER hosts in the scenario. No org-wide destination-rarity feature exists,
+#     so today this is caught via volume alone, regardless of how common the
+#     destination is -- a regression guard, not a demonstrated blind spot: a future
+#     org-wide-rarity feature must not use this destination's popularity to suppress
+#     a real transfer, or this case silently stops being caught (same guard
+#     threat_log's exfil_popular runs for its own feature set).
 
 OVERLAP_ATTACKS = ("volume_loud", "volume_subtle", "spread_loud", "spread_subtle", "offhour_loud", "offhour_subtle")
 
