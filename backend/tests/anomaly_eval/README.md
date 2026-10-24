@@ -5,12 +5,11 @@ Shared, fully synthetic harness for validating the three IsolationForest rules
 `behavioral_anomaly_threat_log`). No dataset files, no network access, no
 dependency on anything outside this repo.
 
-**Status:** infrastructure only. This package currently proves the harness is
-correct (isolation tests, always run) and hosts the threat-log generators the
-powered study now imports (parity-verified against the prior in-script
-version). Login and egress synthetic evals have not been written yet — the
-harness (`SPECS` in `harness.py`) already covers all three feature sets, so
-writing them is adding generators plus assertions, not new infrastructure.
+**Status:** all three feature sets have synthetic evals. Login and egress
+were rebuilt from scratch (S7-01/PBI-26) against the real feature extractors
+and rule gating — the generators that existed before this were only ever
+reference material in a stash, never committed, with no reproducible numbers
+behind them (see `ml_experiments/README.md` §9-10 for the findings).
 
 ## Layout
 
@@ -19,8 +18,29 @@ writing them is adding generators plus assertions, not new infrastructure.
 | `harness.py` | `SPECS` (one entry per feature set), `isolated_scenario()` — the per-scenario FEATURE_SET swap + savepoint rollback, `Scenario` (ingest / train / read back scores) |
 | `metrics.py` | Wilson CI, threshold sweep, ROC-AUC, separation margin, recorded library versions |
 | `synthetic_threat_log.py` | Seeded population + injection generators for `threat_log` (ported from `ml_experiments/threat_log_false_positive_power_check.py`) |
-| `scenarios.py` | `run_threat_log_scenario()` — one seeded scenario, using the harness |
+| `synthetic_login.py` | Seeded population + injection generators for `login_behavior` |
+| `synthetic_egress.py` | Seeded population + injection generators for `egress_volume` |
+| `scenarios.py` | `run_threat_log_scenario()`, `run_login_scenario()`, `run_egress_scenario()` — one seeded scenario per feature set, using the harness |
+| `test_threat_log_overlap.py` | Bands for `threat_log`'s v2 (overlapping) population (always run) |
+| `test_login_egress_overlap.py` | Bands for `login_behavior` and `egress_volume`'s v2 populations (always run) |
 | `test_harness_isolation.py` | Proves two scenarios in one session share no state (always run, no API/model cost) |
+
+## The two guard cases are regression guards, not demonstrated blind spots
+
+`threat_log`'s `exfil_popular`, `login_behavior`'s `new_geo_common_country`,
+and `egress_volume`'s `popular_dest_exfil` all inject an attack whose only
+"tell" is a value (destination or country) that happens to be common across
+other entities in the scenario. None of the three feature sets has an
+org-wide rarity feature, so none of them can use that popularity signal —
+but the measured result is that **all three are still substantially
+detected today**, via the signal each model already has (bytes/volume for
+the two destination-based cases, `is_new_geo` for the country-based case),
+independent of how popular the value actually is. These cases exist to catch
+a *future* regression: if an org-wide rarity feature is ever added and used
+to down-weight "common" destinations/countries, it must not suppress these
+genuinely-anomalous events just because they happen to target something
+popular. Re-run the relevant powered script after such a change and confirm
+the guard case's score stays comparably negative.
 
 ## Isolation, and why it needs proving
 
@@ -72,22 +92,35 @@ printed-statistics code is untouched.
 
 ```
 cd backend
-.venv/Scripts/python.exe -m pytest tests/anomaly_eval -q          # isolation tests only; always safe, no API/model cost
+.venv/Scripts/python.exe -m pytest tests/anomaly_eval -q          # isolation + overlap-band tests for all three feature sets; always safe, no API/model cost
 ```
 
-The powered threat-log study (writes `ml_experiments/reports/threat_log_false_positive_powered.txt`,
-opens a session against the real dev database, never commits):
+The powered studies (open a session against the real dev database, never commit —
+see each script's own docstring):
 
 ```
 backend/.venv/Scripts/python.exe ml_experiments/threat_log_false_positive_power_check.py
+backend/.venv/Scripts/python.exe ml_experiments/login_egress_overlap_power_check.py
 ```
 
-## What's next (not built yet; needs a separate go-ahead)
+## Findings
 
-Login and egress synthetic evals, same shape as threat-log's: a fast,
-always-run version asserting coarse bands (separation, no gross false-positive
-rate) at the shipped threshold, plus a local-only powered tier
-(`RUN_ANOMALY_EVAL=1`) producing a report with confidence intervals and a
-threshold sweep — the two unvalidated thresholds this whole effort exists to
-check. See `docs/assistant-eval.md`'s sibling doc (once written) for the case
-list.
+See `ml_experiments/README.md` §6-8 (threat_log) and §9-10 (login_behavior,
+egress_volume) for the full writeup: detection/FP rates with Wilson CIs,
+single-feature AUC diagnostics, threshold sweeps, and honest held-out
+threshold tuning for login/egress. Headline: threat_log's shipped `-0.12`
+already reaches a low FP rate (~0.8%), at the cost of weak (~30%) detection.
+Login and egress ship an unvalidated `-0.02` that produces a *high* FP rate
+(27-50% in this synthetic population) with no low-FP operating point found
+for login at all; egress has a weak-but-real one (~7-13% detection @ ~0.4%
+FP). All three thresholds have no live effect yet (`shadow_mode=True` on
+every rule) — this is advisory/shadow-mode review data, not a live alerting
+gap.
+
+§9-10's numbers reflect two generator bugs found by an independent code
+review and fixed after the first pass (see `ml_experiments/README.md` §9-10
+for what each was and how it was corrected): login attacker accounts had no
+synthetic baseline history, so `is_new_geo` was stuck at `True` for every
+attack regardless of intent; egress's `spread_loud`/`spread_subtle` sampled
+destinations with replacement from a pool too small to reach the distinct
+count they documented. Both are fixed; the numbers above are post-fix.

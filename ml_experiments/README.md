@@ -1,13 +1,16 @@
-# ML experiments: `behavioral_anomaly_threat_log` validation history
+# ML experiments: IsolationForest pilot validation history
 
-This directory holds the offline work behind IsolationForest pilot #3,
-`behavioral_anomaly_threat_log` (`backend/app/detection/rules/behavioral_anomaly_threat_log.py`,
-features in `backend/app/ml/features_threat_log.py`). It is kept separate
-from `backend/tests/` because most of it is measurement, not pass/fail
-regression testing — the pytest files under `backend/tests/test_ml_threat_log_*.py`
+This directory holds the offline work behind the three IsolationForest
+pilots: `behavioral_anomaly_threat_log` (§1-8, the original and most
+extensive study), and `behavioral_anomaly_login` / `behavioral_anomaly_egress`
+(§9-10). It is kept separate from `backend/tests/` because most of it is
+measurement, not pass/fail regression testing — the pytest files under
+`backend/tests/anomaly_eval/` and `backend/tests/test_ml_threat_log_*.py`
 cover the stability guarantees; everything here is the evidence behind them.
 
-Read top to bottom — each step is a response to what the previous one found.
+§1-8 read top to bottom as a narrative — each step responds to what the
+previous one found. §9-10 are self-contained findings for the other two
+pilots, written once their synthetic evals were rebuilt (S7-01/PBI-26).
 
 ## 1. Kaggle baseline: is there any signal at all? (ROC-AUC 0.72)
 
@@ -178,6 +181,127 @@ features are blind to cross-organization popularity (expected — nothing
 in `features_threat_log.py` tracks it yet), and is the number any future
 rarity-weighting change must not erase.
 
+## 9. `login_behavior`: powered overlap study and honest threshold tuning
+
+Pilot #1 (`backend/app/detection/rules/behavioral_anomaly_login.py`,
+features in `backend/app/ml/features.py`: `hour_sin, hour_cos, dow_sin,
+dow_cos, is_new_geo`). Generator `backend/tests/anomaly_eval/synthetic_login.py`,
+scenario runner `run_login_scenario`, powered study
+`login_egress_overlap_power_check.py` → `reports/login_egress_overlap_powered.txt`.
+
+Attacks (population v2, overlapping): three loud/subtle pairs —
+`odd_hour` (known country, hour from a rare-but-populated band), `new_geo`
+(new country, common hour), `combined` (both) — plus a guard case,
+`new_geo_common_country`. All draw from the same hour/country vocabulary
+normal accounts produce; see the generator's module docstring for the exact
+bands.
+
+> **Corrected after independent code review:** the first version of this
+> generator never gave attacker accounts any synthetic login history, so the
+> real rule's per-account baseline (`get_baseline`) was always empty for
+> them — `is_new_geo` computed to `True` unconditionally for every attack,
+> including the `odd_hour` family that was supposed to use a *known*
+> country. This inflated detection and contaminated the `is_new_geo`
+> diagnostic. Fixed by giving each attacker account a few plain history
+> logins at its assigned home country before the test period
+> (`synthetic_login.py:attacker_baseline_record`). The numbers below are
+> from the corrected generator; see git history for the pre-fix (invalid)
+> numbers.
+
+| Metric (100 accounts × 10 seeds, pooled) | Value |
+|---|---|
+| Shipped threshold | −0.02 |
+| Pooled FP rate @ shipped | 50.4% (504/1000), 95% CI [47.3%, 53.5%] |
+| Loud detection @ shipped | 83.3% (25/30), 95% CI [66.4%, 92.7%] |
+| Subtle detection @ shipped | 73.3% (22/30), 95% CI [55.6%, 85.8%] |
+| ROC-AUC (loud+subtle vs. normal) | 0.7156 |
+
+Single-feature AUC (diagnostic, proves the overlap construction worked):
+`hour` 0.537 (near chance), `is_new_geo` 0.650 — retains some pooled signal.
+This feature set has only 5 features total and none was deliberately spared
+from overlap (unlike threat_log's `bytes_total`), so `is_new_geo` keeping
+partial signal is expected, not a construction bug.
+
+**Honest threshold tuning (seed-split, not in-sample):** a candidate
+threshold is picked from seeds 0-4's sweep, then validated on held-out seeds
+5-9. **Finding: no swept threshold reaches a 2% FP target without detection
+collapsing.** At −0.15, held-out FP is 0% but loud and subtle detection are
+also both 0%. This 5-feature model has no usable middle operating point on
+this synthetic population — it is either "flags most logins" or "flags
+nothing." The shipped −0.02 threshold is unchanged; both rules ship
+`shadow_mode=True`, so it has no live effect today.
+
+Guard case `new_geo_common_country`: flagged 5/10 across seeds (mean score
+−0.0216, right at the shipped threshold) — caught via `is_new_geo` alone
+about half the time, independent of how common the country actually is
+across the organization. A regression guard for a future org-wide
+country-rarity feature, not evidence of a current gap. (The attacker account
+for this case is now also guaranteed to have a *different* home country from
+the one measured as "common," so the case can't silently collapse into "just
+this account's own known country" on the seeds where they'd otherwise
+coincide — see `run_login_scenario`.)
+
+**Caught well:** loud attacks somewhat more reliably than subtle (83% vs.
+73%, though the CIs still overlap substantially). **Caught poorly:**
+everything, in the sense that matters operationally — the FP rate at the
+shipped threshold means roughly half of all normal logins would score as
+anomalous; this pilot has no demonstrated low-FP operating point.
+
+## 10. `egress_volume`: powered overlap study and honest threshold tuning
+
+Pilot #2 (`backend/app/detection/rules/behavioral_anomaly_egress.py`,
+features in `backend/app/ml/features_egress_volume.py`: `log_bytes_out,
+connection_count, distinct_destinations, hour_sin, hour_cos`). Generator
+`backend/tests/anomaly_eval/synthetic_egress.py`, scenario runner
+`run_egress_scenario`, same powered study and report as §9.
+
+Attacks: `volume` (bytes above/at the normal spike ceiling), `spread` (more
+distinct destinations than the host's core set), `offhour` (normal
+bytes/destinations, unusual hour), each loud/subtle, plus a guard case
+`popular_dest_exfil`.
+
+> **Corrected after independent code review:** `spread_loud`/`spread_subtle`
+> sampled 12/6 destinations *with replacement* from a 10-entry `POPULAR_POOL`,
+> so they could never reach the documented "12 distinct destinations" and
+> typically landed well short of it, overlapping normal hosts' own
+> occasional-novelty range more than intended. Fixed by enlarging
+> `POPULAR_POOL` to 30 entries and sampling without replacement
+> (`rng.sample`), so `spread_loud`/`spread_subtle` now reach exactly 12/6
+> distinct destinations as documented. The numbers below are from the
+> corrected generator.
+
+| Metric (100 hosts × 10 seeds, pooled) | Value |
+|---|---|
+| Shipped threshold | −0.02 |
+| Pooled FP rate @ shipped | 26.7% (267/1000), 95% CI [24.1%, 29.5%] |
+| Loud detection @ shipped | 96.7% (29/30), 95% CI [83.3%, 99.4%] |
+| Subtle detection @ shipped | 86.7% (26/30), 95% CI [70.3%, 94.7%] |
+| ROC-AUC | 0.8973 |
+
+Single-feature AUC: `bytes_total` 0.601, `connection_count` 0.545,
+`distinct_destinations` 0.505, `hour` 0.636 — all within 0.14 of chance (a
+touch wider than threat_log's 0.10 band, same structural reason as login's
+`is_new_geo`: fewer total features to dilute any one attack axis); overlap
+construction verified.
+
+**Honest threshold tuning:** candidate −0.15 chosen on seeds 0-4, validated
+on held-out seeds 5-9: FP 0.4% (95% CI [0.11%, 1.45%]), loud detection 13.3%
+(95% CI [3.7%, 37.9%]), subtle detection 6.7% (95% CI [1.2%, 29.8%]). Unlike
+login, egress keeps a modest but real detection capability at a sub-1% FP
+operating point — weak, but not a dead end. The shipped −0.02 threshold is
+unchanged, for the same `shadow_mode` reason as §9.
+
+Guard case `popular_dest_exfil`: flagged 10/10, scoring deeply negative
+(−0.12 to −0.19) regardless of destination popularity (4-7/100 normal hosts
+already visit it) — caught via volume alone today. A regression guard for a
+future destination-rarity feature, not evidence of a current gap.
+
+**Caught well:** volume spikes and destination-spread anomalies when loud
+(97% detection). **Caught poorly:** the same attacks when subtle (87% at the
+shipped threshold, 7-13% at the honest sub-1%-FP operating point) — a real,
+reproducible gap between loud and subtle here, unlike login's population
+where the two overlap more.
+
 ## Limitations
 
 - **All of this is synthetic traffic.** Every number above comes from a
@@ -201,6 +325,14 @@ rarity-weighting change must not erase.
   deployment, or small drift in traffic patterns could move that 4% band
   across the line in either direction. Worth re-checking after real
   shadow-mode data accumulates, not assuming this margin holds indefinitely.
+- **The "shadow_mode absorbs it" framing above is specific to threat_log's
+  ~0.8% rate and does not carry over to login/egress as-is.** §9-10's
+  pooled FP rates at the shipped `-0.02` threshold are 27-50%, one to two
+  orders of magnitude higher. A manual-review workflow sized for "occasional
+  false positive" does not scale to "roughly half of all normal logins" —
+  before either rule's `shadow_mode` is ever turned off, its threshold needs
+  the same kind of deliberate selection §7 gave threat_log, not just a
+  "shadow mode will catch it" assumption.
 
 ## Future work (not implemented — pending approval)
 
@@ -272,4 +404,9 @@ The accuracy validation that CI can actually run is synthetic and in-repo:
 - `backend/tests/test_ml_threat_log_attack_injection.py` — permanent regression test (§5).
 - `backend/tests/test_ml_threat_log_false_positive_check.py` — small/fast pytest version of §6
   (30 IPs × 1 seed, for CI; the powered version above is the one with real statistical weight).
+- `login_egress_overlap_power_check.py` — the powered synthetic study for both remaining pilots
+  (§9-10); rerun with `backend/.venv/Scripts/python.exe ml_experiments/login_egress_overlap_power_check.py`.
+  Same DB safety as the threat_log script (see its own docstring).
+- `backend/tests/anomaly_eval/test_login_egress_overlap.py` — fast pytest version of §9-10
+  (100 entities × 5 seeds, for CI).
 - `reports/` — every text report cited above.
