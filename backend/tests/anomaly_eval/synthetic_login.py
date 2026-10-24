@@ -116,6 +116,21 @@ def normal_login_records(
     return [record], {"hour": hour, "is_new_geo": new_geo, "country": country}
 
 
+def attacker_baseline_record(
+    factory: RecordFactory, rng: random.Random, username: str, day_offset: int, *, home_country: str,
+) -> LogRecord:
+    """A plain, no-travel login establishing `home_country` as this attacker
+    account's known country before the test period. Without this, the account
+    has no stored baseline (get_baseline returns None), so the real rule's
+    known_countries[user] is always [] and is_new_geo computes to True
+    unconditionally -- making every attack (including the 'known country'
+    odd_hour ones) score as new-geo regardless of the generator's intent."""
+
+    hour = _weighted_choice(rng, HOUR_WEIGHTS)
+    minute = rng.randint(0, 59)
+    return factory.mk(_ts(day_offset, hour, minute), username, home_country)
+
+
 # ------------------------------------------------------------ overlap attacks
 #
 # Each attack is one login event for a dedicated attacker account (so its own

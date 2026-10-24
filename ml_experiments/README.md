@@ -196,19 +196,31 @@ Attacks (population v2, overlapping): three loud/subtle pairs —
 normal accounts produce; see the generator's module docstring for the exact
 bands.
 
+> **Corrected after independent code review:** the first version of this
+> generator never gave attacker accounts any synthetic login history, so the
+> real rule's per-account baseline (`get_baseline`) was always empty for
+> them — `is_new_geo` computed to `True` unconditionally for every attack,
+> including the `odd_hour` family that was supposed to use a *known*
+> country. This inflated detection and contaminated the `is_new_geo`
+> diagnostic. Fixed by giving each attacker account a few plain history
+> logins at its assigned home country before the test period
+> (`synthetic_login.py:attacker_baseline_record`). The numbers below are
+> from the corrected generator; see git history for the pre-fix (invalid)
+> numbers.
+
 | Metric (100 accounts × 10 seeds, pooled) | Value |
 |---|---|
 | Shipped threshold | −0.02 |
-| Pooled FP rate @ shipped | 57.2% (572/1000), 95% CI [54.1%, 60.2%] |
-| Loud detection @ shipped | 90.0% (27/30), 95% CI [74.4%, 96.5%] |
-| Subtle detection @ shipped | 93.3% (28/30), 95% CI [78.7%, 98.2%] |
-| ROC-AUC (loud+subtle vs. normal) | 0.7765 |
+| Pooled FP rate @ shipped | 50.4% (504/1000), 95% CI [47.3%, 53.5%] |
+| Loud detection @ shipped | 83.3% (25/30), 95% CI [66.4%, 92.7%] |
+| Subtle detection @ shipped | 73.3% (22/30), 95% CI [55.6%, 85.8%] |
+| ROC-AUC (loud+subtle vs. normal) | 0.7156 |
 
 Single-feature AUC (diagnostic, proves the overlap construction worked):
-`hour` 0.50 (chance), `is_new_geo` 0.655 — retains some pooled signal. This
-feature set has only 5 features total and none was deliberately spared from
-overlap (unlike threat_log's `bytes_total`), so `is_new_geo` keeping partial
-signal is expected, not a construction bug.
+`hour` 0.537 (near chance), `is_new_geo` 0.650 — retains some pooled signal.
+This feature set has only 5 features total and none was deliberately spared
+from overlap (unlike threat_log's `bytes_total`), so `is_new_geo` keeping
+partial signal is expected, not a construction bug.
 
 **Honest threshold tuning (seed-split, not in-sample):** a candidate
 threshold is picked from seeds 0-4's sweep, then validated on held-out seeds
@@ -220,18 +232,20 @@ nothing." The shipped −0.02 threshold is unchanged; both rules ship
 `shadow_mode=True`, so it has no live effect today.
 
 Guard case `new_geo_common_country`: flagged 5/10 across seeds (mean score
-−0.0215, right at the shipped threshold) — caught via `is_new_geo` alone
+−0.0216, right at the shipped threshold) — caught via `is_new_geo` alone
 about half the time, independent of how common the country actually is
 across the organization. A regression guard for a future org-wide
-country-rarity feature, not evidence of a current gap.
+country-rarity feature, not evidence of a current gap. (The attacker account
+for this case is now also guaranteed to have a *different* home country from
+the one measured as "common," so the case can't silently collapse into "just
+this account's own known country" on the seeds where they'd otherwise
+coincide — see `run_login_scenario`.)
 
-**Caught well:** nothing distinguishes loud from subtle in this population —
-their detection-rate CIs overlap completely, so behaviorally milder
-new-geo/odd-hour logins aren't meaningfully harder to catch than blatant
-ones here. **Caught poorly:** everything, in the sense that matters
-operationally — the FP rate at the shipped threshold means more than half of
-all normal logins would score as anomalous; this pilot has no demonstrated
-low-FP operating point.
+**Caught well:** loud attacks somewhat more reliably than subtle (83% vs.
+73%, though the CIs still overlap substantially). **Caught poorly:**
+everything, in the sense that matters operationally — the FP rate at the
+shipped threshold means roughly half of all normal logins would score as
+anomalous; this pilot has no demonstrated low-FP operating point.
 
 ## 10. `egress_volume`: powered overlap study and honest threshold tuning
 
@@ -246,35 +260,47 @@ distinct destinations than the host's core set), `offhour` (normal
 bytes/destinations, unusual hour), each loud/subtle, plus a guard case
 `popular_dest_exfil`.
 
+> **Corrected after independent code review:** `spread_loud`/`spread_subtle`
+> sampled 12/6 destinations *with replacement* from a 10-entry `POPULAR_POOL`,
+> so they could never reach the documented "12 distinct destinations" and
+> typically landed well short of it, overlapping normal hosts' own
+> occasional-novelty range more than intended. Fixed by enlarging
+> `POPULAR_POOL` to 30 entries and sampling without replacement
+> (`rng.sample`), so `spread_loud`/`spread_subtle` now reach exactly 12/6
+> distinct destinations as documented. The numbers below are from the
+> corrected generator.
+
 | Metric (100 hosts × 10 seeds, pooled) | Value |
 |---|---|
 | Shipped threshold | −0.02 |
-| Pooled FP rate @ shipped | 26.2% (262/1000), 95% CI [23.6%, 29.0%] |
+| Pooled FP rate @ shipped | 26.7% (267/1000), 95% CI [24.1%, 29.5%] |
 | Loud detection @ shipped | 96.7% (29/30), 95% CI [83.3%, 99.4%] |
-| Subtle detection @ shipped | 83.3% (25/30), 95% CI [66.4%, 92.7%] |
-| ROC-AUC | 0.8893 |
+| Subtle detection @ shipped | 86.7% (26/30), 95% CI [70.3%, 94.7%] |
+| ROC-AUC | 0.8973 |
 
-Single-feature AUC: `bytes_total` 0.567, `connection_count` 0.572,
-`distinct_destinations` 0.509, `hour` 0.598 — all within 0.10 of chance, the
-same band threat_log's hidden features use; overlap construction verified.
+Single-feature AUC: `bytes_total` 0.601, `connection_count` 0.545,
+`distinct_destinations` 0.505, `hour` 0.636 — all within 0.14 of chance (a
+touch wider than threat_log's 0.10 band, same structural reason as login's
+`is_new_geo`: fewer total features to dilute any one attack axis); overlap
+construction verified.
 
 **Honest threshold tuning:** candidate −0.15 chosen on seeds 0-4, validated
-on held-out seeds 5-9: FP 1.0% (95% CI [0.43%, 2.32%]), loud and subtle
-detection both 20.0% (95% CI [7.0%, 45.2%]). Unlike login, egress keeps a
-modest but real detection capability at a ~1% FP operating point — weak, but
-not a dead end. The shipped −0.02 threshold is unchanged, for the same
-`shadow_mode` reason as §9.
+on held-out seeds 5-9: FP 0.4% (95% CI [0.11%, 1.45%]), loud detection 13.3%
+(95% CI [3.7%, 37.9%]), subtle detection 6.7% (95% CI [1.2%, 29.8%]). Unlike
+login, egress keeps a modest but real detection capability at a sub-1% FP
+operating point — weak, but not a dead end. The shipped −0.02 threshold is
+unchanged, for the same `shadow_mode` reason as §9.
 
 Guard case `popular_dest_exfil`: flagged 10/10, scoring deeply negative
-(−0.12 to −0.19) regardless of destination popularity (8-12/100 normal hosts
+(−0.12 to −0.19) regardless of destination popularity (4-7/100 normal hosts
 already visit it) — caught via volume alone today. A regression guard for a
 future destination-rarity feature, not evidence of a current gap.
 
 **Caught well:** volume spikes and destination-spread anomalies when loud
-(97% detection). **Caught poorly:** the same attacks when subtle (83% at the
-shipped threshold, 20% at the honest 1%-FP operating point) — a real,
+(97% detection). **Caught poorly:** the same attacks when subtle (87% at the
+shipped threshold, 7-13% at the honest sub-1%-FP operating point) — a real,
 reproducible gap between loud and subtle here, unlike login's population
-where the two were statistically indistinguishable.
+where the two overlap more.
 
 ## Limitations
 
@@ -299,6 +325,14 @@ where the two were statistically indistinguishable.
   deployment, or small drift in traffic patterns could move that 4% band
   across the line in either direction. Worth re-checking after real
   shadow-mode data accumulates, not assuming this margin holds indefinitely.
+- **The "shadow_mode absorbs it" framing above is specific to threat_log's
+  ~0.8% rate and does not carry over to login/egress as-is.** §9-10's
+  pooled FP rates at the shipped `-0.02` threshold are 27-50%, one to two
+  orders of magnitude higher. A manual-review workflow sized for "occasional
+  false positive" does not scale to "roughly half of all normal logins" —
+  before either rule's `shadow_mode` is ever turned off, its threshold needs
+  the same kind of deliberate selection §7 gave threat_log, not just a
+  "shadow mode will catch it" assumption.
 
 ## Future work (not implemented — pending approval)
 

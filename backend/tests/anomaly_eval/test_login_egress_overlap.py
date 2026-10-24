@@ -34,6 +34,12 @@ SEEDS = (0, 1, 2, 3, 4)
 
 
 def _pool(results, guard_case: str):
+    """The guard-case entity is excluded entirely from the single-feature-AUC
+    pool below, not merely left out of the positive label set -- it is a known
+    attack (just one this feature set can't flag via rarity), so counting it as
+    a labeled-0 "normal" row would inject a genuinely anomalous example into
+    the chance-level comparison."""
+
     threshold = results[0].shipped_threshold
     normal_scores, loud_scores, subtle_scores = [], [], []
     labels: list[int] = []
@@ -42,8 +48,11 @@ def _pool(results, guard_case: str):
         normal_scores += list(run.normal.values())
         loud_scores += list(run.attacks_where("_loud").values())
         subtle_scores += list(run.attacks_where("_subtle").values())
+        guard_id = run.meta["attack_ids"][guard_case]
         attack_ids = {ent for name, ent in run.meta["attack_ids"].items() if name != guard_case}
         for ent, feats in run.meta["features"].items():
+            if ent == guard_id:
+                continue
             labels.append(1 if ent in attack_ids else 0)
             for name, value in feats.items():
                 feature_rows.setdefault(name, []).append(float(value))

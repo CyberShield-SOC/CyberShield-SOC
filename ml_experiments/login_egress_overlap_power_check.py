@@ -139,13 +139,19 @@ def _pooled_scores(results: list[dict], seeds: tuple[int, ...]):
 
 
 def single_feature_section(results: list[dict], guard: str, hidden_features: tuple[str, ...]) -> list[str]:
+    """The guard-case entity is excluded entirely (not just from the positive
+    label set) -- see test_login_egress_overlap.py's _pool() docstring for why."""
+
     lines = ["--- single-feature separability (diagnostic, not the model) ---",
              "AUC oriented so 0.5 = chance, 1.0 = perfectly separable; 'direction' is which way attacks differ"]
     for feature in hidden_features:
         labels, values = [], []
         for run in results:
+            guard_id = run["attack_ids"][guard]
             attack_ids = {ent for name, ent in run["attack_ids"].items() if name != guard}
             for ent, feats in run["features"].items():
+                if ent == guard_id:
+                    continue
                 labels.append(1 if ent in attack_ids else 0)
                 values.append(float(feats[feature]))
         raw_auc = roc_auc_score(labels, values)
