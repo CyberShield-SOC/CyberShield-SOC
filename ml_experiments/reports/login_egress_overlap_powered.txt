@@ -7,38 +7,38 @@ shipped threshold: -0.02
 detection/FP rates are shown with 95% Wilson CIs. Population is v2 (overlapping) only -- see the
 anomaly_eval README for the overlap design and what each loud/subtle attack departs on.
 
-pooled FP rate @ -0.02: 57.20% (572/1000)  95% Wilson CI: [54.11%, 60.23%]
-FP rate spread across 10 seeds: min=39.0% max=93.0% mean=57.2% stdev=18.3%
-loud-attack detection rate @ -0.02:   27/30 = 90.0%  95% Wilson CI: [74.38%, 96.54%]
-subtle-attack detection rate @ -0.02: 28/30 = 93.3%  95% Wilson CI: [78.68%, 98.15%]
-ROC-AUC (loud+subtle vs. all normals): 0.7765
-false-positive causes (n=572): {'unusual_hour': 283, 'no_obvious_cause': 253, 'new_geo_travel': 36}
+pooled FP rate @ -0.02: 50.40% (504/1000)  95% Wilson CI: [47.31%, 53.49%]
+FP rate spread across 10 seeds: min=33.0% max=97.0% mean=50.4% stdev=17.3%
+loud-attack detection rate @ -0.02:   25/30 = 83.3%  95% Wilson CI: [66.44%, 92.66%]
+subtle-attack detection rate @ -0.02: 22/30 = 73.3%  95% Wilson CI: [55.55%, 85.82%]
+ROC-AUC (loud+subtle vs. all normals): 0.7156
+false-positive causes (n=504): {'unusual_hour': 275, 'new_geo_travel': 37, 'no_obvious_cause': 192}
 
 --- threshold sensitivity (pooled across all 10 seeds) ---
  threshold   fp_rate  loud_detect            loud_95ci  subtle_detect          subtle_95ci
-     -0.02    57.20%        90.0%       [74.4%, 96.5%]          93.3%       [78.7%, 98.2%]
-     -0.05    23.50%        70.0%       [52.1%, 83.3%]          66.7%       [48.8%, 80.8%]
-     -0.08    14.00%        66.7%       [48.8%, 80.8%]          30.0%       [16.7%, 47.9%]
-      -0.1     9.90%        63.3%       [45.5%, 78.1%]           6.7%        [1.8%, 21.3%]
-     -0.12     4.10%        26.7%       [14.2%, 44.4%]           0.0%        [0.0%, 11.4%]
-     -0.15     0.10%         0.0%        [0.0%, 11.4%]           0.0%        [0.0%, 11.4%]
+     -0.02    50.40%        83.3%       [66.4%, 92.7%]          73.3%       [55.6%, 85.8%]
+     -0.05    24.90%        73.3%       [55.6%, 85.8%]          46.7%       [30.2%, 63.9%]
+     -0.08    13.70%        66.7%       [48.8%, 80.8%]          10.0%        [3.5%, 25.6%]
+      -0.1     9.60%        50.0%       [33.2%, 66.8%]           3.3%        [0.6%, 16.7%]
+     -0.12     4.20%        20.0%        [9.5%, 37.3%]           0.0%        [0.0%, 11.4%]
+     -0.15     0.00%         0.0%        [0.0%, 11.4%]           0.0%        [0.0%, 11.4%]
      -0.18     0.00%         0.0%        [0.0%, 11.4%]           0.0%        [0.0%, 11.4%]
 
 --- honest threshold tuning: selected on seeds (0, 1, 2, 3, 4), validated on held-out seeds (5, 6, 7, 8, 9) ---
-candidate threshold (train-half FP 0.20%): -0.15
+candidate threshold (train-half FP 0.00%): -0.15
 held-out FP @ -0.15: 0.00% (0/500) 95% CI [0.00%, 0.76%]
 held-out loud detection @ -0.15: 0/15 = 0.0% 95% CI [0.0%, 20.4%]
 held-out subtle detection @ -0.15: 0/15 = 0.0% 95% CI [0.0%, 20.4%]
 Not changing the shipped DEFAULT_PARAMS['score_threshold'] as part of this eval -- both rules ship shadow_mode=True, so the threshold has no live effect today; flipping it is a separate product decision. This documents what threshold would be needed and its cost.
 
 --- guard case: new_geo_common_country ---
-score min=-0.0414 max=-0.0040 mean=-0.0215  |  flagged @ -0.02: 5/10  |  popularity among 100 normals: min=31 max=43 mean=35.3
+score min=-0.0374 max=-0.0087 mean=-0.0216  |  flagged @ -0.02: 5/10  |  popularity among 100 normals: min=29 max=43 mean=34.6
 Under the current per-entity-only features, this scores like any other first-sighting event -- global popularity has no effect yet. This is the baseline a future org-wide-rarity feature must not erase: re-run this script after that change and confirm this number stays comparably negative.
 
 --- single-feature separability (diagnostic, not the model) ---
 AUC oriented so 0.5 = chance, 1.0 = perfectly separable; 'direction' is which way attacks differ
-                  hour: AUC 0.5005  (attacks lower)
-            is_new_geo: AUC 0.6551  (attacks higher)
+                  hour: AUC 0.5366  (attacks lower)
+            is_new_geo: AUC 0.6500  (attacks higher)
 
 
 Powered overlap check for egress_volume
@@ -48,38 +48,38 @@ shipped threshold: -0.02
 detection/FP rates are shown with 95% Wilson CIs. Population is v2 (overlapping) only -- see the
 anomaly_eval README for the overlap design and what each loud/subtle attack departs on.
 
-pooled FP rate @ -0.02: 26.20% (262/1000)  95% Wilson CI: [23.57%, 29.01%]
-FP rate spread across 10 seeds: min=19.0% max=34.0% mean=26.2% stdev=3.7%
+pooled FP rate @ -0.02: 26.70% (267/1000)  95% Wilson CI: [24.05%, 29.53%]
+FP rate spread across 10 seeds: min=19.0% max=34.0% mean=26.7% stdev=4.8%
 loud-attack detection rate @ -0.02:   29/30 = 96.7%  95% Wilson CI: [83.33%, 99.41%]
-subtle-attack detection rate @ -0.02: 25/30 = 83.3%  95% Wilson CI: [66.44%, 92.66%]
-ROC-AUC (loud+subtle vs. all normals): 0.8893
-false-positive causes (n=262): {'no_obvious_cause': 154, 'volume_spike': 78, 'novel_destination': 21, 'novel_destination+volume_spike': 9}
+subtle-attack detection rate @ -0.02: 26/30 = 86.7%  95% Wilson CI: [70.32%, 94.69%]
+ROC-AUC (loud+subtle vs. all normals): 0.8973
+false-positive causes (n=267): {'novel_destination': 23, 'no_obvious_cause': 164, 'volume_spike': 75, 'novel_destination+volume_spike': 5}
 
 --- threshold sensitivity (pooled across all 10 seeds) ---
  threshold   fp_rate  loud_detect            loud_95ci  subtle_detect          subtle_95ci
-     -0.02    26.20%        96.7%       [83.3%, 99.4%]          83.3%       [66.4%, 92.7%]
-     -0.05    15.80%        83.3%       [66.4%, 92.7%]          63.3%       [45.5%, 78.1%]
-     -0.08     8.40%        70.0%       [52.1%, 83.3%]          40.0%       [24.6%, 57.7%]
-      -0.1     4.90%        50.0%       [33.2%, 66.8%]          40.0%       [24.6%, 57.7%]
-     -0.12     2.40%        40.0%       [24.6%, 57.7%]          36.7%       [21.9%, 54.5%]
-     -0.15     0.60%        13.3%        [5.3%, 29.7%]          16.7%        [7.3%, 33.6%]
+     -0.02    26.70%        96.7%       [83.3%, 99.4%]          86.7%       [70.3%, 94.7%]
+     -0.05    17.30%        80.0%       [62.7%, 90.5%]          70.0%       [52.1%, 83.3%]
+     -0.08     8.50%        70.0%       [52.1%, 83.3%]          43.3%       [27.4%, 60.8%]
+      -0.1     4.40%        60.0%       [42.3%, 75.4%]          40.0%       [24.6%, 57.7%]
+     -0.12     1.90%        33.3%       [19.2%, 51.2%]          33.3%       [19.2%, 51.2%]
+     -0.15     0.50%        16.7%        [7.3%, 33.6%]          13.3%        [5.3%, 29.7%]
      -0.18     0.00%         3.3%        [0.6%, 16.7%]           0.0%        [0.0%, 11.4%]
 
 --- honest threshold tuning: selected on seeds (0, 1, 2, 3, 4), validated on held-out seeds (5, 6, 7, 8, 9) ---
-candidate threshold (train-half FP 0.20%): -0.15
-held-out FP @ -0.15: 1.00% (5/500) 95% CI [0.43%, 2.32%]
-held-out loud detection @ -0.15: 3/15 = 20.0% 95% CI [7.0%, 45.2%]
-held-out subtle detection @ -0.15: 3/15 = 20.0% 95% CI [7.0%, 45.2%]
+candidate threshold (train-half FP 0.60%): -0.15
+held-out FP @ -0.15: 0.40% (2/500) 95% CI [0.11%, 1.45%]
+held-out loud detection @ -0.15: 2/15 = 13.3% 95% CI [3.7%, 37.9%]
+held-out subtle detection @ -0.15: 1/15 = 6.7% 95% CI [1.2%, 29.8%]
 Not changing the shipped DEFAULT_PARAMS['score_threshold'] as part of this eval -- both rules ship shadow_mode=True, so the threshold has no live effect today; flipping it is a separate product decision. This documents what threshold would be needed and its cost.
 
 --- guard case: popular_dest_exfil ---
-score min=-0.1946 max=-0.1161 mean=-0.1487  |  flagged @ -0.02: 10/10  |  popularity among 100 normals: min=8 max=12 mean=10.9
+score min=-0.1916 max=-0.1167 mean=-0.1459  |  flagged @ -0.02: 10/10  |  popularity among 100 normals: min=4 max=7 mean=5.1
 Under the current per-entity-only features, this scores like any other first-sighting event -- global popularity has no effect yet. This is the baseline a future org-wide-rarity feature must not erase: re-run this script after that change and confirm this number stays comparably negative.
 
 --- single-feature separability (diagnostic, not the model) ---
 AUC oriented so 0.5 = chance, 1.0 = perfectly separable; 'direction' is which way attacks differ
-           bytes_total: AUC 0.5671  (attacks higher)
-      connection_count: AUC 0.5717  (attacks lower)
- distinct_destinations: AUC 0.5094  (attacks lower)
-                  hour: AUC 0.5980  (attacks lower)
+           bytes_total: AUC 0.6005  (attacks higher)
+      connection_count: AUC 0.5450  (attacks lower)
+ distinct_destinations: AUC 0.5046  (attacks lower)
+                  hour: AUC 0.6357  (attacks lower)
 

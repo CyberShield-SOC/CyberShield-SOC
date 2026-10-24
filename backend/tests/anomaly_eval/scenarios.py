@@ -167,7 +167,19 @@ def run_login_scenario(
         normal_users = [f"{acct_base}-{i}" for i in range(1, n_normal + 1)]
         attack_users = {name: f"{acct_base}-atk-{name}" for name in LOGIN_ATTACKS}
         profiles = {u: lg.make_profile(rng) for u in normal_users}
+        # Decided now (from each profile's fixed primary home, not the
+        # history-mutated "seen" set) so it's stable before any history runs:
+        # the guard-case attacker's own home country must differ from it, or
+        # its "new for this account, common org-wide" premise collapses into
+        # "just this account's own known country" for the seeds where they'd
+        # otherwise coincide.
+        common_country = max(
+            lg.HOME_COUNTRIES, key=lambda c: sum(1 for u in normal_users if profiles[u]["home"][0] == c),
+        )
         attacker_home = {u: rng.choice(lg.HOME_COUNTRIES) for u in attack_users.values()}
+        guard_user = attack_users[LOGIN_GUARD_CASE]
+        if attacker_home[guard_user] == common_country:
+            attacker_home[guard_user] = rng.choice([c for c in lg.HOME_COUNTRIES if c != common_country])
 
         rule = scenario.rule()
 
@@ -177,14 +189,32 @@ def run_login_scenario(
                 day = lg.weighted_day_offset(rng, history_days)
                 records, _meta = lg.normal_login_records(factory, rng, profiles[user], user, day)
                 history += records
+        # Attacker accounts need their own baseline history too -- a few plain,
+        # no-travel logins at their assigned home country, establishing it as
+        # "known" before the test period. Without this, every attacker's
+        # known_countries baseline is empty and is_new_geo computes to True
+        # unconditionally for all of them, regardless of the attack's intended
+        # new_geo_rate (see attacker_baseline_record's docstring).
+        for user in attack_users.values():
+            for _ in range(3):
+                day = lg.weighted_day_offset(rng, history_days)
+                history.append(lg.attacker_baseline_record(factory, rng, user, day, home_country=attacker_home[user]))
         rule.analyze(history, db)
-        assert scenario.snapshot_count() >= SPECS["login"].min_samples
+        assert scenario.snapshot_count() >= SPECS["login"].min_samples, (
+            f"only {scenario.snapshot_count()} login snapshots, need >= {SPECS['login'].min_samples} to train"
+        )
         scenario.train()
 
         test_day = history_days  # one calendar day after the history window
         test_records: list = []
         injection_meta: dict[str, dict] = {}
         diagnostic_features: dict[str, dict] = {}
+        # Popularity from the history-only "seen" sets (home country plus any
+        # travel acquired during history), snapshotted now -- before any
+        # test-period login (below) mutates them -- so it describes the
+        # population the model actually trained on, not one extra day beyond it.
+        common_country_popularity = sum(1 for u in normal_users if common_country in profiles[u]["seen"])
+
         for user in normal_users:
             records, meta = lg.normal_login_records(factory, rng, profiles[user], user, test_day)
             test_records += records
@@ -204,11 +234,6 @@ def run_login_scenario(
         # feature, so this is caught via is_new_geo alone today, regardless of
         # the country's popularity. A regression guard (see synthetic_login.py),
         # not a demonstrated blind spot.
-        common_country = max(
-            lg.HOME_COUNTRIES, key=lambda c: sum(1 for u in normal_users if c in profiles[u]["seen"]),
-        )
-        common_country_popularity = sum(1 for u in normal_users if common_country in profiles[u]["seen"])
-        guard_user = attack_users[LOGIN_GUARD_CASE]
         record, meta = lg.guard_case_record(factory, rng, guard_user, test_day, common_country=common_country)
         test_records.append(record)
         diagnostic_features[guard_user] = lg.account_login_features(meta["hour"], meta["is_new_geo"])
@@ -260,9 +285,14 @@ def run_egress_scenario(
         factory = eg.RecordFactory()
         rng = random.Random(seed * 1000 + 7)
         rare_pool = eg.RarePool()
+        # Attacker hosts live in a different third octet from normal hosts
+        # (".9." vs. ".0.") so there is no ID collision regardless of n_normal
+        # -- unlike a fixed ".100+j" offset, which only avoided colliding with
+        # the default n_normal=100 by coincidence.
         host_base = f"10.{60 + seed}.0"
+        attack_host_base = f"10.{60 + seed}.9"
         normal_hosts = [f"{host_base}.{i}" for i in range(1, n_normal + 1)]
-        attack_hosts = {name: f"{host_base}.{100 + j}" for j, name in enumerate(EGRESS_ATTACKS, start=1)}
+        attack_hosts = {name: f"{attack_host_base}.{j}" for j, name in enumerate(EGRESS_ATTACKS, start=1)}
         profiles = {h: eg.make_profile(rng) for h in normal_hosts}
         attacker_profiles = {h: eg.make_profile(rng) for h in attack_hosts.values()}
 
@@ -274,8 +304,19 @@ def run_egress_scenario(
                 records, _meta = eg.normal_bucket(factory, rng, rare_pool, profiles[host], host, day)
                 history += records
         rule.analyze(history, db)
-        assert scenario.snapshot_count() >= SPECS["egress"].min_samples
+        assert scenario.snapshot_count() >= SPECS["egress"].min_samples, (
+            f"only {scenario.snapshot_count()} egress snapshots, need >= {SPECS['egress'].min_samples} to train"
+        )
         scenario.train()
+
+        # Guard-case destination and its popularity, snapshotted from the
+        # history-only "seen" sets -- before any test-period bucket (below)
+        # mutates them -- so it describes the population the model actually
+        # trained on, not one extra day beyond it.
+        popular_dest = max(
+            eg.POPULAR_POOL, key=lambda d: sum(1 for h in normal_hosts if d in profiles[h]["seen"]),
+        )
+        popular_dest_popularity = sum(1 for h in normal_hosts if popular_dest in profiles[h]["seen"])
 
         test_day = history_days  # one calendar day after the history window
         test_records: list = []
@@ -300,10 +341,6 @@ def run_egress_scenario(
         # this is caught via volume alone today, regardless of the destination's
         # popularity. A regression guard (see synthetic_egress.py), not a
         # demonstrated blind spot.
-        popular_dest = max(
-            eg.POPULAR_POOL, key=lambda d: sum(1 for h in normal_hosts if d in profiles[h]["seen"]),
-        )
-        popular_dest_popularity = sum(1 for h in normal_hosts if popular_dest in profiles[h]["seen"])
         guard_host = attack_hosts[EGRESS_GUARD_CASE]
         records, _meta = eg.guard_case_records(factory, rng, guard_host, test_day, popular_dest=popular_dest)
         test_records += records

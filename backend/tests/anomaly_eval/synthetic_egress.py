@@ -30,7 +30,7 @@ BASE = datetime(2026, 1, 5, tzinfo=timezone.utc)
 
 NORMAL_PORTS = {443: "HTTPS", 80: "HTTP"}
 CORE_POOL = [f"104.16.{i}.10" for i in range(10, 30)]       # common cloud/SaaS-style destinations
-POPULAR_POOL = [f"172.217.{i}.5" for i in range(10, 20)]     # shared across many hosts' core sets
+POPULAR_POOL = [f"172.217.{i}.5" for i in range(10, 40)]     # shared across many hosts' core sets; >= spread_loud's draw count
 RARE_POOL_BASE = "45.33"                                     # true long-tail destinations
 
 NORMAL_CONN_RANGE = (3, 8)
@@ -46,6 +46,8 @@ DEEP_TAIL_HOURS = (2, 3, 4)       # never assigned to normal buckets -- loud off
 EDGE_HOURS = (5, 21)              # lowest-weight populated hours -- subtle offhour attacks live here
 
 NOVELTY_PROB = 0.10  # baseline chance a bucket visits a destination outside the host's core set
+
+assert len(POPULAR_POOL) >= 12, "spread_loud samples 12 distinct destinations from POPULAR_POOL without replacement"
 
 
 class RecordFactory:
@@ -161,7 +163,10 @@ def overlap_attack_records(
         meta = {"bytes_total": b, "connection_count": 1, "distinct_destinations": 1, "hour": hour}
     elif name in ("spread_loud", "spread_subtle"):
         n_dest = 12 if name == "spread_loud" else 6
-        dests = [rng.choice(POPULAR_POOL) for _ in range(n_dest)]
+        # Sampled WITHOUT replacement so this actually reaches n_dest distinct
+        # destinations, as documented above -- POPULAR_POOL must have at least
+        # as many entries as the largest draw here (asserted once at import time).
+        dests = rng.sample(POPULAR_POOL, k=n_dest)
         total = 0
         for i, d in enumerate(dests):
             b = max(1, rng.randint(*NORMAL_BYTES_RANGE) // n_dest)

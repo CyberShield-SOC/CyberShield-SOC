@@ -111,7 +111,16 @@ single-feature AUC diagnostics, threshold sweeps, and honest held-out
 threshold tuning for login/egress. Headline: threat_log's shipped `-0.12`
 already reaches a low FP rate (~0.8%), at the cost of weak (~30%) detection.
 Login and egress ship an unvalidated `-0.02` that produces a *high* FP rate
-(26-57% in this synthetic population) with no low-FP operating point found
-for login at all; egress has a weak-but-real one (~20% detection @ ~1% FP).
-All three thresholds have no live effect yet (`shadow_mode=True` on every
-rule) — this is advisory/shadow-mode review data, not a live alerting gap.
+(27-50% in this synthetic population) with no low-FP operating point found
+for login at all; egress has a weak-but-real one (~7-13% detection @ ~0.4%
+FP). All three thresholds have no live effect yet (`shadow_mode=True` on
+every rule) — this is advisory/shadow-mode review data, not a live alerting
+gap.
+
+§9-10's numbers reflect two generator bugs found by an independent code
+review and fixed after the first pass (see `ml_experiments/README.md` §9-10
+for what each was and how it was corrected): login attacker accounts had no
+synthetic baseline history, so `is_new_geo` was stuck at `True` for every
+attack regardless of intent; egress's `spread_loud`/`spread_subtle` sampled
+destinations with replacement from a pool too small to reach the distinct
+count they documented. Both are fixed; the numbers above are post-fix.
