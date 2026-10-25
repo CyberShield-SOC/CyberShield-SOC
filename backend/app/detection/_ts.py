@@ -11,7 +11,8 @@ def parse_ts(ts: str | None) -> Optional[datetime]:
     # Python 3.11+ fromisoformat handles "Z", but replace for safety across envs
     clean = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
     try:
-        return datetime.fromisoformat(clean)
+        parsed = datetime.fromisoformat(clean)
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
     except ValueError:
         pass
     # Fallbacks for raw syslog / generic parser output

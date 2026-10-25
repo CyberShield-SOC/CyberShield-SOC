@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 from fastapi import (
     APIRouter,
     Depends,
@@ -45,6 +46,7 @@ from app.repositories.upload_batch_repository import (
     serialize_upload_batch,
 )
 from app.security import require_roles
+from app.schemas.ingestion import IngestionRequest
 
 
 router = APIRouter(tags=["Upload"])
@@ -124,6 +126,10 @@ def _run_upload_pipeline(
     content_bytes: bytes,
     source_filename: str,
     mime_type: str | None,
+    source_name: str | None = None,
+    source_type: str | None = None,
+    source_host: str | None = None,
+    ingested_by: int | None = None,
 ) -> dict:
     """Parse, detect, correlate, and persist one upload in a single transaction."""
     try:
@@ -141,6 +147,7 @@ def _run_upload_pipeline(
             db, upload_id=upload_id, source_filename=source_filename, source_format=str(parsed["format"]),
             mime_type=mime_type, size_bytes=len(content_bytes), total_lines=int(parsed["total_lines"]),
             parsed_entries=len(parsed["entries"]), skipped_lines=len(parsed["skipped_lines"]), stored_entries=0, stored_alerts=0,
+            source_name=source_name, source_type=source_type, source_host=source_host, ingested_by=ingested_by,
         )
         saved_logs = create_logs_from_parse_result(db, upload_id=upload_id, source_filename=source_filename, parsed_result=parsed)
         identities = {log.line_number: log.id for log in saved_logs}
@@ -161,7 +168,8 @@ def _run_upload_pipeline(
         enabled_custom_rules = list_enabled_custom_rules(db)
         custom_rule_titles = {}
         for custom_rule in enabled_custom_rules:
-            if not custom_rule.actions.get("create_alert", False):
+            action = custom_rule.actions.get("create_alert", False)
+            if not (action.get("enabled", True) if isinstance(action, dict) else action):
                 continue
             runner = CustomConditionRule(rule_id=custom_rule.rule_id, display_name=custom_rule.name,
                                          severity=custom_rule.severity, conditions=custom_rule.conditions,
@@ -190,6 +198,9 @@ def _run_upload_pipeline(
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(500, detail={"success": False, "error": "Parsed logs, alerts, and correlation groups could not be stored.", "code": "DATABASE_WRITE_ERROR"}) from exc
+    except Exception:
+        db.rollback()
+        raise
     return {
         "success": True, "upload": serialize_upload_batch(batch),
         "parsing": {"format": parsed["format"], "total_lines": parsed["total_lines"], "parsed_entries": len(parsed["entries"]),
@@ -200,6 +211,24 @@ def _run_upload_pipeline(
         "correlation_groups": group_payloads(db, saved_groups),
         "active_defense": active_defense_summary, "custom_rule_actions": custom_rule_action_summary,
     }
+
+
+@router.post("/ingest")
+async def ingest_logs(
+    payload: IngestionRequest,
+    user: User = Depends(require_roles("Admin", "Analyst")),
+    db: Session = Depends(get_db),
+):
+    """Accept collector logs using an Admin/Analyst bearer access token."""
+    content = payload.content.encode("utf-8")
+    upload = UploadFile(file=BytesIO(content), filename=payload.filename)
+    filename = validate_log_file(upload, content)
+    return await run_in_threadpool(
+        _run_upload_pipeline, db, content_bytes=content,
+        source_filename=filename, mime_type="application/json",
+        source_name=payload.source_name, source_type=payload.source_type,
+        source_host=payload.source_host, ingested_by=user.id,
+    )
 
 
 @router.post("/upload")
@@ -230,6 +259,9 @@ async def upload_log(
         content_bytes=content_bytes,
         source_filename=source_filename,
         mime_type=logfile.content_type,
+        source_name=source_filename,
+        source_type="file",
+        ingested_by=user.id,
     )
 
     return JSONResponse(status_code=200, content=payload)

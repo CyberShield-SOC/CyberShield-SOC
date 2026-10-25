@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, String, func, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +39,13 @@ class UploadBatch(Base):
     mime_type: Mapped[str | None] = mapped_column(
         String(150),
         nullable=True,
+    )
+
+    source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ingested_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
     )
 
     size_bytes: Mapped[int] = mapped_column(

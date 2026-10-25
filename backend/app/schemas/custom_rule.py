@@ -7,7 +7,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.detection.rules.custom_condition import KNOWN_FIELDS, OPERATORS_BY_TYPE, field_type
+from app.detection.rules.custom_condition import KNOWN_FIELDS, OPERATORS_BY_TYPE, field_type, _parse_hour_range
+from app.detection._ts import parse_ts
 
 RULE_CATEGORIES = (
     "generic_detection",
@@ -69,6 +70,29 @@ class ConditionPayload(BaseModel):
             raise ValueError(
                 "A timezone can only be set on a timestamp condition with the 'between' operator."
             )
+        return self
+
+    @model_validator(mode="after")
+    def value_must_match_field_type(self):
+        value = self.value.strip()
+        if not value:
+            raise ValueError("Condition value cannot be blank.")
+        if self.operator == "in" and any(not part.strip() for part in value.split(",")):
+            raise ValueError("List conditions require nonempty comma-separated values.")
+        if self.field == "port":
+            parts = value.split(",") if self.operator == "in" else [value]
+            try:
+                if any(not part.strip().isdigit() or not 0 <= int(part) <= 65535 for part in parts):
+                    raise ValueError()
+            except ValueError as exc:
+                raise ValueError("Ports must be integers between 0 and 65535.") from exc
+        if self.field == "timestamp":
+            if self.operator == "between":
+                interval = _parse_hour_range(value)
+                if interval is None or interval[0] == interval[1]:
+                    raise ValueError("Use a nonempty HH:MM-HH:MM range (00:00 through 23:59).")
+            elif parse_ts(value) is None:
+                raise ValueError("Timestamp boundary must be a valid timestamp.")
         return self
 
 
@@ -255,6 +279,9 @@ class CustomRuleUpdate(BaseModel):
     def require_update(self):
         if not self.model_fields_set:
             raise ValueError("Provide at least one custom rule field to update.")
+        for field in self.model_fields_set - {"tactic", "dsl"}:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null.")
         return self
 
 

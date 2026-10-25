@@ -39,6 +39,25 @@ def test_string_equals_is_case_insensitive():
     assert evaluate_condition(rec(1, event="login_attempt"), condition) is True
 
 
+def test_time_range_preserves_minutes_and_offset():
+    condition = {"field": "timestamp", "operator": "between", "value": "02:30-03:15"}
+    assert not evaluate_condition(rec(1, ts="2026-06-14T02:29:59Z"), condition)
+    assert evaluate_condition(rec(1, ts="2026-06-14T04:30:00+02:00"), condition)
+    assert not evaluate_condition(rec(1, ts="2026-06-14T03:15:00Z"), condition)
+
+
+def test_naive_timestamp_compares_as_utc():
+    assert evaluate_condition(rec(1, ts="2026-06-14T01:00:00"),
+                              {"field": "timestamp", "operator": "before", "value": "2026-06-14T02:00:00Z"})
+
+
+def test_dense_matches_do_not_extend_window_indefinitely():
+    runner = CustomConditionRule(rule_id="R-TEST", display_name="test", severity="HIGH",
+                                conditions=[{"field": "status", "operator": "equals", "value": "FAILED"}], window_seconds=600)
+    alerts = runner.analyze([rec(i, ts=_ts(delta)) for i, delta in enumerate([0, 400, 600, 800])])
+    assert [alert.count for alert in alerts] == [3, 1]
+
+
 def test_string_not_equals():
     condition = {"field": "status", "operator": "not equals", "value": "SUCCESS"}
     assert evaluate_condition(rec(1, status="FAILED"), condition) is True

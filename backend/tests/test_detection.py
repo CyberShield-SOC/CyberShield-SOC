@@ -444,20 +444,29 @@ class TestDetectionEngine:
 @pytest.mark.db
 class TestUploadEndpointAlerts:
 
-    def test_upload_returns_alerts_key(self):
+    def test_upload_returns_alerts_key(self, db_session):
         from io import BytesIO
         from fastapi.testclient import TestClient
         from app.main import app
+        from sqlalchemy import select
+        from uuid import uuid4
 
+        role = db_session.scalar(select(Role).where(Role.name == "Analyst"))
+        if role is None:
+            role = Role(name="Analyst")
+            db_session.add(role)
+            db_session.flush()
+        suffix = uuid4().hex
         user = User(
-            id=1,
-            role_id=1,
-            username="analyst1",
-            email="analyst1@example.test",
+            role_id=role.id,
+            username=f"upload-analyst-{suffix}",
+            email=f"upload-analyst-{suffix}@example.test",
             password_hash="not-returned",
             is_active=True,
         )
-        user.role = Role(id=1, name="Analyst")
+        user.role = role
+        db_session.add(user)
+        db_session.flush()
         app.dependency_overrides[current_user] = lambda: user
 
         client = TestClient(app)
@@ -472,6 +481,7 @@ class TestUploadEndpointAlerts:
             resp = client.post("/upload", files={"logfile": ("auth.log", BytesIO(log), "text/plain")})
             assert resp.status_code == 200
             data = resp.json()
+            assert data["upload"]["ingested_by"] == user.id
             assert "alerts" in data
             assert isinstance(data["alerts"], list)
             assert any(a["rule"] == "brute_force_login" for a in data["alerts"])

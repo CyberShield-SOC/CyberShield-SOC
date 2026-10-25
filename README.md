@@ -8,6 +8,8 @@ CyberShield SOC is a full security-operations platform: a FastAPI backend that i
 
 Sprint 6 adds correlation, exact evidence APIs, investigation states, and incident assignment/resolution/reopening with history. See [Sprint 6 additions](docs/sprint6.md).
 
+Sprint 7 adds authenticated collector ingestion through `POST /api/ingest`, source provenance, and custom-rule fixes. See the [ingestion contract and authentication review](docs/SPRINT7_INGESTION_AND_RULES.md).
+
 ## Detection Rules
 
 The `DetectionEngine` (`backend/app/detection/engine.py`) runs every enabled rule against each uploaded batch of parsed log entries. Rules are configurable per-deployment (`DETECTION_RULE_CONFIG`) and, for the built-in set below, also live-configurable by an Admin/Analyst through `GET`/`PATCH /detection/rules` without a restart. Analysts can additionally author custom rules at runtime through the Rule Builder (`POST/PATCH/DELETE /custom-rules`), which run alongside these built-ins.
