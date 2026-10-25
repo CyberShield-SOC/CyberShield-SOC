@@ -1,0 +1,16 @@
+{
+  "api_url": "http://127.0.0.1:3000/api",
+  "state_dir": ".cybershield-collector",
+  "source_host": "web-01",
+  "poll_interval_seconds": 2,
+  "settle_seconds": 5,
+  "max_chunk_bytes": 1048576,
+  "sources": [
+    {
+      "name": "web-01-auth",
+      "path": "../sample-logs/watched",
+      "source_type": "agent",
+      "start_at": "beginning"
+    }
+  ]
+}
