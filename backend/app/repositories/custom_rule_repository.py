@@ -68,13 +68,14 @@ def create_custom_rule(
             dsl=dsl,
             created_by=created_by,
         )
-        db.add(rule)
         try:
             with db.begin_nested():
+                db.add(rule)
                 db.flush()
             return rule
         except IntegrityError:
-            db.expunge(rule)
+            if rule in db:
+                db.expunge(rule)
             if attempt == MAX_RULE_ID_ATTEMPTS - 1:
                 raise
 
@@ -117,12 +118,14 @@ def update_custom_rule(db: Session, *, rule_pk: int, updates: dict) -> CustomRul
         "severity",
         "tactic",
         "window_seconds",
-        "actions",
         "status",
         "dsl",
     ):
-        if field in updates and updates[field] is not None:
+        if field in updates and (updates[field] is not None or field in {"tactic", "dsl"}):
             setattr(rule, field, updates[field])
+
+    if updates.get("actions") is not None:
+        rule.actions = {**(rule.actions or {}), **updates["actions"]}
 
     if "conditions" in updates and updates["conditions"] is not None:
         rule.conditions = updates["conditions"]

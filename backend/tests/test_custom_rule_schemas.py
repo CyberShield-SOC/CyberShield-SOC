@@ -11,7 +11,24 @@ pytestmark = pytest.mark.no_db
 
 from pydantic import ValidationError
 
-from app.schemas.custom_rule import CustomRuleCreate, CustomRuleUpdate
+from app.schemas.custom_rule import ConditionPayload, CustomRuleCreate, CustomRuleUpdate
+
+
+@pytest.mark.parametrize("field,operator,value", [
+    ("port", "equals", "NaN"), ("port", "in", "22,,443"),
+    ("port", "equals", "65536"), ("timestamp", "between", "25:00-06:00"),
+    ("timestamp", "between", "02:60-06:00"), ("timestamp", "before", "garbage"),
+    ("status", "contains", "   "),
+])
+def test_invalid_condition_values_are_rejected(field, operator, value):
+    with pytest.raises(ValidationError):
+        ConditionPayload(field=field, operator=operator, value=value)
+
+
+def test_explicit_null_rejected_for_required_update_fields():
+    with pytest.raises(ValidationError, match="cannot be null"):
+        CustomRuleUpdate(status=None)
+    assert CustomRuleUpdate(tactic=None).model_dump(exclude_unset=True) == {"tactic": None}
 
 
 def _base_payload(**overrides):

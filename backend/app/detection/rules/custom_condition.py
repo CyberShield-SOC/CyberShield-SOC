@@ -27,7 +27,7 @@ OPERATORS_BY_TYPE = {
 
 GROUP_FIELDS = frozenset({"ip_address", "username"})
 
-_HOUR_RANGE_RE = re.compile(r"^\s*(\d{1,2}):\d{2}\s*[–-]\s*(\d{1,2}):\d{2}\s*$")
+_HOUR_RANGE_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})\s*$")
 
 
 def field_type(field: str) -> str:
@@ -79,21 +79,25 @@ def _parse_hour_range(value: str) -> tuple[int, int] | None:
     match = _HOUR_RANGE_RE.match(value or "")
     if not match:
         return None
-    return int(match.group(1)), int(match.group(2))
+    sh, sm, eh, em = map(int, match.groups())
+    if sh > 23 or eh > 23 or sm > 59 or em > 59:
+        return None
+    return sh * 60 + sm, eh * 60 + em
 
 
-def _local_hour(dt: datetime, tz_name: str | None) -> int | None:
-    """Hour of day in the condition's timezone; UTC when no timezone is set."""
+def _local_minute(dt: datetime, tz_name: str | None) -> int | None:
+    """Minute of day in the condition's timezone; UTC by default."""
 
     if not tz_name:
-        return dt.hour
+        return dt.astimezone(timezone.utc).hour * 60 + dt.minute
     try:
         zone = ZoneInfo(tz_name)
     except (ZoneInfoNotFoundError, ValueError):
         return None
     # Naive timestamps are treated as UTC, matching the rest of the pipeline.
     aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
-    return aware.astimezone(zone).hour
+    local = aware.astimezone(zone)
+    return local.hour * 60 + local.minute
 
 
 def _match_timestamp(actual: Any, operator: str, expected: str, tz_name: str | None = None) -> bool:
@@ -105,12 +109,12 @@ def _match_timestamp(actual: Any, operator: str, expected: str, tz_name: str | N
         if hour_range is None:
             return False
         start, end = hour_range
-        hour = _local_hour(dt, tz_name)
-        if hour is None:
+        minute = _local_minute(dt, tz_name)
+        if minute is None:
             return False
         if start <= end:
-            return start <= hour < end
-        return hour >= start or hour < end
+            return start <= minute < end
+        return minute >= start or minute < end
     if operator in ("before", "after"):
         boundary = parse_ts(expected)
         if boundary is None:
@@ -163,7 +167,7 @@ class CustomConditionRule(BaseRule):
         self.window_seconds = max(60, int(window_seconds or 600))
 
     def _matches(self, record: LogRecord) -> bool:
-        return all(evaluate_condition(record, condition) for condition in self.conditions)
+        return bool(self.conditions) and all(evaluate_condition(record, condition) for condition in self.conditions)
 
     def matches(self, records: list[LogRecord]) -> list[LogRecord]:
         """Expose raw matches (used by the rule-test endpoint's dry run)."""
@@ -192,8 +196,8 @@ class CustomConditionRule(BaseRule):
                 if (
                     bucket
                     and ts is not None
-                    and bucket[-1][1] is not None
-                    and (ts - bucket[-1][1]).total_seconds() > self.window_seconds
+                    and bucket[0][1] is not None
+                    and (ts - bucket[0][1]).total_seconds() > self.window_seconds
                 ):
                     alerts.append(self._alert_for_bucket(bucket, group_key))
                     bucket = []

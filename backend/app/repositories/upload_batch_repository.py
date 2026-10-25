@@ -20,6 +20,10 @@ def create_upload_batch(
     skipped_lines: int,
     stored_entries: int,
     stored_alerts: int,
+    source_name: str | None = None,
+    source_type: str | None = None,
+    source_host: str | None = None,
+    ingested_by: int | None = None,
 ) -> UploadBatch:
     """Create one upload-batch metadata row inside the caller's transaction."""
 
@@ -34,6 +38,10 @@ def create_upload_batch(
         skipped_lines=skipped_lines,
         stored_entries=stored_entries,
         stored_alerts=stored_alerts,
+        source_name=source_name,
+        source_type=source_type,
+        source_host=source_host,
+        ingested_by=ingested_by,
     )
     db.add(batch)
     db.flush()
@@ -55,4 +63,8 @@ def serialize_upload_batch(batch: UploadBatch) -> dict:
         "skipped_lines": batch.skipped_lines,
         "stored_entries": batch.stored_entries,
         "stored_alerts": batch.stored_alerts,
+        "source_name": batch.source_name,
+        "source_type": batch.source_type,
+        "source_host": batch.source_host,
+        "ingested_by": batch.ingested_by,
     }
