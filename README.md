@@ -8,7 +8,7 @@ CyberShield SOC is a full security-operations platform: a FastAPI backend that i
 
 Sprint 6 adds correlation, exact evidence APIs, investigation states, and incident assignment/resolution/reopening with history. See [Sprint 6 additions](docs/sprint6.md).
 
-Sprint 7 adds authenticated collector ingestion through `POST /api/ingest`, source provenance, and custom-rule fixes. See the [ingestion contract and authentication review](docs/SPRINT7_INGESTION_AND_RULES.md).
+Sprint 7 adds authenticated collector ingestion through `POST /api/ingest`, source provenance, and custom-rule fixes. See the [ingestion contract and authentication review](docs/SPRINT7_INGESTION_AND_RULES.md). The watched-directory collector that feeds it, with deduplication and retry handling, lives in [`collector/`](collector/README.md).
 
 ## Detection Rules
 
