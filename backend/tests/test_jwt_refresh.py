@@ -136,6 +136,14 @@ def test_refresh_rotates_the_token_and_detects_replay(db_session: Session):
 
     # ...but replaying the ORIGINAL (already-rotated-away) refresh token is
     # rejected, since rotation revokes it immediately.
+    #
+    # `cookies.set()` alone would not replace the rotated cookie here: the
+    # server's Set-Cookie responses land in httpx's jar as host-only cookies
+    # (domain="testserver.local"), while `.set()` without a domain writes a
+    # *second*, separate entry (domain=""). Both then get sent on the next
+    # request, and the rotated one wins — so delete every existing entry for
+    # this cookie name first to really force the stale value through.
+    client.cookies.delete(settings.auth_cookie_name)
     client.cookies.set(settings.auth_cookie_name, original_refresh_cookie)
     replayed = client.post("/auth/refresh", headers=csrf_headers())
     assert replayed.status_code == 401
