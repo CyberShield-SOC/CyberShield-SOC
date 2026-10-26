@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -45,6 +45,16 @@ function operatorsFor(field) {
   return OPERATORS_BY_TYPE[fieldTypeOf(field)] || OPERATORS_BY_TYPE.string;
 }
 
+/** Mirrors the backend's custom_rule_action_repository._enabled(): a nested
+ * action config is "on" unless it explicitly sets enabled: false. The Rule
+ * Builder only edits the on/off flag, so any other nested config an existing
+ * rule was saved with is preserved by status/enable-disable actions and only
+ * collapsed to a plain boolean if the rule is re-saved from this form. */
+function actionEnabled(value) {
+  if (value && typeof value === "object") return value.enabled !== false;
+  return Boolean(value);
+}
+
 function validateDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }) {
   const problems = [];
   if (!ruleName.trim()) problems.push("Rule name is required");
@@ -73,29 +83,59 @@ function validateDraft({ conditions, groupBy, ruleName, severity, window: window
 export default function RuleBuilderPage({ navigate }) {
   const baseId = useId();
   const conditionKeyRef = useRef(0);
-  const { canWrite, createCustomRule, nextCustomRuleId, testCustomRule } = useSocWorkspace();
-  const [ruleName, setRuleName] = useState(RULE_BUILDER_DEFAULTS.name);
-  const [category, setCategory] = useState(RULE_BUILDER_DEFAULTS.category);
-  const [severity, setSeverity] = useState(RULE_BUILDER_DEFAULTS.severity);
-  const [tactic, setTactic] = useState(RULE_BUILDER_DEFAULTS.tactic);
-  const [conditions, setConditions] = useState(() => INITIAL_CONDITIONS.map((condition) => ({
-    ...condition,
-    key: `c${(conditionKeyRef.current += 1)}`,
-  })));
-  const [groupBy, setGroupBy] = useState(RULE_BUILDER_DEFAULTS.groupBy);
-  const [windowValue, setWindowValue] = useState(RULE_BUILDER_DEFAULTS.window);
+  const {
+    canWrite,
+    createCustomRule,
+    customRules,
+    editingCustomRuleId,
+    nextCustomRuleId,
+    setEditingCustomRuleId,
+    testCustomRule,
+    updateCustomRule,
+  } = useSocWorkspace();
+  // Set once, from the rule Threat Detection asked us to edit (if any). The
+  // page remounts on every navigation, so this snapshot never goes stale.
+  const [editingRule] = useState(() => (
+    editingCustomRuleId ? customRules.find((rule) => rule.backendId === editingCustomRuleId) || null : null
+  ));
+  const isEditing = Boolean(editingRule);
+  const [ruleName, setRuleName] = useState(editingRule?.name ?? RULE_BUILDER_DEFAULTS.name);
+  const [category, setCategory] = useState(editingRule?.category ?? RULE_BUILDER_DEFAULTS.category);
+  const [severity, setSeverity] = useState(editingRule?.severity ?? RULE_BUILDER_DEFAULTS.severity);
+  const [tactic, setTactic] = useState(editingRule?.tactic || RULE_BUILDER_DEFAULTS.tactic);
+  const [conditions, setConditions] = useState(() => (
+    (editingRule?.conditions?.length ? editingRule.conditions : INITIAL_CONDITIONS).map((condition) => ({
+      ...condition,
+      key: `c${(conditionKeyRef.current += 1)}`,
+    }))
+  ));
+  const [groupBy, setGroupBy] = useState(editingRule?.groupBy ?? RULE_BUILDER_DEFAULTS.groupBy);
+  const [windowValue, setWindowValue] = useState(() => {
+    if (!editingRule) return RULE_BUILDER_DEFAULTS.window;
+    const match = Object.entries(WINDOW_SECONDS_BY_VALUE).find(([, seconds]) => seconds === editingRule.windowSeconds);
+    return match ? match[0] : RULE_BUILDER_DEFAULTS.window;
+  });
   const [actions, setActions] = useState(() => Object.fromEntries(
-    ACTION_OPTIONS.map((action) => [action.id, action.checked]),
+    ACTION_OPTIONS.map((action) => [
+      action.id,
+      editingRule ? actionEnabled(editingRule.actions?.[action.id]) : action.checked,
+    ]),
   ));
   const [testState, setTestState] = useState("idle");
   const [testResult, setTestResult] = useState(null);
   const [testError, setTestError] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [savingAction, setSavingAction] = useState(null); // "draft" | "enable" | null
+  const [savingAction, setSavingAction] = useState(null); // "draft" | "enable" | "edit" | null
   const [savedRule, setSavedRule] = useState(null);
 
-  const ruleIdLabel = savedRule
+  // Clear the handoff on unmount (navigating anywhere else) so a later visit
+  // to "New custom rule" never lands back in this rule's edit mode.
+  useEffect(() => () => setEditingCustomRuleId(null), [setEditingCustomRuleId]);
+
+  const ruleIdLabel = isEditing
+    ? `${editingRule.id} · existing rule`
+    : savedRule
     ? `${savedRule.id} · saved`
     : `${nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId} · auto-assigned`;
 
@@ -110,7 +150,7 @@ export default function RuleBuilderPage({ navigate }) {
   const dslLines = useMemo(() => {
     const lines = [[
       { text: "rule ", kind: "keyword" },
-      { text: savedRule?.id || nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId, kind: "field" },
+      { text: editingRule?.id || savedRule?.id || nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId, kind: "field" },
       { text: ` "${ruleName.trim()}" `, kind: "value" },
       { text: "{", kind: "punct" },
     ]];
@@ -132,7 +172,7 @@ export default function RuleBuilderPage({ navigate }) {
     ]);
     lines.push([{ text: "}", kind: "punct" }]);
     return lines;
-  }, [conditions, groupBy, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category]);
+  }, [conditions, editingRule, groupBy, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category]);
 
   const dslText = useMemo(
     () => dslLines.map((line) => line.map((fragment) => fragment.text).join("")).join("\n"),
@@ -171,7 +211,7 @@ export default function RuleBuilderPage({ navigate }) {
     setConfirmation("");
   }
 
-  function buildPayload(status) {
+  function buildFields() {
     return {
       name: ruleName.trim() || "Untitled rule",
       category,
@@ -186,9 +226,12 @@ export default function RuleBuilderPage({ navigate }) {
       groupBy,
       windowSeconds: WINDOW_SECONDS_BY_VALUE[windowValue] || 600,
       actions,
-      status,
       dsl: dslText,
     };
+  }
+
+  function buildPayload(status) {
+    return { ...buildFields(), status };
   }
 
   async function runTest() {
@@ -226,6 +269,24 @@ export default function RuleBuilderPage({ navigate }) {
     }
   }
 
+  async function saveEdits() {
+    if (savingAction) return;
+    setSavingAction("edit");
+    setSaveError("");
+    try {
+      const updated = await updateCustomRule(editingRule.backendId, buildFields());
+      if (!updated) {
+        setSaveError("The custom rule could not be updated. Check the form and try again.");
+        return;
+      }
+      setConfirmation(`${updated.id} "${ruleName.trim() || "Untitled rule"}" has been updated.`);
+    } catch (error) {
+      setSaveError(error.message || "The custom rule could not be updated.");
+    } finally {
+      setSavingAction(null);
+    }
+  }
+
   const showResult = testState !== "loading" && testResult;
 
   return (
@@ -236,38 +297,57 @@ export default function RuleBuilderPage({ navigate }) {
             <ArrowLeft size={14} aria-hidden="true" />
             Back to rules
           </button>
-          <h1>New custom rule</h1>
-          <p>Added to the custom rule library · runs alongside R-101…R-106</p>
+          <h1>{isEditing ? "Edit custom rule" : "New custom rule"}</h1>
+          <p>{isEditing
+            ? `${editingRule.id} · editing an existing custom rule`
+            : "Added to the custom rule library · runs alongside R-101…R-106"}</p>
         </div>
         <div className="soc-page-actions">
-          <button
-            className="soc-button secondary"
-            type="button"
-            disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue}
-            title={savedRule
-              ? `${savedRule.id} is already saved — go back to author another rule`
-              : hasEmptyConditionValue
-              ? "Every condition needs a value before the draft can be saved"
-              : undefined}
-            onClick={() => saveRule("draft")}
-          >
-            {savingAction === "draft" ? <span className="soc-spinner small" aria-hidden="true" /> : null}
-            Save draft
-          </button>
-          <button
-            className="soc-button primary"
-            type="button"
-            disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid}
-            title={savedRule
-              ? `${savedRule.id} is already saved — go back to author another rule`
-              : hasEmptyConditionValue
-              ? "Every condition needs a value before the rule can be enabled"
-              : (!syntaxValid || !schemaValid) ? "Resolve the validation issues before enabling this rule" : undefined}
-            onClick={() => saveRule("enabled")}
-          >
-            {savingAction === "enabled" ? <span className="soc-spinner small" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
-            Enable rule
-          </button>
+          {isEditing ? (
+            <button
+              className="soc-button primary"
+              type="button"
+              disabled={!canWrite || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid}
+              title={hasEmptyConditionValue
+                ? "Every condition needs a value before changes can be saved"
+                : (!syntaxValid || !schemaValid) ? "Resolve the validation issues before saving" : undefined}
+              onClick={saveEdits}
+            >
+              {savingAction === "edit" ? <span className="soc-spinner small" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
+              Save changes
+            </button>
+          ) : (
+            <>
+              <button
+                className="soc-button secondary"
+                type="button"
+                disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue}
+                title={savedRule
+                  ? `${savedRule.id} is already saved — go back to author another rule`
+                  : hasEmptyConditionValue
+                  ? "Every condition needs a value before the draft can be saved"
+                  : undefined}
+                onClick={() => saveRule("draft")}
+              >
+                {savingAction === "draft" ? <span className="soc-spinner small" aria-hidden="true" /> : null}
+                Save draft
+              </button>
+              <button
+                className="soc-button primary"
+                type="button"
+                disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid}
+                title={savedRule
+                  ? `${savedRule.id} is already saved — go back to author another rule`
+                  : hasEmptyConditionValue
+                  ? "Every condition needs a value before the rule can be enabled"
+                  : (!syntaxValid || !schemaValid) ? "Resolve the validation issues before enabling this rule" : undefined}
+                onClick={() => saveRule("enabled")}
+              >
+                {savingAction === "enabled" ? <span className="soc-spinner small" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
+                Enable rule
+              </button>
+            </>
+          )}
         </div>
       </header>
 

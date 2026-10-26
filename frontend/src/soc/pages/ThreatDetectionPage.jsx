@@ -3,6 +3,7 @@ import {
   Activity,
   Clock3,
   HeartPulse,
+  Pencil,
   Plus,
   RadioTower,
   RefreshCw,
@@ -98,6 +99,7 @@ const FALLBACK_RULES = Object.freeze({
 export default function ThreatDetectionPage({ navigate }) {
   const {
     alerts,
+    canAdminister,
     canWrite,
     customRules,
     deleteCustomRule,
@@ -105,11 +107,14 @@ export default function ThreatDetectionPage({ navigate }) {
     repositoryMode,
     refresh,
     resources,
+    setEditingCustomRuleId,
     updateCustomRuleStatus,
   } = useSocWorkspace();
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(CURRENT_DETECTION_RULE_IDS[0]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const tabRefs = useRef([]);
   // detectionRules is a static import, never a fetched resource — the only
   // live resource behind this page's rule inventory is customRules.
@@ -525,6 +530,14 @@ export default function ThreatDetectionPage({ navigate }) {
               )}
               {selected.isCustom && canWrite && (
                 <div className="rule-custom-actions">
+                  <button
+                    className="soc-button secondary compact"
+                    type="button"
+                    onClick={() => { setEditingCustomRuleId(selected.backendId); navigate?.(SOC_ROUTES.ruleBuilder); }}
+                  >
+                    <Pencil size={14} aria-hidden="true" />
+                    Edit rule
+                  </button>
                   {selected.status !== "enabled" && (
                     <button
                       className="soc-button secondary compact"
@@ -546,7 +559,7 @@ export default function ThreatDetectionPage({ navigate }) {
                   <button
                     className="soc-button danger compact"
                     type="button"
-                    onClick={() => deleteCustomRule(selected.backendId)}
+                    onClick={() => setDeleteTarget(selected)}
                   >
                     <Trash2 size={14} aria-hidden="true" />
                     Delete rule
@@ -561,9 +574,43 @@ export default function ThreatDetectionPage({ navigate }) {
       </div>
 
       <div className="secondary-workspace detection-rule-workspace">
-        <ThreatIntelPanel canWrite={canWrite} icon={RadioTower} />
+        <ThreatIntelPanel canWrite={canWrite} canAdminister={canAdminister} icon={RadioTower} />
         <HostHeartbeatPanel canWrite={canWrite} icon={HeartPulse} />
       </div>
+
+      {deleteTarget && (
+        <div
+          className="soc-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) setDeleteTarget(null); }}
+        >
+          <section className="soc-modal" role="dialog" aria-modal="true" aria-labelledby="delete-rule-title">
+            <header>
+              <div>
+                <h2 id="delete-rule-title">Delete {deleteTarget.id}?</h2>
+                <p>This permanently removes "{deleteTarget.name}" from the custom rule library. It will stop running on future uploads and cannot be recovered.</p>
+              </div>
+            </header>
+            <div className="soc-modal-actions">
+              <button className="soc-button secondary" type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button
+                className="soc-button danger"
+                type="button"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  const removed = await deleteCustomRule(deleteTarget.backendId);
+                  setDeleting(false);
+                  if (removed) setDeleteTarget(null);
+                }}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                {deleting ? "Deleting…" : "Delete rule"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }

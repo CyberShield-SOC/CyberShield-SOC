@@ -70,6 +70,9 @@ export function SocWorkspaceProvider({ children, user }) {
   const [globalTimeRange, setGlobalTimeRangeState] = useState("24h");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [trackingIncidentId, setTrackingIncidentId] = useState(null);
+  // Set by Threat Detection's "Edit rule" action and read by the Rule Builder
+  // page it navigates to, mirroring trackingIncidentId's cross-page handoff.
+  const [editingCustomRuleId, setEditingCustomRuleId] = useState(null);
   // Keep explicit investigation selections stable while route components
   // mount and unmount. They reset with the workspace provider on sign-out.
   const [selectedAlertId, setSelectedAlertId] = useState(null);
@@ -506,6 +509,27 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite]);
 
+  const updateCustomRule = useCallback(async (backendId, updates) => {
+    if (rejectReadOnlyMutation()) return null;
+    const mutationKey = `update-custom-rule-${backendId}`;
+    if (!acquireMutation(mutationKey)) return null;
+    setMutation({ loading: true, error: "", message: "Saving custom rule…" });
+    try {
+      const updated = await socRepository.updateCustomRule(backendId, updates);
+      setCustomRules((current) => ({
+        rules: current.rules.map((rule) => (rule.backendId === backendId ? updated : rule)),
+        nextRuleId: current.nextRuleId,
+      }));
+      setMutation({ loading: false, error: "", message: `${updated.id} updated` });
+      return updated;
+    } catch (error) {
+      setMutation({ loading: false, error: error.message || "The custom rule could not be updated.", message: "" });
+      return null;
+    } finally {
+      releaseMutation(mutationKey);
+    }
+  }, [canWrite]);
+
   const deleteCustomRule = useCallback(async (backendId) => {
     if (rejectReadOnlyMutation()) return false;
     const mutationKey = `delete-custom-rule-${backendId}`;
@@ -725,6 +749,8 @@ export function SocWorkspaceProvider({ children, user }) {
     timeFilteredIncidents,
     trackingIncidentId,
     setTrackingIncidentId,
+    editingCustomRuleId,
+    setEditingCustomRuleId,
     selectedAlertId,
     setSelectedAlertId,
     selectedIncidentId,
@@ -757,6 +783,7 @@ export function SocWorkspaceProvider({ children, user }) {
     createIncident,
     createCustomRule,
     updateCustomRuleStatus,
+    updateCustomRule,
     deleteCustomRule,
     testCustomRule,
     uploadLogFile,
@@ -779,6 +806,7 @@ export function SocWorkspaceProvider({ children, user }) {
     createIncident,
     createCustomRule,
     updateCustomRuleStatus,
+    updateCustomRule,
     deleteCustomRule,
     testCustomRule,
     customRules,
@@ -811,6 +839,7 @@ export function SocWorkspaceProvider({ children, user }) {
     timeFilteredIngestedEvents,
     timeFilteredIncidents,
     trackingIncidentId,
+    editingCustomRuleId,
     aiMessages,
     aiLastAnalysis,
     selectedAlertId,

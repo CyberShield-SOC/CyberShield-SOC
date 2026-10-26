@@ -604,6 +604,24 @@ function customRuleApiPayload(rule) {
   };
 }
 
+/** Partial PATCH body for custom-rule edits: only fields the caller actually
+ * supplied, so an in-place status toggle and a full Rule Builder edit can
+ * share one code path without one clobbering fields the other left alone. */
+function customRuleUpdatePayload(updates) {
+  const body = {};
+  if (updates.name !== undefined) body.name = updates.name;
+  if (updates.category !== undefined) body.category = updates.category;
+  if (updates.severity !== undefined) body.severity = updates.severity.toUpperCase();
+  if (updates.tactic !== undefined) body.tactic = updates.tactic || null;
+  if (updates.conditions !== undefined) body.conditions = updates.conditions;
+  if (updates.groupBy !== undefined) body.group_by = updates.groupBy;
+  if (updates.windowSeconds !== undefined) body.window_seconds = updates.windowSeconds;
+  if (updates.actions !== undefined) body.actions = updates.actions;
+  if (updates.dsl !== undefined) body.dsl = updates.dsl;
+  if (updates.status !== undefined) body.status = updates.status.toUpperCase();
+  return body;
+}
+
 function normalizeIncident(incident, alerts = [], latest = null) {
   const sourceAlert = alerts.find((alert) => alert.id === incident.source_alert_id);
   const normalizedAlert = sourceAlert ? normalizeAlert(sourceAlert, latest) : null;
@@ -925,11 +943,7 @@ const mockRepository = {
     const rules = readSessionCustomRules();
     const target = rules.find((item) => item.id === backendId);
     if (!target) throw new Error("That custom rule no longer exists.");
-    Object.assign(target, {
-      ...(updates.status ? { status: updates.status.toUpperCase() } : {}),
-      ...(updates.name ? { name: updates.name } : {}),
-      updated_at: new Date().toISOString(),
-    });
+    Object.assign(target, customRuleUpdatePayload(updates), { updated_at: new Date().toISOString() });
     writeSessionCustomRules(rules);
     return normalizeCustomRule(target);
   },
@@ -1337,12 +1351,9 @@ export const httpRepository = {
   },
   async updateCustomRule(ruleId, updates) {
     const numericId = requireBackendId(ruleId, "Custom rule");
-    const body = {};
-    if (updates.status) body.status = updates.status.toUpperCase();
-    if (updates.name) body.name = updates.name;
     const payload = await request(`/custom-rules/${numericId}`, {
       method: "PATCH",
-      body: JSON.stringify(body),
+      body: JSON.stringify(customRuleUpdatePayload(updates)),
     });
     return normalizeCustomRule(payload.rule);
   },
