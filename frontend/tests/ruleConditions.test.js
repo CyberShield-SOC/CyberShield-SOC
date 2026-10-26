@@ -35,13 +35,13 @@ test("payload drops a stale timezone when the operator no longer supports one", 
 
 test("DSL preview shows the zone for a local-time hour range", () => {
   const condition = { field: "timestamp", operator: "between", value: "00:00 – 06:00", timezone: "America/Chicago" };
-  assert.equal(dslText(condition), 'hour(ts, "America/Chicago") in 00..06');
+  assert.equal(dslText(condition), 'time_range(ts, "00:00", "06:00", "America/Chicago", end_exclusive: true)');
 });
 
 test("DSL preview is unchanged for UTC hour ranges", () => {
   const condition = { field: "timestamp", operator: "between", value: "00:00 – 06:00", timezone: "" };
-  assert.equal(dslText(condition), "hour(ts) in 00..06");
-  assert.equal(dslText({ ...condition, timezone: undefined }), "hour(ts) in 00..06");
+  assert.equal(dslText(condition), 'time_range(ts, "00:00", "06:00", "UTC", end_exclusive: true)');
+  assert.equal(dslText({ ...condition, timezone: undefined }), 'time_range(ts, "00:00", "06:00", "UTC", end_exclusive: true)');
 });
 
 test("DSL preview for a non-range between value is unchanged by the timezone", () => {
@@ -67,4 +67,9 @@ test("every picker zone is a valid IANA name", () => {
     // Throws RangeError for names the runtime does not know.
     assert.doesNotThrow(() => new Intl.DateTimeFormat("en-US", { timeZone: option.value }), option.value);
   }
+});
+
+
+test("time-range preview retains minutes and marks the exclusive end", () => {
+  assert.equal(dslText({ field: "timestamp", operator: "between", value: "23:45 - 01:15", timezone: "America/Chicago" }), 'time_range(ts, "23:45", "01:15", "America/Chicago", end_exclusive: true)');
 });

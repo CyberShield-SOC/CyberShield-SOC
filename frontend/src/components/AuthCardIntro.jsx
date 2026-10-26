@@ -1,8 +1,8 @@
 import { ArrowLeft } from "lucide-react";
 
-export function AuthBackButton({ children = "Back to sign in", onClick }) {
+export function AuthBackButton({ children = "Back to sign in", onClick, disabled = false }) {
   return (
-    <button className="back-button" type="button" onClick={onClick}>
+    <button className="back-button" type="button" onClick={onClick} disabled={disabled}>
       <ArrowLeft size={16} aria-hidden="true" /> {children}
     </button>
   );

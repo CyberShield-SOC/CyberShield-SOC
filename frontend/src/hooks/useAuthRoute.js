@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { canOpenUserManagement } from "../utils/permissions.js";
+import { canManageRules, canOpenUserManagement, canReadWorkspace } from "../utils/permissions.js";
 
 export const AUTH_ROUTES = Object.freeze({
   login: "login",
@@ -60,7 +60,8 @@ export function isSocRoute(route) {
 }
 
 export function canAccessSocRoute(route, user) {
-  if (!isSocRoute(route)) return false;
+  if (!isSocRoute(route) || !canReadWorkspace(user)) return false;
+  if (route === SOC_ROUTES.ruleBuilder) return canManageRules(user);
   if (route !== SOC_ROUTES.users) return true;
   return canOpenUserManagement(user);
 }

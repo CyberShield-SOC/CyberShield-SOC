@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect } from "react";
 import { canAccessSocRoute, SOC_ROUTES } from "../hooks/useAuthRoute";
 import { SocShell } from "./components/SocShell";
 import { LoadingState } from "./components/Ui";
-import { SocWorkspaceProvider } from "./context/SocWorkspaceContext";
+import { SocWorkspaceProvider, useSocWorkspace } from "./context/SocWorkspaceContext";
+import { canReadWorkspace } from "../utils/permissions";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const EventLogsPage = lazy(() => import("./pages/EventLogsPage"));
@@ -21,6 +22,10 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const ManagementPage = lazy(() => import("./pages/ManagementPage"));
 
 function RouteView({ navigate, route, theme, toggleTheme }) {
+  const { setEditingCustomRuleId } = useSocWorkspace();
+  useEffect(() => {
+    if (route !== SOC_ROUTES.ruleBuilder) setEditingCustomRuleId(null);
+  }, [route, setEditingCustomRuleId]);
   switch (route) {
     case SOC_ROUTES.dashboard:
       return <DashboardPage navigate={navigate} />;
@@ -64,6 +69,8 @@ export default function SocApp({ expiresAt, navigate, onSignOut, route, theme, t
   useEffect(() => {
     if (allowedRoute !== route) navigate(allowedRoute);
   }, [allowedRoute, navigate, route]);
+
+  if (!canReadWorkspace(user)) return <main className="soc-state" role="alert"><p>Your account does not have access to this workspace.</p><button className="soc-button secondary" type="button" onClick={onSignOut}>Sign out</button></main>;
 
   return (
     <SocWorkspaceProvider user={user}>
