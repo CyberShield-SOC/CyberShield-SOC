@@ -1,4 +1,4 @@
-const SPREADSHEET_FORMULA_PREFIX = /^[=+\-@]/;
+const SPREADSHEET_FORMULA_PREFIX = /^[\s\u0000-\u001f]*[=+\-@]/;
 
 // Mirrors backend/app/middleware/file_validation.py's MAX_FILE_SIZE_BYTES —
 // keep both in sync so a large file fails fast client-side instead of only
@@ -58,21 +58,30 @@ export function eventsToCsv(events) {
 }
 
 export function downloadEventsCsv(events) {
-  const blob = new Blob([eventsToCsv(events)], { type: "text/csv;charset=utf-8" });
+  return downloadCsvFile(eventsToCsv(events), `cybershield-events-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+export function downloadCsvFile(csv, filename) {
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `cybershield-events-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  // Firefox may not start the download until after the click handler returns.
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  let link;
+  try {
+    link = document.createElement("a");
+    link.href = url; link.download = filename; link.hidden = true;
+    document.body.append(link);
+    link.click();
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  } finally {
+    link?.remove();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return filename;
 }
 
 export function incidentsToCsv(incidents) {
-  const columns = ["id", "title", "owner", "priority", "status", "updated", "completedAt", "completedBy", "summary"];
+  const columns = ["id", "title", "owner", "priority", "status", "updated", "completedAt", "completedBy", "summary", "resolutionReason", "resolutionNote"];
   return [
     columns.map(escapeCsvCell).join(","),
     ...incidents.map((incident) => columns.map((key) => escapeCsvCell(incident[key])).join(",")),
@@ -80,16 +89,7 @@ export function incidentsToCsv(incidents) {
 }
 
 export function downloadIncidentsCsv(incidents) {
-  const blob = new Blob([incidentsToCsv(incidents)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `cybershield-incident-history-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return downloadCsvFile(incidentsToCsv(incidents), `cybershield-incident-history-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 export function alertsToCsv(alerts) {
@@ -101,16 +101,7 @@ export function alertsToCsv(alerts) {
 }
 
 export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
-  const blob = new Blob([alertsToCsv(alerts)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `cybershield-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return downloadCsvFile(alertsToCsv(alerts), `cybershield-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 export function validateLogFile(

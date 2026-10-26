@@ -15,6 +15,8 @@ import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
 import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
 import { buildAnomalyStat, buildMlInsight } from "../utils/mlInsight.js";
+import { customRuleUpdates } from "../utils/customRuleDraft.js";
+import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
 
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
@@ -409,9 +411,7 @@ async function readHistory(path) {
     events.push(...responseArray(payload, "events"));
     afterId = payload.next_after_id;
   } while (afterId);
-  return events.map((e) => ({ id: `HISTORY-${e.id}`, at: e.occurred_at,
-    title: e.event_type.replaceAll("_", " ").toLowerCase(),
-    detail: [e.actor_name, e.reason, e.note, JSON.stringify(e.after)].filter(Boolean).join(" · ") }));
+  return events.map(normalizeWorkflowEvent);
 }
 
 function normalizeSourceEvidence(event, alert) {
@@ -604,24 +604,6 @@ function customRuleApiPayload(rule) {
   };
 }
 
-/** Partial PATCH body for custom-rule edits: only fields the caller actually
- * supplied, so an in-place status toggle and a full Rule Builder edit can
- * share one code path without one clobbering fields the other left alone. */
-function customRuleUpdatePayload(updates) {
-  const body = {};
-  if (updates.name !== undefined) body.name = updates.name;
-  if (updates.category !== undefined) body.category = updates.category;
-  if (updates.severity !== undefined) body.severity = updates.severity.toUpperCase();
-  if (updates.tactic !== undefined) body.tactic = updates.tactic || null;
-  if (updates.conditions !== undefined) body.conditions = updates.conditions;
-  if (updates.groupBy !== undefined) body.group_by = updates.groupBy;
-  if (updates.windowSeconds !== undefined) body.window_seconds = updates.windowSeconds;
-  if (updates.actions !== undefined) body.actions = updates.actions;
-  if (updates.dsl !== undefined) body.dsl = updates.dsl;
-  if (updates.status !== undefined) body.status = updates.status.toUpperCase();
-  return body;
-}
-
 function normalizeIncident(incident, alerts = [], latest = null) {
   const sourceAlert = alerts.find((alert) => alert.id === incident.source_alert_id);
   const normalizedAlert = sourceAlert ? normalizeAlert(sourceAlert, latest) : null;
@@ -656,12 +638,13 @@ function normalizeIncident(incident, alerts = [], latest = null) {
 function normalizeNote(note, incident = null) {
   const createdAt = note.created_at;
   const incidentId = incident?.id || note.incident_id;
+  const author = note.author_name || (note.author_user_id ? `User ${note.author_user_id}` : "Unknown analyst");
   return {
     id: displayId("NOTE", note.id),
     backendId: note.id,
     title: note.title || "Analyst note",
     body: note.body,
-    author: `User ${note.author_user_id}`,
+    author,
     createdAt,
     updatedAt: note.updated_at,
     tags: note.tags || [],
@@ -670,7 +653,7 @@ function normalizeNote(note, incident = null) {
     linkedBackendId: incidentId,
     pinned: Boolean(note.pinned),
     archived: Boolean(note.archived),
-    versions: [{ version: 1, at: createdAt, author: `User ${note.author_user_id}`, summary: "Stored incident note" }],
+    versions: [{ version: 1, at: createdAt, author, summary: "Stored incident note" }],
   };
 }
 
@@ -943,7 +926,10 @@ const mockRepository = {
     const rules = readSessionCustomRules();
     const target = rules.find((item) => item.id === backendId);
     if (!target) throw new Error("That custom rule no longer exists.");
-    Object.assign(target, customRuleUpdatePayload(updates), { updated_at: new Date().toISOString() });
+    Object.assign(target, {
+      ...customRuleUpdates(updates),
+      updated_at: new Date().toISOString(),
+    });
     writeSessionCustomRules(rules);
     return normalizeCustomRule(target);
   },
@@ -997,16 +983,17 @@ async function getApiState() {
 export const httpRepository = {
   async getAlertInvestigation(alertId) {
     const id = requireBackendId(alertId, "Alert");
-    const [detail, source, groups, history] = await Promise.all([
+    const [detail, source, groups, history, notes] = await Promise.all([
       request(`/alerts/${id}/investigation`), readPages(`/alerts/${id}/evidence`, "events"),
       readPages(`/alerts/${id}/correlation-groups`, "groups"), readHistory(`/alerts/${id}/investigation/history`),
+      readPages(`/alerts/${id}/investigation/notes`, "notes"),
     ]);
     const events = source.rows.map((event) => normalizeSourceEvidence(event, detail.alert));
     const captured = await Promise.all(groups.rows.map(async (group) => {
       const [context, linked] = await Promise.all([request(`/correlation-groups/${group.id}/rule-context`), readPages(`/correlation-groups/${group.id}/alerts`, "alerts")]);
       return { ...group, ruleContext: context.rule_context, alerts: linked.rows.map((a) => normalizeAlert(a)) };
     }));
-    return { alert: normalizeAlert(detail.alert), events, groups: captured, history, completeness: source.completeness,
+    return { alert: normalizeAlert(detail.alert), events, groups: captured, history, notes: notes.rows.map((note) => ({ id: note.id, author: note.author_name || `User ${note.author_user_id}`, body: note.body, createdAt: note.created_at })), completeness: source.completeness,
       allowedStates: detail.allowed_states, activeIncidentId: detail.active_incident_id,
       related: captured.flatMap((group) => group.alerts.filter((a) => a.backendId !== id).map((alert) => ({
         alert, groupId: group.id, reason: group.reason, groupingEntity: group.entity_value,
@@ -1351,9 +1338,10 @@ export const httpRepository = {
   },
   async updateCustomRule(ruleId, updates) {
     const numericId = requireBackendId(ruleId, "Custom rule");
+    const body = customRuleUpdates(updates);
     const payload = await request(`/custom-rules/${numericId}`, {
       method: "PATCH",
-      body: JSON.stringify(customRuleUpdatePayload(updates)),
+      body: JSON.stringify(body),
     });
     return normalizeCustomRule(payload.rule);
   },

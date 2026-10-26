@@ -16,17 +16,29 @@ export function isLearnedAnomalyRule(ruleKey) {
   return String(ruleKey || "").startsWith(ML_ANOMALY_RULE_PREFIX);
 }
 
+export function alertDetectionMethod(alert) {
+  return isLearnedAnomalyRule(alert?.engineRule || alert?.rule) ? "ml" : "rule";
+}
+
+export function detectionMethodLabel(alert) {
+  return alertDetectionMethod(alert) === "ml" ? "ML anomaly" : "Rule based";
+}
+
+function hasNumber(value) {
+  return (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
+}
+
 /** The backend's native score, three decimals, no rescaling (e.g. "-0.153"). */
 export function formatDecisionScore(value) {
   const number = Number(value);
-  return value !== null && value !== "" && Number.isFinite(number) ? number.toFixed(3) : "—";
+  return hasNumber(value) ? number.toFixed(3) : "—";
 }
 
 function formatDeviation(deviation) {
   const z = Number(deviation?.z_score);
   const value = Number(deviation?.value);
-  if (!deviation?.feature || !Number.isFinite(z)) return null;
-  const valueText = Number.isFinite(value) ? ` (value ${value.toFixed(2)})` : "";
+  if (!deviation?.feature || !hasNumber(deviation.z_score)) return null;
+  const valueText = hasNumber(deviation.value) ? ` (value ${value.toFixed(2)})` : "";
   return `${deviation.feature} ${z >= 0 ? "+" : ""}${z.toFixed(1)} SD${valueText}`;
 }
 
@@ -40,8 +52,8 @@ export function buildMlInsight(rawAlert) {
   const evidence = rawAlert?.evidence;
   if (!isLearnedAnomalyRule(rawAlert?.rule) || !evidence || typeof evidence !== "object") return null;
   const score = Number(evidence.score);
-  if (evidence.score === null || evidence.score === undefined || !Number.isFinite(score)) return null;
-  const hasThreshold = evidence.threshold !== null && evidence.threshold !== undefined && Number.isFinite(Number(evidence.threshold));
+  if (!hasNumber(evidence.score)) return null;
+  const hasThreshold = hasNumber(evidence.threshold);
   const threshold = hasThreshold ? Number(evidence.threshold) : null;
   const deviations = Array.isArray(evidence.feature_deviations) ? evidence.feature_deviations : [];
   return {

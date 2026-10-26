@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, Clock3, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
@@ -10,7 +10,9 @@ import { paginateRecords } from "../utils/pagination";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { getAlertRecommendations, getIncidentActionLabel, incidentMatchesAlert } from "../utils/alertRecommendations";
 import { evidenceEntries } from "../utils/ruleConfig";
-import { DECISION_SCORE_HELP } from "../utils/mlInsight";
+import { describeRuleAction } from "../utils/ruleActionResults";
+import { InvestigationTimeline } from "../components/InvestigationTimeline";
+import { alertDetectionMethod, detectionMethodLabel, DECISION_SCORE_HELP } from "../utils/mlInsight";
 import { formatEvidenceValue, investigationHistoryForIncident, normalizedEvidenceRows, rawEvidenceRows, relatedAlertsForAlert } from "../utils/investigationViews";
 import {
   ErrorState,
@@ -38,53 +40,6 @@ function formatAlertTimeRange(alert) {
   return `${start} – ${end}`;
 }
 
-function minutesLabel(seconds) {
-  const minutes = Math.round(Number(seconds) / 60);
-  return minutes >= 60 ? `${Math.round(minutes / 60)}h` : `${minutes}m`;
-}
-
-/** Maps a rule's actions.<key> outcome (set by the backend after the alert
- * fired) to an icon, tone, and human-readable line for the alert detail rail. */
-function describeActionResult(key, result) {
-  if (!result || typeof result !== "object") return null;
-
-  if (key === "notify_slack") {
-    if (result.status === "sent") {
-      return { tone: "ok", icon: Send, text: `Slack notification sent${result.status_code ? ` (HTTP ${result.status_code})` : ""}.` };
-    }
-    if (result.status === "skipped") {
-      return { tone: "muted", icon: Send, text: "Slack notification skipped — no webhook configured." };
-    }
-    return { tone: "error", icon: AlertTriangle, text: `Slack notification failed${result.error ? `: ${result.error}` : "."}` };
-  }
-
-  if (key === "auto_incident") {
-    if (result.status === "created") {
-      return { tone: "ok", icon: ShieldPlus, text: `Auto-created incident #${result.incident_id}.` };
-    }
-    if (result.status === "already_exists") {
-      return { tone: "muted", icon: ShieldPlus, text: `Incident #${result.incident_id} already exists for this alert.` };
-    }
-    if (result.status === "threshold_not_met") {
-      return {
-        tone: "muted",
-        icon: Clock3,
-        text: `Auto-incident threshold not met (needs ${result.threshold_count} events within ${minutesLabel(result.threshold_window_seconds)}).`,
-      };
-    }
-    return null;
-  }
-
-  if (key === "suggest_playbook") {
-    if (result.status === "linked") {
-      return { tone: "ok", icon: BookOpenCheck, text: `Playbook ${result.playbook_id} linked.` };
-    }
-    return null;
-  }
-
-  return null;
-}
-
 export default function AlertsPage({ navigate }) {
   const {
     timeFilteredAlerts: alerts,
@@ -105,11 +60,13 @@ export default function AlertsPage({ navigate }) {
     selectedAlertId,
     setSelectedAlertId,
     setSelectedIncidentId,
+    setTrackingIncidentId,
     setGlobalTimeRange,
   } = useSocWorkspace();
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
+  const [detectionMethod, setDetectionMethod] = useState("");
   const [source, setSource] = useState("");
   const [page, setPage] = useState(1);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
@@ -128,9 +85,10 @@ export default function AlertsPage({ navigate }) {
       (!query || searchText.includes(query.toLowerCase())) &&
       (!severity || alert.severity === severity) &&
       (!status || alert.status === status) &&
+      (!detectionMethod || alertDetectionMethod(alert) === detectionMethod) &&
       (!source || alert.source === source)
     );
-  }), [alerts, query, severity, source, status]);
+  }), [alerts, query, severity, source, status, detectionMethod]);
   const pagination = useMemo(() => paginateRecords(filtered, page, PAGE_SIZE), [filtered, page]);
   const pageAlerts = pagination.items;
   // The detail card follows the analyst's explicit workspace selection, not
@@ -138,7 +96,7 @@ export default function AlertsPage({ navigate }) {
   // discard the record being investigated.
   const cachedSelected = allAlerts.find((alert) => alert.id === selectedAlertId) || null;
   const persisted = usePersistedInvestigation("alert", cachedSelected || { id: selectedAlertId }, repositoryMode, mutation.message);
-  const selected = cachedSelected || persisted.data?.alert || null;
+  const selected = persisted.data?.alert ? { ...persisted.data.alert, source: persisted.data.events?.[0]?.source || cachedSelected?.source || persisted.data.alert.source } : cachedSelected;
   const permittedStatuses = repositoryMode === "api" ? [...new Set([selected?.status,
     ...(persisted.data?.allowedStates || []).map((state) => state.toLowerCase().replaceAll("_", " "))])].filter(Boolean) : availableStatuses;
   const rule = selected ? detectionRules[selected.ruleId] : null;
@@ -153,7 +111,7 @@ export default function AlertsPage({ navigate }) {
 
   useEffect(() => {
     setPage(1);
-  }, [query, severity, source, status]);
+  }, [query, severity, source, status, detectionMethod]);
 
   useEffect(() => {
     setEvidencePage(1);
@@ -166,8 +124,9 @@ export default function AlertsPage({ navigate }) {
     if (!selected) return;
     if (linkedIncident) {
       setSelectedIncidentId(linkedIncident.id);
-      if (!linkedIncidentIsTerminal) setGlobalTimeRange("all");
-      navigate(SOC_ROUTES.incidents);
+      setGlobalTimeRange("all");
+      if (linkedIncidentIsTerminal) setTrackingIncidentId(linkedIncident.id);
+      navigate(linkedIncidentIsTerminal ? SOC_ROUTES.incidentTracking : SOC_ROUTES.incidents);
       return;
     }
 
@@ -197,7 +156,7 @@ export default function AlertsPage({ navigate }) {
 
   async function saveAlertNote(event) {
     event.preventDefault();
-    if (!selected || mutation.loading || noteSaving) return;
+    if (!canWrite || !selected || mutation.loading || noteSaving) return;
     const comment = noteComment.trim();
     if (comment.length < 12) {
       setNoteError("Add at least 12 characters of analyst context.");
@@ -257,7 +216,7 @@ export default function AlertsPage({ navigate }) {
       <PageHeader
         title="Alerts"
         description="Triage synchronized detections, inspect matched logs, and review rule context before escalation."
-        actions={<button className="soc-button secondary" type="button" disabled={mutation.loading} onClick={() => Promise.all([refresh("alerts"), refresh("events")])}><RefreshCw size={15} />Refresh alerts</button>}
+        actions={<button className="soc-button secondary" type="button" disabled={mutation.loading} onClick={() => { persisted.reload(); return Promise.all([refresh("alerts"), refresh("events")]); }}><RefreshCw size={15} />Refresh alerts</button>}
       />
 
       <div className="soc-stats-grid">
@@ -272,7 +231,8 @@ export default function AlertsPage({ navigate }) {
         <label><span className="sr-only">Severity</span><select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
         <label><span className="sr-only">Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{availableStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
         <label><span className="sr-only">Source</span><select value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{sources.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <button className="soc-button secondary" type="button" onClick={() => { setQuery(""); setSeverity(""); setStatus(""); setSource(""); }}>Clear filters</button>
+        <label><span className="sr-only">Detection method</span><select aria-label="Detection method" value={detectionMethod} onChange={(event) => setDetectionMethod(event.target.value)}><option value="">All detection methods</option><option value="rule">Rule based</option><option value="ml">ML anomalies</option></select></label>
+        <button className="soc-button secondary" type="button" onClick={() => { setDetectionMethod(""); setQuery(""); setSeverity(""); setStatus(""); setSource(""); }}>Clear filters</button>
       </section>
 
       <div className="alerts-workspace">
@@ -283,7 +243,7 @@ export default function AlertsPage({ navigate }) {
               <tbody>
                 {pageAlerts.map((alert) => (
                   <tr key={alert.id} className={selected?.id === alert.id ? "selected" : ""} onClick={() => setSelectedAlertId(alert.id)} tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedAlertId(alert.id); } }}>
-                    <td><strong>{alert.title}</strong><small>{alert.id} · {alert.ruleId}</small></td>
+                    <td><strong>{alert.title}</strong><small>{alert.id} · {alert.ruleId}</small><span className={`detection-method-badge ${alertDetectionMethod(alert)}`}>{detectionMethodLabel(alert)}</span></td>
                     <td><SeverityBadge severity={alert.severity} /></td>
                     <td><span className="mono">{alert.sourceIp}</span><small>{alert.source}</small></td>
                     <td>{alert.assignee}</td>
@@ -310,6 +270,7 @@ export default function AlertsPage({ navigate }) {
                   <dl className="alert-context-list">
                     <div><dt>Severity</dt><dd><SeverityBadge severity={selected.severity} /></dd></div>
                     <div><dt>Affected user</dt><dd className="mono">{selected.user || "Unknown"}</dd></div>
+                    <div><dt>Detection method</dt><dd>{detectionMethodLabel(selected)}</dd></div>
                     <div><dt>Detection rule</dt><dd>{selected.ruleId} · {selected.ruleName}</dd></div>
                     <div><dt>Time range</dt><dd>{formatAlertTimeRange(selected)}</dd></div>
                     <div><dt>Assignee</dt><dd>{selected.assignee}</dd></div>
@@ -317,7 +278,7 @@ export default function AlertsPage({ navigate }) {
                     <div><dt>Source IP</dt><dd className="mono">{selected.sourceIp}</dd></div>
                     {selected.hostname && <div><dt>Host</dt><dd className="mono">{selected.hostname}</dd></div>}
                     {selected.mitreTechnique && <div><dt>ATT&amp;CK</dt><dd>{selected.mitreTechnique}</dd></div>}
-                    {selected.confidence !== null && <div><dt>Confidence</dt><dd>{selected.confidence}%</dd></div>}
+                    {Number.isFinite(selected.confidence) && <div><dt>Confidence</dt><dd>{selected.confidence}%</dd></div>}
                   </dl>
                   {evidenceEntries(selected.evidence).length > 0 && (
                     <div className="alert-evidence-detail">
@@ -389,15 +350,11 @@ export default function AlertsPage({ navigate }) {
               </Panel>
 
               <Panel title="Investigation history" subtitle={repositoryMode === "api" ? `${investigationHistory.length} recorded changes` : linkedIncident ? `${linkedIncident.id} · ${investigationHistory.length} timeline items` : "No incident has been opened yet"}>
-                {linkedIncident || repositoryMode === "api" ? (
-                  <ol className="timeline-list compact">
-                    {investigationHistory.map((item) => (
-                      <li key={item.id}><Clock3 size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="empty-inline">Promote this alert or save an analyst note to begin investigation history.</p>
-                )}
+                <InvestigationTimeline key={selected.id} items={investigationHistory} loading={persisted.loading} error={persisted.error} onRetry={persisted.reload} />
+                {repositoryMode === "api" && <section className="investigation-notes" aria-label="Alert analyst notes"><h4>Analyst notes</h4>
+                  {(persisted.data?.notes || []).map((item) => <article key={item.id}><strong>{item.author}</strong><small>{formatTimestamp(item.createdAt)}</small><p className="history-note">{item.body}</p></article>)}
+                  {!persisted.loading && !persisted.error && !persisted.data?.notes?.length && <p className="empty-inline">No analyst notes recorded for this alert.</p>}
+                </section>}
               </Panel>
 
               <Panel
@@ -412,13 +369,13 @@ export default function AlertsPage({ navigate }) {
                 <Panel title="Rule actions" subtitle="What ran automatically when this alert fired">
                   <ul className="alert-action-results">
                     {Object.entries(selected.actionResults).map(([key, result]) => {
-                      const described = describeActionResult(key, result);
+                      const described = describeRuleAction(key, result);
                       if (!described) return null;
-                      const Icon = described.icon;
+                      const Icon = described.tone === "error" ? AlertTriangle : key === "auto_incident" ? ShieldPlus : key === "notify_slack" ? Send : BookOpenCheck;
                       return (
                         <li key={key} data-state={described.tone}>
                           <Icon size={14} aria-hidden="true" />
-                          <span>{described.text}</span>
+                          <span>{described.text}{described.incidentId && <button className="soc-text-button" type="button" onClick={() => { setTrackingIncidentId(`INC-${String(described.incidentId).padStart(4, "0")}`); setGlobalTimeRange("all"); navigate(SOC_ROUTES.incidentTracking); }}>View incident <ArrowUpRight size={13} /></button>}</span>
                         </li>
                       );
                     })}
@@ -435,7 +392,7 @@ export default function AlertsPage({ navigate }) {
                     <span>Decision score</span>
                     <p>
                       <strong className="mono">{selected.mlInsight.scoreText}</strong>
-                      {selected.mlInsight.thresholdText ? ` · flagged below ${selected.mlInsight.thresholdText}` : ""}
+                      {selected.mlInsight.thresholdText ? ` · threshold ${selected.mlInsight.thresholdText}` : ""}
                     </p>
                   </div>
                   <small className="ai-sample-note">{DECISION_SCORE_HELP}</small>
@@ -454,6 +411,8 @@ export default function AlertsPage({ navigate }) {
                 </Panel>
               )}
 
+              {alertDetectionMethod(selected) === "ml" && !selected.mlInsight && <Panel title="Learned anomaly score"><p className="empty-inline">No usable model score was recorded for this alert. Review its linked evidence and rule context.</p></Panel>}
+
               <Panel title="Detection rule" subtitle={rule ? `${rule.id} · version ${rule.version}` : selected.ruleId}>
                 {rule ? <div className="rule-detail"><div className="rule-title-row"><h3>{rule.name}</h3><StatusBadge status={rule.status} /></div><p>{rule.description}</p><dl><div><dt>ATT&CK</dt><dd>{rule.technique}</dd></div><div><dt>Owner</dt><dd>{rule.owner}</dd></div><div><dt>Updated</dt><dd>{rule.lastUpdated}</dd></div></dl><code>{rule.query}</code></div> : <p className="empty-inline">Detection-rule details are not available for this alert.</p>}
               </Panel>
@@ -463,9 +422,9 @@ export default function AlertsPage({ navigate }) {
       </div>
 
       {noteComposerOpen && selected && (
-        <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !mutation.loading) setNoteComposerOpen(false); }}>
+        <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !mutation.loading && !noteSaving) setNoteComposerOpen(false); }}>
           <section className="soc-modal alert-note-modal" role="dialog" aria-modal="true" aria-labelledby="alert-note-title">
-            <header><div><h2 id="alert-note-title">Add alert triage note</h2><p>Save analyst context with the selected alert and its persisted investigation record.</p></div><button type="button" disabled={mutation.loading} onClick={() => setNoteComposerOpen(false)} aria-label="Close"><X size={18} /></button></header>
+            <header><div><h2 id="alert-note-title">Add alert triage note</h2><p>Save analyst context with the selected alert and its persisted investigation record.</p></div><button type="button" disabled={mutation.loading || noteSaving} onClick={() => setNoteComposerOpen(false)} aria-label="Close"><X size={18} /></button></header>
             <div className="alert-note-context"><span><MessageSquareText size={16} /></span><div><strong>{selected.id} · {selected.title}</strong><p>{selected.sourceIp} · {selected.ruleId} · {evidence.length} matched event{evidence.length === 1 ? "" : "s"}</p></div></div>
             {!linkedIncident && repositoryMode !== "api" && <InlineNotice tone="info" title="Investigation record required">Saving will first create an incident for this sample alert.</InlineNotice>}
             <form onSubmit={saveAlertNote} noValidate>

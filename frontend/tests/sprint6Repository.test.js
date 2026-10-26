@@ -23,6 +23,7 @@ test("older alert evidence uses every API page, captured context, and exact hist
     if (path.pathname.endsWith("/investigation")) payload = { alert, allowed_states: ["RESOLVED"] };
     else if (path.pathname.endsWith("/evidence")) payload = { events: [{ id: Number(path.searchParams.get("page")), source_filename: "old.csv", event_timestamp: null, raw_message: "preserved", normalized: { ip_address: "192.0.2.10", timestamp: null, status: "FAILED" } }], pagination: { page_count: 2 }, completeness: { complete: false } };
     else if (path.pathname.endsWith("/correlation-groups")) payload = { groups: [{ id: 7, entity_value: "192.0.2.10", reason: "Matching entity and rule", window_seconds: 60, counts: { events: 2 } }], pagination: { page_count: 1 } };
+    else if (path.pathname.endsWith("/investigation/notes")) payload = { notes: [{ id: 9, author_name: "Analyst", body: "Verified original source", created_at: "2026-01-01T12:00:00Z" }], pagination: { page_count: 1 } };
     else if (path.pathname.endsWith("/history")) payload = { events: [{ id: 8, occurred_at: "2026-01-01T12:00:00Z", event_type: "NOTE_ADDED", actor_name: "Analyst", note: "Verified original source", after: { version: 3 } }], next_after_id: null };
     else if (path.pathname.endsWith("/rule-context")) payload = { rule_context: { policy: { rule_key: "brute_force_login", window_seconds: 60 } } };
     else if (path.pathname.endsWith("/alerts")) payload = { alerts: [alert, { ...alert, id: 43 }], pagination: { page_count: 1 } };
@@ -39,6 +40,7 @@ test("older alert evidence uses every API page, captured context, and exact hist
     assert.equal(result.groups[0].ruleContext.policy.window_seconds, 60);
     assert.match(result.history[0].detail, /Verified original source/);
     assert.equal(result.completeness.complete, false);
+    assert.equal(result.notes[0].body, "Verified original source");
     assert.ok(calls.some((url) => url.includes("/evidence?page=2")));
   } finally { globalThis.fetch = previous; }
 });
