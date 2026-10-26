@@ -167,3 +167,25 @@ test("logout always clears the in-memory access token, even if the request fails
     },
   );
 });
+
+test("MFA failures retain verification-specific messages instead of credential errors", async () => {
+  await withMockedFetch(
+    async () => new Response(JSON.stringify({ detail: "Invalid verification code. Please try again." }), { status: 401, headers: { "Content-Type": "application/json" } }),
+    async () => { await assert.rejects(authClient.verifyTwoFactor("123456"), { message: "Invalid verification code. Please try again." }); },
+  );
+  await withMockedFetch(
+    async () => new Response(JSON.stringify({ detail: "Your verification code has expired. Request a new code." }), { status: 401, headers: { "Content-Type": "application/json" } }),
+    async () => { await assert.rejects(authClient.resendTwoFactor(), { message: "Your verification code has expired. Request a new code." }); },
+  );
+});
+
+test("reset and recovery requests use their own invalid-link and rate-limit messages", async () => {
+  await withMockedFetch(
+    async () => new Response("{}", { status: 400, headers: { "Content-Type": "application/json" } }),
+    async () => { await assert.rejects(authClient.resetPassword({ token: "expired", newPassword: "StrongPassword42!" }), { message: "This reset link is invalid or has expired." }); },
+  );
+  await withMockedFetch(
+    async () => new Response("{}", { status: 429, headers: { "Content-Type": "application/json" } }),
+    async () => { await assert.rejects(authClient.requestPasswordReset("user@example.test"), { message: "Too many requests. Wait a moment and try again." }); },
+  );
+});

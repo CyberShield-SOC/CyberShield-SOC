@@ -165,6 +165,7 @@ export default function App() {
           <ResetPasswordCard
             onBack={() => navigate(AUTH_ROUTES.login)}
             onComplete={() => navigate(AUTH_ROUTES.login)}
+            onRequestNewLink={() => navigate(AUTH_ROUTES.forgotPassword)}
           />
         );
       case AUTH_ROUTES.sso:

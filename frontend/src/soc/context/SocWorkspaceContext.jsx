@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { canAdministerWorkspace, canMutateInvestigations } from "../../utils/permissions";
+import { canAdministerWorkspace, canMutateInvestigations, canManageRules as mayManageRules, canExportReports as mayExportReports } from "../../utils/permissions";
 import { detectionRules } from "../data/mockData";
 import { socRepository } from "../services/socRepository";
 import { nextSequentialId } from "../utils/recordIds";
@@ -70,8 +70,6 @@ export function SocWorkspaceProvider({ children, user }) {
   const [globalTimeRange, setGlobalTimeRangeState] = useState("24h");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [trackingIncidentId, setTrackingIncidentId] = useState(null);
-  // Set by Threat Detection's "Edit rule" action and read by the Rule Builder
-  // page it navigates to, mirroring trackingIncidentId's cross-page handoff.
   const [editingCustomRuleId, setEditingCustomRuleId] = useState(null);
   // Keep explicit investigation selections stable while route components
   // mount and unmount. They reset with the workspace provider on sign-out.
@@ -91,6 +89,8 @@ export function SocWorkspaceProvider({ children, user }) {
   const pendingMutationsRef = useRef(new Set());
   const canWrite = canMutateInvestigations(user);
   const canAdminister = canAdministerWorkspace(user);
+  const canManageRules = mayManageRules(user);
+  const canExportReports = mayExportReports(user);
   const currentActor = user?.full_name || user?.username || user?.email || "Yugal P.";
 
   function rejectReadOnlyMutation() {
@@ -488,32 +488,11 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite, refresh]);
 
-  const updateCustomRuleStatus = useCallback(async (backendId, status) => {
-    if (rejectReadOnlyMutation()) return null;
-    const mutationKey = `update-custom-rule-${backendId}`;
-    if (!acquireMutation(mutationKey)) return null;
-    setMutation({ loading: true, error: "", message: "Updating custom rule…" });
-    try {
-      const updated = await socRepository.updateCustomRule(backendId, { status });
-      setCustomRules((current) => ({
-        rules: current.rules.map((rule) => (rule.backendId === backendId ? updated : rule)),
-        nextRuleId: current.nextRuleId,
-      }));
-      setMutation({ loading: false, error: "", message: `${updated.id} updated` });
-      return updated;
-    } catch (error) {
-      setMutation({ loading: false, error: error.message || "The custom rule could not be updated.", message: "" });
-      return null;
-    } finally {
-      releaseMutation(mutationKey);
-    }
-  }, [canWrite]);
-
   const updateCustomRule = useCallback(async (backendId, updates) => {
     if (rejectReadOnlyMutation()) return null;
     const mutationKey = `update-custom-rule-${backendId}`;
     if (!acquireMutation(mutationKey)) return null;
-    setMutation({ loading: true, error: "", message: "Saving custom rule…" });
+    setMutation({ loading: true, error: "", message: "Updating custom rule…" });
     try {
       const updated = await socRepository.updateCustomRule(backendId, updates);
       setCustomRules((current) => ({
@@ -529,6 +508,8 @@ export function SocWorkspaceProvider({ children, user }) {
       releaseMutation(mutationKey);
     }
   }, [canWrite]);
+
+  const updateCustomRuleStatus = useCallback((backendId, status) => updateCustomRule(backendId, { status }), [updateCustomRule]);
 
   const deleteCustomRule = useCallback(async (backendId) => {
     if (rejectReadOnlyMutation()) return false;
@@ -551,7 +532,10 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite]);
 
-  const testCustomRule = useCallback((rule) => socRepository.testCustomRule(rule), []);
+  const testCustomRule = useCallback((rule) => {
+    if (!canManageRules) return Promise.reject(new Error("Your role cannot test or change detection rules."));
+    return socRepository.testCustomRule(rule);
+  }, [canManageRules]);
 
   const uploadLogFile = useCallback(async (file) => {
     if (rejectReadOnlyMutation()) {
@@ -765,6 +749,8 @@ export function SocWorkspaceProvider({ children, user }) {
     setPendingAiRequest,
     canWrite,
     canAdminister,
+    canManageRules,
+    canExportReports,
     currentUser: user,
     currentActor,
     notifications,
@@ -782,8 +768,8 @@ export function SocWorkspaceProvider({ children, user }) {
     updateIncidentAssignee,
     createIncident,
     createCustomRule,
-    updateCustomRuleStatus,
     updateCustomRule,
+    updateCustomRuleStatus,
     deleteCustomRule,
     testCustomRule,
     uploadLogFile,
@@ -800,13 +786,15 @@ export function SocWorkspaceProvider({ children, user }) {
     alerts,
     apiHealth,
     canAdminister,
+    canManageRules,
+    canExportReports,
     canWrite,
     user,
     currentActor,
     createIncident,
     createCustomRule,
-    updateCustomRuleStatus,
     updateCustomRule,
+    updateCustomRuleStatus,
     deleteCustomRule,
     testCustomRule,
     customRules,

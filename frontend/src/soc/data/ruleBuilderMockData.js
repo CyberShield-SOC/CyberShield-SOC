@@ -109,4 +109,4 @@ export const TEST_RESULT = Object.freeze({
   noiseDetail: "~0.4 alerts/day at current traffic. Safe to enable.",
 });
 
-export const OVERLAP_WARNING = "Runs alongside R-101…R-106 — review for overlapping conditions before enabling.";
+export const OVERLAP_WARNING = "Runs alongside the built-in detectors — review for overlapping conditions before enabling.";
