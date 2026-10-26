@@ -9,6 +9,10 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 290px);
   gap: 16px;
   align-items: start;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .rule-builder-editor,
 .rule-builder-rail { display: grid; min-width: 0; gap: 16px; align-content: start; }

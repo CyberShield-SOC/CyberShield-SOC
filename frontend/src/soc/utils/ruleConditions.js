@@ -75,12 +75,13 @@ export function conditionToDsl(condition, type) {
     if (condition.operator === "between") {
       const range = parseHourRange(value);
       if (range) {
-        const zone = condition.timezone
-          ? [{ text: ", ", kind: "punct" }, { text: `"${condition.timezone}"`, kind: "value" }]
-          : [];
+        const times = value.match(/\d{1,2}:\d{2}/g).map((time) => time.padStart(5, "0"));
         return [
-          { text: "hour(", kind: "fn" }, { text: "ts", kind: "field" }, ...zone, { text: ")", kind: "fn" },
-          { text: " in ", kind: "op" }, { text: `${range.from}..${range.to}`, kind: "value" },
+          { text: "time_range(", kind: "fn" }, { text: "ts", kind: "field" },
+          { text: ", ", kind: "punct" }, { text: `"${times[0]}"`, kind: "value" },
+          { text: ", ", kind: "punct" }, { text: `"${times[1]}"`, kind: "value" },
+          { text: ", ", kind: "punct" }, { text: `"${condition.timezone || "UTC"}"`, kind: "value" },
+          { text: ", end_exclusive: true)", kind: "punct" },
         ];
       }
       return [

@@ -101,11 +101,11 @@ export function readAuthUser(payload) {
 
 async function authRequest(path, options = {}) {
   return apiRequest(path, {
-    ...options,
     errorMessage: getAuthFailureMessage,
     errorType: AuthRequestError,
     networkMessage: "The secure service is unavailable. Confirm the backend is running and try again.",
     timeoutMessage: "The secure service took too long to respond. Please try again.",
+    ...options,
   });
 }
 

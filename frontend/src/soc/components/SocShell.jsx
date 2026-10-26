@@ -108,6 +108,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
   const [notificationFilter, setNotificationFilter] = useState("all");
   const [profileOpen, setProfileOpen] = useState(false);
   const searchRef = useRef(null);
+  const notificationsRef = useRef(null);
   const platform = typeof navigator === "undefined"
     ? ""
     : navigator.userAgentData?.platform || navigator.platform;
@@ -155,6 +156,19 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     setNotificationsOpen(false);
     setProfileOpen(false);
   }, [route]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    function dismissOutside(event) {
+      if (!notificationsRef.current?.contains(event.target)) setNotificationsOpen(false);
+    }
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside, true);
+    };
+  }, [notificationsOpen]);
 
   function submitSearch(event) {
     event.preventDefault();
@@ -269,13 +283,13 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
             <input ref={searchRef} name="global-search" type="search" maxLength="200" placeholder="Search events, IPs, rules…" aria-label="Search security events" aria-keyshortcuts="Control+K Meta+K /" title="Press Ctrl or Command + K, or /, to focus search" />
             <kbd aria-hidden="true">{shortcutLabel}</kbd>
           </form>
-          <div className="soc-popover-anchor">
-            <button className="soc-icon-button" type="button" onClick={() => setNotificationsOpen((current) => !current)} aria-label="Notifications" aria-expanded={notificationsOpen}>
+          <div className="soc-popover-anchor" ref={notificationsRef}>
+            <button className="soc-icon-button" type="button" onClick={() => setNotificationsOpen((current) => !current)} aria-label="Notifications" aria-expanded={notificationsOpen} aria-controls={notificationsOpen ? "soc-notification-popover" : undefined}>
               <Bell size={17} />
               {unreadNotificationCount > 0 && <span className="notification-count">{unreadNotificationCount}</span>}
             </button>
             {notificationsOpen && (
-              <div className="soc-notification-popover">
+              <div className="soc-notification-popover" id="soc-notification-popover" role="region" aria-label="Notifications">
                 <header>
                   <div><strong>Notifications</strong><span>{unreadNotificationCount} unread · {notifications.length} total</span></div>
                   <div className="notification-header-actions">

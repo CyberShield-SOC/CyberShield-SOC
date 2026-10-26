@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Check, Clock3, ListFilter, MessageSquareText, PlayCircle, ShieldCheck, Workflow } from "lucide-react";
+import { Check, ListFilter, ShieldCheck, Workflow } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
+import { InvestigationTimeline, ResolutionDetails } from "../components/InvestigationTimeline";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { formatTimestamp } from "../utils/eventUtils";
@@ -27,8 +28,8 @@ function workflowIndex(status) {
   return 0;
 }
 
-function defaultTasks(incident) {
-  const completed = isTerminalIncidentStatus(incident.status)
+function defaultTasks(incident, mode) {
+  const completed = mode === "api" ? 0 : isTerminalIncidentStatus(incident.status)
     ? PLAYBOOK_STEPS.length
     : incident.status === "investigating" ? Math.ceil(PLAYBOOK_STEPS.length / 2) : 0;
   return PLAYBOOK_STEPS.map((title, index) => ({ id: index + 1, title, owner: incident.owner || "Unassigned", done: index < completed }));
@@ -55,9 +56,9 @@ export default function IncidentTrackingPage({ navigate }) {
   const [pendingTerminalStatus, setPendingTerminalStatus] = useState(null);
   const [resolutionNote, setResolutionNote] = useState("");
   const [resolutionError, setResolutionError] = useState("");
-  const incidents = allIncidents.filter((item) => !isTerminalIncidentStatus(item.status));
+  const incidents = allIncidents;
   const incident = incidents.find((item) => item.id === trackingIncidentId) || incidents[0] || null;
-  const tasks = incident ? tasksByIncident[incident.id] || defaultTasks(incident) : [];
+  const tasks = incident ? tasksByIncident[incident.id] || defaultTasks(incident, repositoryMode) : [];
   const allIncidentNotes = notes.filter((item) => item.linkedType === "incident" && item.linkedId === incident?.id);
   const visibleIncidentNotes = allIncidentNotes.filter((item) => !item.archived);
   const persisted = usePersistedInvestigation("incident", incident, repositoryMode, mutation.message);
@@ -153,7 +154,7 @@ export default function IncidentTrackingPage({ navigate }) {
       <PageHeader
         title="Incident Tracking"
         description={`Coordinate the response playbook, status, and analyst record for ${incident.id}.`}
-        actions={<><label className="tracking-incident-picker"><span><ListFilter size={14} />Active incident</span><select value={incident.id} onChange={(event) => setTrackingIncidentId(event.target.value)}>{incidents.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.title}</option>)}</select></label><button className="soc-button secondary" type="button" onClick={() => navigate(SOC_ROUTES.incidents)}>Back to queue</button></>}
+        actions={<><label className="tracking-incident-picker"><span><ListFilter size={14} />Incident</span><select value={incident.id} onChange={(event) => setTrackingIncidentId(event.target.value)}>{incidents.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.title}</option>)}</select></label><button className="soc-button secondary" type="button" onClick={() => navigate(SOC_ROUTES.incidents)}>Back to queue</button></>}
       />
       <div className="tracking-summary">
         <div><span>Incident</span><strong className="mono">{incident.id}</strong></div>
@@ -162,37 +163,31 @@ export default function IncidentTrackingPage({ navigate }) {
         <div><span>Assignee</span><strong>{incident.owner}</strong></div>
         <div><span>Response SLA</span><strong className={incident.priority === "critical" ? "critical-text" : ""}>{incident.sla}</strong></div>
       </div>
-      <div className="tracking-grid">
-        <Panel className="span-2" title="Response playbook" subtitle={`${tasks.filter((task) => task.done).length} of ${tasks.length} steps complete · stored for this session`}>
+      <div className="tracking-grid investigation-tracking-grid">
+        {!isTerminalIncidentStatus(incident.status) && <Panel className="span-2" title="Response playbook" subtitle={`${tasks.filter((task) => task.done).length} of ${tasks.length} steps complete · local checklist`}>
           <div className="playbook-list">
             {tasks.map((task, index) => (
               <label key={task.id} className={task.done ? "complete" : ""}>
-                <input type="checkbox" checked={task.done} disabled={!canWrite} onChange={(event) => updateTask(task.id, event.target.checked)} />
+                <input type="checkbox" checked={task.done} disabled={!canWrite || isTerminalIncidentStatus(incident.status)} onChange={(event) => updateTask(task.id, event.target.checked)} />
                 <span className="playbook-step">{task.done ? <Check size={15} /> : index + 1}</span>
                 <span><strong>{task.title}</strong><small>Assignee · {task.owner}</small></span>
                 <StatusBadge status={task.done ? "done" : "pending"} />
               </label>
             ))}
           </div>
-        </Panel>
+        </Panel>}
         <Panel title="Incident control">
           <div className="incident-control-card">
             <header><span><Workflow size={18} /></span><div><h3>Response workflow</h3><p>Move this incident through the persisted investigation lifecycle.</p></div></header>
             <ol key={`${incident.id}-${incident.status}`} className="incident-state-track" aria-label="Incident workflow progress">{WORKFLOW_STATES.map((label, index) => <li key={label} style={{ "--step-index": index }} className={index < currentWorkflowIndex ? "complete" : index === currentWorkflowIndex ? "current" : ""}><i>{index < currentWorkflowIndex ? <Check size={11} /> : index + 1}</i><span>{label}</span></li>)}</ol>
             <div className="incident-current-state"><span>Current state</span><StatusBadge status={incident.status} /></div>
-            <label className="status-control"><span>Incident status</span><select value={incident.status} disabled={!canWrite || mutation.loading} onChange={(event) => requestIncidentStatus(event.target.value)}>{INCIDENT_STATUSES.filter((item) => repositoryMode !== "api" || incident.status !== "investigating" || item !== "open").map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
+            <label className="status-control"><span>Incident status</span><select value={incident.status} disabled={!canWrite || mutation.loading || isTerminalIncidentStatus(incident.status)} onChange={(event) => requestIncidentStatus(event.target.value)}>{INCIDENT_STATUSES.filter((item) => repositoryMode !== "api" || incident.status !== "investigating" || item !== "open").map((item) => <option key={item} value={item}>{incidentStatusLabel(item)}</option>)}</select></label>
             {statusAction ? <button className="soc-button primary full" type="button" disabled={!canWrite || mutation.loading} title={!canWrite ? "Viewer access is read-only." : undefined} onClick={applyWorkflowStatusAction}>{statusAction[1]}</button> : <p className="empty-inline">No further status action is required.</p>}
           </div>
         </Panel>
+        {isTerminalIncidentStatus(incident.status) && <Panel title="Recorded outcome" className="span-2"><ResolutionDetails incident={incident} /><p className="empty-inline">Use incident history to reopen this investigation if new evidence is found.</p></Panel>}
         <Panel title="Investigation timeline">
-          {persisted.loading && <p>Loading recorded history…</p>}
-          {persisted.error && <p role="alert">{persisted.error}</p>}
-          <ol className="timeline-list">
-            {incidentHistory.slice(0, 6).map((item, index) => {
-              const Icon = index === 0 ? PlayCircle : item.id.startsWith("NOTE-") ? MessageSquareText : Clock3;
-              return <li key={item.id}><Icon size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>;
-            })}
-          </ol>
+          <InvestigationTimeline key={incident.id} items={incidentHistory} loading={persisted.loading} error={persisted.error} onRetry={persisted.reload} />
         </Panel>
         <Panel className="span-2" title="Analyst notes" subtitle={allIncidentNotes.length > MAX_INCIDENT_NOTES ? `${allIncidentNotes.length} existing · ${MAX_INCIDENT_NOTES}-note limit enforced` : `${allIncidentNotes.length} of ${MAX_INCIDENT_NOTES} notes used`}>
           {noteLimitReached && <InlineNotice tone="warning" title="Note limit reached">Delete an existing incident note from Analyst Notes before adding another.</InlineNotice>}

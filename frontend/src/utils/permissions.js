@@ -6,7 +6,19 @@ export const SOC_ROLES = Object.freeze({
 });
 
 function roleOf(user) {
-  return typeof user?.role === "string" ? user.role : "";
+  return user?.is_active === false || user?.isActive === false ? "" : typeof user?.role === "string" ? user.role : "";
+}
+
+export function canReadWorkspace(user) {
+  return !user || Object.values(SOC_ROLES).includes(roleOf(user));
+}
+
+export function canManageRules(user) {
+  return canMutateInvestigations(user);
+}
+
+export function canExportReports(user) {
+  return canReadWorkspace(user);
 }
 
 export function canMutateInvestigations(user) {
