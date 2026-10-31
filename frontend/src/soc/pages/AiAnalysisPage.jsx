@@ -281,7 +281,7 @@ export default function AiAnalysisPage({ navigate }) {
                         <table className="ai-evidence-table">
                           <caption>Related failed authentication evidence</caption>
                           <thead><tr><th>Timestamp</th><th>User</th><th>IP address</th><th>Source</th><th>Severity</th></tr></thead>
-                          <tbody>{failedEvidence.map((event) => <tr key={event.id}><td>{formatTimestamp(event.timestamp)}</td><td>{event.user || "—"}</td><td className="mono">{event.sourceIp}</td><td>{event.source}</td><td><SeverityBadge severity={event.severity} /></td></tr>)}{!failedEvidence.length && <tr><td colSpan="5">No failed authentication evidence is available.</td></tr>}</tbody>
+                          <tbody>{failedEvidence.map((event) => <tr key={event.id}><td className="mono">{formatTimestamp(event.timestamp)}</td><td>{event.user || "—"}</td><td className="mono">{event.sourceIp}</td><td>{event.source}</td><td><SeverityBadge severity={event.severity} /></td></tr>)}{!failedEvidence.length && <tr><td colSpan="5">No failed authentication evidence is available.</td></tr>}</tbody>
                         </table>
                       </div>
                       <div className="ai-evidence-chips">{message.analysis.evidence.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div>

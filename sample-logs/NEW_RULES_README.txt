@@ -29,7 +29,7 @@ several files together will not cause unexpected cross-file collisions.
    svc-deploy" + "systemd timer started: data-sync.timer"). Noise: routine
    crontab LIST, CRON jobs, unrelated sudo/ssh activity.
 
-2. direct_root_login.log
+2. direct_root_login.txt
    Rule: DirectRootLoginRule (HIGH, account entity, T1078.003)
    Expected: 2 alerts — direct successful root logins (password, then
    publickey) from 45.33.12.9 on host prod-db01. Noise: normal non-root

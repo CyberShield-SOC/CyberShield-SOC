@@ -6,7 +6,7 @@ export const AUTH_ROUTES = Object.freeze({
   mfa: "mfa",
   forgotPassword: "forgot-password",
   resetPassword: "reset-password",
-  sso: "uta-sso",
+  acceptInvite: "accept-invite",
   support: "support",
   logoutSuccess: "logout-success",
 });

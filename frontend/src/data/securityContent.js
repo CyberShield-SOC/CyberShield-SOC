@@ -15,30 +15,3 @@ export const SECURITY_FEATURES = Object.freeze([
     copy: "Contain threats with automated playbooks",
   },
 ]);
-
-export const SECURITY_EVENTS = Object.freeze([
-  {
-    time: "14:32:08",
-    severity: "CRITICAL",
-    service: "web-01",
-    message: "ssh: Failed password for root (47th attempt)",
-  },
-  {
-    time: "14:32:09",
-    severity: "MEDIUM",
-    service: "ai-engine",
-    message: "anomaly score -0.153 - below threshold -0.020",
-  },
-  {
-    time: "14:32:09",
-    severity: "OK",
-    service: "alerts",
-    message: "ALT-0912 created - rule R-101 brute-force",
-  },
-  {
-    time: "14:33:02",
-    severity: "INFO",
-    service: "incidents",
-    message: "INC-016 opened - escalated to supervisor",
-  },
-]);

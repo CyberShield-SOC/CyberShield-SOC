@@ -11,6 +11,7 @@ from app.models.assistant_message import AssistantMessage
 from app.models.custom_rule import CustomRule
 from app.models.otp_verification import OtpVerification
 from app.models.password_reset_token import PasswordResetToken
+from app.models.invite_token import InviteToken
 from app.models.detection_rule_setting import DetectionRuleSetting
 from app.models.entity_baseline import EntityBaseline
 from app.models.host_heartbeat import HostHeartbeat
@@ -36,6 +37,7 @@ __all__ = [
     "CustomRule",
     "OtpVerification",
     "PasswordResetToken",
+    "InviteToken",
     "DetectionRuleSetting",
     "EntityBaseline",
     "HostHeartbeat",

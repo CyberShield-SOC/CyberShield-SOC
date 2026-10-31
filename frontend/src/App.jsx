@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { AcceptInviteCard } from "./components/AcceptInviteCard";
 import { BrandMark, BrandPanel } from "./components/BrandPanel";
 import { LoginCard } from "./components/LoginCard";
 import { LogoutSuccessCard } from "./components/LogoutSuccessCard";
 import { MfaCard } from "./components/MfaCard";
 import { RecoveryCard } from "./components/RecoveryCard";
 import { ResetPasswordCard } from "./components/ResetPasswordCard";
-import { SsoCard } from "./components/SsoCard";
 import { SupportCard } from "./components/SupportCard";
 import {
   AUTH_ROUTES,
@@ -168,8 +168,13 @@ export default function App() {
             onRequestNewLink={() => navigate(AUTH_ROUTES.forgotPassword)}
           />
         );
-      case AUTH_ROUTES.sso:
-        return <SsoCard onBack={() => navigate(AUTH_ROUTES.login)} />;
+      case AUTH_ROUTES.acceptInvite:
+        return (
+          <AcceptInviteCard
+            onBack={() => navigate(AUTH_ROUTES.login)}
+            onComplete={() => navigate(AUTH_ROUTES.login)}
+          />
+        );
       case AUTH_ROUTES.support:
         return <SupportCard onBack={() => navigate(AUTH_ROUTES.login)} />;
       default:
@@ -179,7 +184,6 @@ export default function App() {
             sessionMessage={authNotice}
             onContinue={submitCredentials}
             onForgotPassword={() => navigate(AUTH_ROUTES.forgotPassword)}
-            onSso={() => navigate(AUTH_ROUTES.sso)}
           />
         );
     }

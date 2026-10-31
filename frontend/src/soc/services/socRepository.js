@@ -21,6 +21,7 @@ import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
 const USERS_STORAGE_KEY = "cybershield-session-users";
+const INVITES_STORAGE_KEY = "cybershield-session-invites";
 const CUSTOM_RULES_STORAGE_KEY = "cybershield-session-custom-rules";
 const BUILT_IN_RULES_STORAGE_KEY = "cybershield-session-built-in-rules";
 const CUSTOM_RULE_NUMBER_BASE = 108; // R-101..R-108 are the built-in rules
@@ -102,6 +103,18 @@ export function getRepositoryErrorMessage(status, payload = {}) {
   if (status === 422) return "Some submitted values were invalid. Review the form and try again.";
   if (status >= 500) return "The service is temporarily unavailable. Try again shortly.";
   return `The service could not complete the request (${status}).`;
+}
+
+/** Surfaces the backend's own "couldn't send the invite email" detail on a
+ * 502 instead of the generic 5xx fallback — the specific reason (e.g. the
+ * Resend sandbox sender can't deliver to an arbitrary recipient) only lives
+ * in that detail string. */
+export function inviteErrorMessage(status, payload = {}) {
+  if (status === 502) {
+    const detail = safeValidationDetail(payload);
+    if (detail) return detail;
+  }
+  return getRepositoryErrorMessage(status, payload);
 }
 
 export function assistantErrorMessage(status, payload = {}) {
@@ -231,6 +244,41 @@ export function normalizeWorkspaceUser(user) {
   };
 }
 
+export function normalizeInvite(invite) {
+  const id = Number(invite?.id);
+  const email = String(invite?.email || "").trim().toLowerCase();
+  const role = String(invite?.role || "").trim();
+  if (!Number.isSafeInteger(id) || id <= 0 || !email || !VALID_WORKSPACE_ROLES.has(role)) {
+    throw new Error("The service returned an invalid invite record.");
+  }
+  return {
+    id,
+    email,
+    role,
+    invitedBy: String(invite?.invitedBy ?? invite?.invited_by ?? "").trim() || null,
+    createdAt: String(invite?.createdAt ?? invite?.created_at ?? "").trim(),
+    expiresAt: String(invite?.expiresAt ?? invite?.expires_at ?? "").trim(),
+  };
+}
+
+function readSessionInvites() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(INVITES_STORAGE_KEY) || "null");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeInvite);
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionInvites(invites) {
+  try {
+    window.sessionStorage.setItem(INVITES_STORAGE_KEY, JSON.stringify(invites));
+  } catch {
+    // The current in-memory result remains usable if browser storage is blocked.
+  }
+}
+
 function readSessionUsers() {
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(USERS_STORAGE_KEY) || "null");
@@ -339,7 +387,7 @@ export function normalizeHostHeartbeat(host) {
 async function request(path, options = {}) {
   const payload = await apiRequest(path, {
     ...options,
-    errorMessage: getRepositoryErrorMessage,
+    errorMessage: options.errorMessage || getRepositoryErrorMessage,
   });
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("The service returned an invalid response. Refresh and try again.");
@@ -443,7 +491,7 @@ function normalizeEvent(log, alerts = []) {
     ingestedAt: log.ingested_at || log.timestamp || "",
     source: log.source_filename || "ingested log",
     sourceIp: log.ip || "Unknown",
-    user: log.username || "Unknown",
+    user: log.username || "N/A",
     event: log.event || "Security event",
     severity,
     status,
@@ -766,6 +814,44 @@ const mockRepository = {
     };
     writeSessionUsers([...users, created]);
     return clone(created);
+  },
+  async getPendingInvites() {
+    await wait(80);
+    return readSessionInvites();
+  },
+  async inviteUser({ email, role }) {
+    await wait(100);
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedRole = String(role || "").trim();
+    if (!normalizedEmail || !VALID_WORKSPACE_ROLES.has(normalizedRole)) {
+      throw new Error("Review the invite details and try again.");
+    }
+    const invites = readSessionInvites().filter((item) => item.email !== normalizedEmail);
+    const now = new Date();
+    const created = {
+      id: Math.max(0, ...invites.map((item) => item.id)) + 1,
+      email: normalizedEmail,
+      role: normalizedRole,
+      invitedBy: null,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    writeSessionInvites([...invites, created]);
+    return clone(created);
+  },
+  async resendInvite(inviteId) {
+    await wait(90);
+    const invites = readSessionInvites();
+    const target = invites.find((item) => item.id === Number(inviteId));
+    if (!target) throw new Error("That invite no longer exists.");
+    return this.inviteUser({ email: target.email, role: target.role });
+  },
+  async revokeInvite(inviteId) {
+    await wait(80);
+    const invites = readSessionInvites();
+    if (!invites.some((item) => item.id === Number(inviteId))) throw new Error("That invite no longer exists.");
+    writeSessionInvites(invites.filter((item) => item.id !== Number(inviteId)));
+    return { success: true };
   },
   async updateUser(userId, updates) {
     await wait(100);
@@ -1197,6 +1283,28 @@ export const httpRepository = {
       }),
     });
     return normalizeWorkspaceUser(payload.user);
+  },
+  async getPendingInvites() {
+    const payload = await request("/users/invites");
+    return responseArray(payload, "invites").map(normalizeInvite);
+  },
+  async inviteUser({ email, role }) {
+    const payload = await request("/users/invites", {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+      errorMessage: inviteErrorMessage,
+    });
+    return normalizeInvite(payload.invite);
+  },
+  async resendInvite(inviteId) {
+    const payload = await request(`/users/invites/${requireBackendId(inviteId, "Invite")}/resend`, {
+      method: "POST",
+      errorMessage: inviteErrorMessage,
+    });
+    return normalizeInvite(payload.invite);
+  },
+  async revokeInvite(inviteId) {
+    return request(`/users/invites/${requireBackendId(inviteId, "Invite")}`, { method: "DELETE" });
   },
   async updateUser(userId, updates) {
     const payload = await request(`/users/${requireBackendId(userId, "User")}`, {

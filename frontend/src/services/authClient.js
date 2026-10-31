@@ -80,6 +80,21 @@ export function getPasswordResetFailureMessage(status, payload = {}) {
   return "The secure service could not complete the request. Please try again.";
 }
 
+export function getInviteDetailsFailureMessage(status, payload = {}) {
+  const detail = safeAuthValidationDetail(payload);
+  if (detail) return detail;
+  if (status === 400) return "This invite link is invalid or has expired.";
+  return "The secure service could not complete the request. Please try again.";
+}
+
+export function getAcceptInviteFailureMessage(status, payload = {}) {
+  const detail = safeAuthValidationDetail(payload);
+  if (detail) return detail;
+  if (status === 400) return "This invite link is invalid or has expired.";
+  if (status === 409) return "That username is already taken.";
+  return "The secure service could not complete the request. Please try again.";
+}
+
 export function readAuthUser(payload) {
   const user = payload?.user;
   const supportedRoles = new Set(["Admin", "Analyst", "Viewer"]);
@@ -218,6 +233,33 @@ export const authClient = {
       method: "POST",
       body: JSON.stringify({ token, new_password: newPassword }),
       errorMessage: getPasswordResetFailureMessage,
+    });
+    return String(payload?.message || "");
+  },
+
+  /** Validate an invite token and return who it was for, without consuming it. */
+  async getInviteDetails(token) {
+    const payload = await authRequest(`/auth/invite/${encodeURIComponent(token)}`, {
+      errorMessage: getInviteDetailsFailureMessage,
+    });
+    return {
+      email: String(payload?.email || ""),
+      role: String(payload?.role || ""),
+      expiresAt: String(payload?.expires_at || ""),
+    };
+  },
+
+  /** Complete an invite: consume the token and create the account it described. */
+  async acceptInvite({ token, username, fullName, password }) {
+    const payload = await authRequest("/auth/accept-invite", {
+      method: "POST",
+      body: JSON.stringify({
+        token,
+        username,
+        full_name: fullName || null,
+        password,
+      }),
+      errorMessage: getAcceptInviteFailureMessage,
     });
     return String(payload?.message || "");
   },
