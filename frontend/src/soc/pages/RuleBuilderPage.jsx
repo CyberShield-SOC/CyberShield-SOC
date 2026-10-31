@@ -531,20 +531,6 @@ function RuleBuilderForm({ navigate, initialRule }) {
             </div>
           </Panel>
 
-          <Panel title="Rule preview" actions={<span className="rule-builder-panel-meta">generated DSL</span>}>
-            <pre className="rule-builder-dsl" aria-label="Generated rule DSL">
-              <code>
-                {dslLines.map((fragments, lineIndex) => (
-                  <span className="rule-builder-dsl-line" key={lineIndex}>
-                    {fragments.map((fragment, fragmentIndex) => (
-                      <span key={fragmentIndex} data-dsl={fragment.kind}>{fragment.text}</span>
-                    ))}
-                  </span>
-                ))}
-              </code>
-            </pre>
-          </Panel>
-
           <Panel title="Validation">
             <ul className="rule-builder-validation">
               <li data-state={syntaxValid ? "ok" : "error"}>

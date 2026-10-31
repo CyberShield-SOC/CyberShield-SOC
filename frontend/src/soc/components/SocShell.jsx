@@ -17,6 +17,8 @@ import {
   Menu,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   RefreshCw,
@@ -36,6 +38,16 @@ import { BrandLogo } from "../../components/BrandLogo";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { searchShortcutLabel, shouldFocusGlobalSearch } from "../utils/searchShortcuts";
 import { formatNavigationBadgeCount } from "../utils/countFormat";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "cybershield-sidebar-collapsed";
+
+function readInitialSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 const NAV_GROUPS = [
   {
@@ -104,6 +116,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
   // Child routes stay attached to their parent navigation item.
   const navigationRoute = route === SOC_ROUTES.ruleBuilder ? SOC_ROUTES.threatDetection : route;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState("all");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -158,6 +171,14 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
   }, [route]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+    } catch {
+      // The collapsed state still works for the current page session.
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
     if (!notificationsOpen) return undefined;
     function dismissOutside(event) {
       if (!notificationsRef.current?.contains(event.target)) setNotificationsOpen(false);
@@ -186,6 +207,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
       data-text-size={settings?.workspace?.textSize || "standard"}
       data-contrast={settings?.workspace?.highContrast ? "high" : "standard"}
       data-motion={settings?.workspace?.reduceMotion ? "reduced" : "standard"}
+      data-sidebar={sidebarCollapsed ? "collapsed" : "expanded"}
     >
       <a className="skip-link" href="#soc-content">Skip to main content</a>
       <div className={`soc-sidebar-scrim ${sidebarOpen ? "visible" : ""}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
@@ -253,6 +275,15 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
         <header className="soc-topbar">
           <button className="soc-icon-button menu-button" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
             <Menu size={19} />
+          </button>
+          <button
+            className="soc-icon-button sidebar-collapse-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-label={sidebarCollapsed ? "Show navigation" : "Hide navigation"}
+            title={sidebarCollapsed ? "Show navigation" : "Hide navigation"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
           <strong className="soc-route-title">{ROUTE_LABELS[navigationRoute] || "CyberShield SOC"}</strong>
           <span className="live-pill"><i />{dashboard?.liveRateLabel || `Live · ${Number(dashboard?.liveRate || 0).toLocaleString()} events/min`}</span>

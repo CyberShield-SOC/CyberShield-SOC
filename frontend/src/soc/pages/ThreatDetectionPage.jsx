@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   Clock3,
   HeartPulse,
   Plus,
@@ -386,7 +385,7 @@ export default function ThreatDetectionPage({ navigate }) {
               >
                 <span className="config-icon"><ShieldCheck size={17} /></span>
                 <span>
-                  <strong>{rule.id} · {rule.name}</strong>
+                  <strong><span className="mono">{rule.id}</span> · {rule.name}</strong>
                   <small>{rule.criteria}</small>
                 </span>
                 <SeverityBadge severity={rule.severity} />
@@ -444,7 +443,7 @@ export default function ThreatDetectionPage({ navigate }) {
                   </div>
                 )}
                 {selected.executable && <div><dt>Loaded matches</dt><dd>{selected.activity.total}</dd></div>}
-                {selected.executable && <div><dt>Latest match</dt><dd>{selected.activity.latest ? formatTimestamp(selected.activity.latest) : "No loaded match"}</dd></div>}
+                {selected.executable && <div><dt>Latest match</dt><dd className={selected.activity.latest ? "mono" : undefined}>{selected.activity.latest ? formatTimestamp(selected.activity.latest) : "No loaded match"}</dd></div>}
               </dl>
               {selected.setupNote && (
                 <InlineNotice tone="warning" title="Setup required">{selected.setupNote}</InlineNotice>
@@ -454,10 +453,6 @@ export default function ThreatDetectionPage({ navigate }) {
                   This rule matches nothing until you add at least one entry to its allowlist below.
                 </InlineNotice>
               )}
-              <div className="rule-logic-block">
-                <span><Activity size={14} /> {selected.executable ? "Detection logic" : "Example logic"}</span>
-                <code>{selected.query}</code>
-              </div>
               <div className="rule-response-block">
                 <span><Clock3 size={14} /> Recommended response</span>
                 <p>{selected.response}</p>

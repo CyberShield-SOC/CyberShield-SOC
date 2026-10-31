@@ -520,7 +520,7 @@ export const analystNotesSeed = Object.freeze([
 
 export const workspaceSettings = Object.freeze({
   workspace: {
-    name: "UTA CyberShield SOC",
+    name: "CyberShield SOC",
     timezone: "America/Chicago",
     defaultTimeRange: "24h",
     density: "comfortable",

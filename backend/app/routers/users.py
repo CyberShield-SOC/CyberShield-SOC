@@ -1,13 +1,26 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.urls import frontend_base_url
 from app.db.session import get_db
+from app.dispatch.invite_email import get_invite_email_sender
+from app.models.invite_token import InviteToken
 from app.models.role import Role
 from app.models.user import User
+from app.repositories.invite_repository import (
+    create_invite_challenge,
+    get_pending_invite_or_none,
+    list_pending_invites,
+    resend_invite,
+    revoke_invite,
+)
+from app.schemas.invite import InviteCreateRequest, InviteCreateResponse, InviteListResponse
 from app.schemas.user import (
     UserActiveUpdate,
     UserCreate,
@@ -20,6 +33,8 @@ from app.validation import password_context_errors
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+INVITE_EMAIL_SEND_FAILURE_MESSAGE = "We couldn't send the invite email. Please try again shortly."
 
 
 def serialize_user(user: User) -> dict:
@@ -67,6 +82,17 @@ def get_role_or_400(db: Session, role_name: str) -> Role:
             detail="Role does not exist. Seed roles before assigning users.",
         )
     return role
+
+
+def serialize_invite(invite) -> dict:
+    return {
+        "id": invite.id,
+        "email": invite.email,
+        "role": invite.role.name if invite.role else None,
+        "invited_by": invite.invited_by.full_name or invite.invited_by.username if invite.invited_by else None,
+        "created_at": invite.created_at,
+        "expires_at": invite.expires_at,
+    }
 
 
 def commit_user_change(db: Session) -> None:
@@ -156,6 +182,104 @@ def list_assignable_users(
             for existing_user in users
         ],
     }
+
+
+@router.get("/invites", response_model=InviteListResponse)
+def list_invites(user: User = Depends(require_roles("Admin")), db: Session = Depends(get_db)):
+    invites = list_pending_invites(db)
+    return {"success": True, "invites": [serialize_invite(invite) for invite in invites]}
+
+
+@router.post("/invites", status_code=status.HTTP_201_CREATED, response_model=InviteCreateResponse)
+def create_invite(
+    payload: InviteCreateRequest,
+    request: Request,
+    user: User = Depends(require_roles("Admin")),
+    db: Session = Depends(get_db),
+    send_invite_email=Depends(get_invite_email_sender),
+):
+    role = get_role_or_400(db, payload.role)
+    token = create_invite_challenge(db, email=payload.email, role=role, invited_by=user)
+
+    frontend_base = frontend_base_url(request)
+    invite_link = f"{frontend_base}/#/accept-invite?token={quote(token)}"
+    try:
+        send_invite_email(to_email=payload.email, invite_link=invite_link, role=role.name)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=INVITE_EMAIL_SEND_FAILURE_MESSAGE,
+        ) from exc
+
+    db.commit()
+
+    invite = db.scalar(
+        select(InviteToken)
+        .options(joinedload(InviteToken.role), joinedload(InviteToken.invited_by))
+        .where(InviteToken.email == payload.email)
+        .where(InviteToken.used.is_(False))
+        .where(InviteToken.revoked.is_(False))
+        .order_by(InviteToken.created_at.desc())
+    )
+    return {"success": True, "invite": serialize_invite(invite)}
+
+
+def get_pending_invite_or_404(db: Session, invite_id: int):
+    invite = get_pending_invite_or_none(db, invite_id)
+    if invite is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found",
+        )
+    return invite
+
+
+@router.post("/invites/{invite_id}/resend", response_model=InviteCreateResponse)
+def resend_pending_invite(
+    invite_id: int,
+    request: Request,
+    user: User = Depends(require_roles("Admin")),
+    db: Session = Depends(get_db),
+    send_invite_email=Depends(get_invite_email_sender),
+):
+    invite = get_pending_invite_or_404(db, invite_id)
+    token = resend_invite(db, invite, invited_by=user)
+
+    frontend_base = frontend_base_url(request)
+    invite_link = f"{frontend_base}/#/accept-invite?token={quote(token)}"
+    try:
+        send_invite_email(to_email=invite.email, invite_link=invite_link, role=invite.role.name)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=INVITE_EMAIL_SEND_FAILURE_MESSAGE,
+        ) from exc
+
+    db.commit()
+
+    refreshed = db.scalar(
+        select(InviteToken)
+        .options(joinedload(InviteToken.role), joinedload(InviteToken.invited_by))
+        .where(InviteToken.email == invite.email)
+        .where(InviteToken.used.is_(False))
+        .where(InviteToken.revoked.is_(False))
+        .order_by(InviteToken.created_at.desc())
+    )
+    return {"success": True, "invite": serialize_invite(refreshed)}
+
+
+@router.delete("/invites/{invite_id}")
+def revoke_pending_invite(
+    invite_id: int,
+    user: User = Depends(require_roles("Admin")),
+    db: Session = Depends(get_db),
+):
+    invite = get_pending_invite_or_404(db, invite_id)
+    revoke_invite(db, invite)
+    db.commit()
+    return {"success": True}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

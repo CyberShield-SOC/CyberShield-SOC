@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
-import { ArrowRight, Fingerprint, KeyRound, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, KeyRound, Mail } from "lucide-react";
 import { normalizeEmail, validateCredentials } from "../utils/authValidation";
 import { AuthCardIntro } from "./AuthCardIntro";
 import { FormField } from "./FormField";
 
-export function LoginCard({ initialEmail, onContinue, onForgotPassword, onSso, sessionMessage = "" }) {
+export function LoginCard({ initialEmail, onContinue, onForgotPassword, sessionMessage = "" }) {
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -57,8 +57,6 @@ export function LoginCard({ initialEmail, onContinue, onForgotPassword, onSso, s
       onSubmit={submitCredentials}
     >
       <AuthCardIntro
-        icon={LockKeyhole}
-        kicker="Secure access"
         title="Welcome back"
         titleId="login-title"
       >
@@ -145,10 +143,6 @@ export function LoginCard({ initialEmail, onContinue, onForgotPassword, onSso, s
         {submitting ? "Signing in…" : "Sign in"} <ArrowRight size={17} aria-hidden="true" />
       </button>
 
-      <div className="divider"><span>or</span></div>
-      <button className="secondary-button" type="button" onClick={onSso}>
-        <Fingerprint size={18} aria-hidden="true" /> Continue with UTA SSO
-      </button>
       <p className="assurance-copy">
         Protected by adaptive authentication and device trust.
       </p>

@@ -457,7 +457,7 @@ export default function EventLogsPage({ navigate }) {
         <aside className={`event-detail ${selectedEvent ? "open" : ""}`} aria-label="Scrollable selected event details" tabIndex="0">
           {selectedEvent ? (
             <>
-              <header><div><SeverityBadge severity={selectedEvent.severity} /><span>{selectedEvent.id}</span></div><button type="button" onClick={() => setSelectedEventId(null)} aria-label="Close event details"><X size={17} /></button></header>
+              <header><div><SeverityBadge severity={selectedEvent.severity} /><span className="mono">{selectedEvent.id}</span></div><button type="button" onClick={() => setSelectedEventId(null)} aria-label="Close event details"><X size={17} /></button></header>
               <h2>{selectedEvent.event}</h2>
               <p>{selectedEvent.message}</p>
               <SeverityMeter severity={selectedEvent.severity} />
@@ -466,7 +466,7 @@ export default function EventLogsPage({ navigate }) {
                 <div><dt>Source</dt><dd>{selectedEvent.source}</dd></div>
                 <div><dt>Source IP</dt><dd className="mono">{selectedEvent.sourceIp}</dd></div>
                 <div><dt>User</dt><dd className="mono">{selectedEvent.user}</dd></div>
-                <div><dt>Observed</dt><dd>{formatTimestamp(selectedEvent.timestamp)}</dd></div>
+                <div><dt>Observed</dt><dd className="mono">{formatTimestamp(selectedEvent.timestamp)}</dd></div>
                 <div><dt>Status</dt><dd><StatusBadge status={selectedEvent.status} /></dd></div>
               </dl>
               <button
@@ -555,7 +555,7 @@ export default function EventLogsPage({ navigate }) {
                     <div><dt>Format</dt><dd>{upload.format.toUpperCase()}</dd></div>
                     <div><dt>Events</dt><dd>{upload.storedEntries.toLocaleString()}</dd></div>
                     <div><dt>Alerts</dt><dd>{upload.storedAlerts.toLocaleString()}</dd></div>
-                    <div><dt>Ingested</dt><dd>{formatTimestamp(upload.uploadedAt)}</dd></div>
+                    <div><dt>Ingested</dt><dd className="mono">{formatTimestamp(upload.uploadedAt)}</dd></div>
                   </dl>
                   <span className="file-history-open">{historySelectionId === upload.uploadId ? "Loading events…" : "View event logs →"}</span>
                 </article>

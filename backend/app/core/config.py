@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # Railway injects this automatically for a service with a public domain.
     railway_public_domain: str | None = None
 
+    # Admin-sent account-invite email flow (see app/routers/users.py and
+    # app/routers/auth.py). Reuses the same Resend/SMTP settings as the
+    # password-reset flow above.
+    invite_token_expiry_minutes: int = Field(default=10080, ge=60, le=43200)
+
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         env_file_encoding="utf-8",

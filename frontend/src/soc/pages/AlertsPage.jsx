@@ -414,10 +414,10 @@ export default function AlertsPage({ navigate }) {
               {alertDetectionMethod(selected) === "ml" && !selected.mlInsight && <Panel title="Learned anomaly score"><p className="empty-inline">No usable model score was recorded for this alert. Review its linked evidence and rule context.</p></Panel>}
 
               <Panel title="Detection rule" subtitle={rule ? `${rule.id} · version ${rule.version}` : selected.ruleId}>
-                {rule ? <div className="rule-detail"><div className="rule-title-row"><h3>{rule.name}</h3><StatusBadge status={rule.status} /></div><p>{rule.description}</p><dl><div><dt>ATT&CK</dt><dd>{rule.technique}</dd></div><div><dt>Owner</dt><dd>{rule.owner}</dd></div><div><dt>Updated</dt><dd>{rule.lastUpdated}</dd></div></dl><code>{rule.query}</code></div> : <p className="empty-inline">Detection-rule details are not available for this alert.</p>}
+                {rule ? <div className="rule-detail"><div className="rule-title-row"><h3>{rule.name}</h3><StatusBadge status={rule.status} /></div><p>{rule.description}</p><dl><div><dt>ATT&CK</dt><dd>{rule.technique}</dd></div><div><dt>Owner</dt><dd>{rule.owner}</dd></div><div><dt>Updated</dt><dd>{rule.lastUpdated}</dd></div></dl></div> : <p className="empty-inline">Detection-rule details are not available for this alert.</p>}
               </Panel>
             </>
-          ) : <div className="detail-placeholder"><Search size={24} /><strong>Select an alert</strong><span>Review evidence and detection logic before changing status.</span></div>}
+          ) : <div className="detail-placeholder"><Search size={24} /><strong>Select an alert</strong><span>Review the evidence before changing status.</span></div>}
         </aside>
       </div>
 

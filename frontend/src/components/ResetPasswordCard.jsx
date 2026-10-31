@@ -6,19 +6,12 @@ import {
   PasswordRequirementsChecklist,
 } from "../soc/components/PasswordField";
 import { isPasswordPolicyMet, passwordsMatch } from "../soc/utils/passwordPolicy";
+import { readTokenFromLocation } from "../utils/authValidation";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 import { FormField } from "./FormField";
 
-function readResetTokenFromLocation() {
-  if (typeof window === "undefined") return "";
-  const hash = window.location.hash || "";
-  const queryIndex = hash.indexOf("?");
-  if (queryIndex === -1) return "";
-  return new URLSearchParams(hash.slice(queryIndex + 1)).get("token") || "";
-}
-
 export function ResetPasswordCard({ onBack, onComplete, onRequestNewLink }) {
-  const [token] = useState(readResetTokenFromLocation);
+  const [token] = useState(readTokenFromLocation);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [requestError, setRequestError] = useState("");

@@ -2,7 +2,9 @@
 
 /* Base document defaults */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Space Grotesk", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   color: #e7eef7;
   background: #07111d;
   font-synthesis: none;
@@ -17,7 +19,13 @@ body { min-width: 320px; max-width: 100%; min-height: 100vh; margin: 0; overflow
 html:has(:is(.app-shell, .soc-shell)[data-theme="light"]),
 body:has(:is(.app-shell, .soc-shell)[data-theme="light"]) {
   color-scheme: light;
-  background: #f8fafc;
+  background: #eef6fa;
+}
+/* The SOC console is a fixed-viewport app shell — it scrolls internally per panel, never the document. */
+html:has(.soc-shell),
+body:has(.soc-shell) {
+  height: 100%;
+  overflow: hidden;
 }
 button, input { font: inherit; }
 button { cursor: pointer; }
@@ -70,17 +78,20 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 }
 
 .app-shell[data-theme="light"] {
-  --panel: #f8fafc;
+  --panel:
+    radial-gradient(1100px 620px at 102% -8%, rgba(94, 234, 212, 0.28), transparent 60%),
+    radial-gradient(820px 520px at -8% 108%, rgba(77, 170, 255, 0.2), transparent 58%),
+    linear-gradient(165deg, #f2fbfa 0%, #eef6fb 52%, #ecf1fb 100%);
   --auth-text: #112537;
-  --card: rgba(255, 255, 255, 0.985);
-  --card-border: #c5d3dd;
+  --card: rgba(255, 255, 255, 0.86);
+  --card-border: #c2e0db;
   --field: #fbfcfd;
   --field-border: #d7e1e9;
   --checkbox-bg: #ffffff;
   --checkbox-border: #bdcbd6;
   --copy: #5b7082;
   --subtle-copy: #708293;
-  --card-shadow: 0 0 0 1px rgba(74, 108, 130, 0.07), 0 8px 24px rgba(24, 52, 73, 0.14), 0 32px 76px rgba(24, 52, 73, 0.15);
+  --card-shadow: 0 0 0 1px rgba(11, 138, 127, 0.08), 0 10px 28px rgba(11, 138, 127, 0.12), 0 36px 80px rgba(24, 90, 130, 0.16);
   color-scheme: light;
 }
 
@@ -130,21 +141,20 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   opacity: 0.9;
 }
 .app-shell[data-theme="light"] .brand-panel::after {
-  background:
-    linear-gradient(105deg, rgba(207, 240, 241, 0.14), rgba(255, 255, 255, 0.06) 58%, rgba(238, 249, 250, 0.22)),
-    linear-gradient(90deg, transparent 82%, rgba(247, 251, 252, 0.18));
+  background: linear-gradient(90deg, transparent 84%, rgba(13, 36, 48, 0.22));
 }
 
 .brand-mark {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 13px;
 }
 
 .brand-name {
   color: #ffffff;
-  font-size: 17px;
-  font-weight: 650;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
   letter-spacing: -0.015em;
 }
 
@@ -157,16 +167,18 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 
 .cybershield-logo {
   display: block;
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   overflow: hidden;
   border: 0;
-  border-radius: 7px;
-  background: transparent;
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(94, 234, 212, 0.55), transparent 58%),
+    radial-gradient(circle at 76% 78%, rgba(77, 170, 255, 0.5), transparent 60%);
 }
 
-.cybershield-logo[data-size="compact"] { width: 38px; height: 38px; }
+.cybershield-logo[data-size="compact"] { width: 46px; height: 46px; }
 .cybershield-logo[data-size="sidebar"] { width: 40px; height: 40px; }
 .cybershield-logo img {
   display: block;
@@ -174,7 +186,7 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   height: 100%;
   object-fit: contain;
   border-radius: inherit;
-  filter: saturate(1.04) contrast(1.03);
+  filter: saturate(1.5) brightness(1.1) contrast(1.05);
   clip-path: polygon(50% 4%, 85% 15%, 85% 53%, 81% 66%, 71% 79%, 50% 96%, 29% 79%, 19% 66%, 15% 53%, 15% 15%);
 }
 
@@ -187,13 +199,6 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 }
 .eyebrow { color: #35dcc9; }
 .card-kicker { color: var(--accent); }
-
-.text-gradient {
-  color: transparent;
-  background: linear-gradient(90deg, #8ffff0, #27d9c7 60%, #4bb7ff);
-  background-clip: text;
-  -webkit-background-clip: text;
-}
 
 .feature-row { display: flex; align-items: center; gap: 14px; }
 .feature-icon {
@@ -214,56 +219,6 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   background: rgba(11, 67, 82, 0.52);
   box-shadow: 0 5px 18px rgba(4, 45, 59, 0.17);
 }
-
-.event-console {
-  max-width: 680px;
-  overflow: hidden;
-  border: 1px solid rgba(70, 200, 203, 0.13);
-  border-radius: 10px;
-  background: rgba(6, 24, 42, 0.69);
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(12px);
-}
-
-.app-shell[data-theme="light"] .event-console {
-  border-color: rgba(120, 159, 174, 0.56);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 56px rgba(7, 31, 46, 0.2), 0 0 0 1px rgba(222, 242, 244, 0.3);
-  backdrop-filter: blur(16px);
-}
-.app-shell[data-theme="light"] .event-console > div:first-child { border-bottom-color: rgba(61, 108, 126, 0.14); }
-.app-shell[data-theme="light"] .event-console > div:first-child svg,
-.app-shell[data-theme="light"] .event-console > div:first-child > span { color: #0b8a7f; }
-.app-shell[data-theme="light"] .event-console > div:first-child > div span { color: #355267; }
-.app-shell[data-theme="light"] .event-console .event-time { color: #73879a; }
-.app-shell[data-theme="light"] .event-console .event-service { color: #29475d; }
-.app-shell[data-theme="light"] .event-console .event-message { color: #536b7d; }
-
-.event-feed {
-  display: grid;
-  gap: 6px;
-  padding: 14px 17px 16px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.event-row {
-  display: grid;
-  grid-template-columns: 62px 70px 84px minmax(0, 1fr);
-  gap: 7px;
-  align-items: baseline;
-  min-width: 0;
-}
-.event-console > div:first-child span { font-size: 10px; }
-.event-time { color: #8295a8; }
-.event-severity { font-weight: 650; }
-.event-severity[data-severity="critical"] { color: #ff747d; }
-.event-severity[data-severity="medium"] { color: #f0bf54; }
-.event-severity[data-severity="ok"] { color: #39d58a; }
-.event-severity[data-severity="info"] { color: #42a5ff; }
-.event-service { overflow: hidden; color: #c8d4df; text-overflow: ellipsis; white-space: nowrap; }
-.event-message { overflow: hidden; color: #92a6b8; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Authentication panel and view transitions */
 .auth-panel {
@@ -351,14 +306,19 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   transition: opacity var(--theme-duration) var(--theme-ease);
 }
 .app-shell[data-theme="dark"] .auth-card::before { opacity: 1; }
+.app-shell[data-theme="light"] .auth-card::before {
+  opacity: 1;
+  background: linear-gradient(145deg, rgba(94, 234, 212, 0.16) 0%, rgba(77, 170, 255, 0.1) 48%, rgba(255, 255, 255, 0) 100%);
+}
 .auth-card > * { position: relative; z-index: 1; }
 
 .auth-card h1 {
   margin: 8px 0 0;
+  font-family: var(--font-display);
   font-size: 28px;
-  font-weight: 680;
+  font-weight: 600;
   line-height: 1.16;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .card-copy {
@@ -843,7 +803,6 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   .brand-hero { max-width: 690px; padding-block: clamp(58px, 7vh, 96px); }
   .brand-hero h2 { max-width: 620px; font-size: clamp(4.4rem, 3.8vw, 5.25rem); }
   .brand-hero #brand-heading + p { max-width: 540px; font-size: 16px; line-height: 1.8; }
-  .brand-footer .event-console { max-width: 720px; }
   .auth-panel { padding-inline: clamp(52px, 4.8vw, 100px); }
   .auth-wrap { max-width: 452px; }
   .auth-card { padding: 44px 46px; }
