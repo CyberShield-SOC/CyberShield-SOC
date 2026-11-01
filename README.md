@@ -363,6 +363,20 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 - [Interaction test report (archived)](frontend/docs/archive/INTERACTION_TEST_REPORT.md)
 - [Security policy and frontend boundary](SECURITY.md)
 
+## Deployment
+
+Railway builds and runs the repository's `Dockerfile` (pinned in `railway.json`) as a single combined service: it builds the frontend, installs backend dependencies, runs Alembic migrations, seeds the initial Admin account, and starts FastAPI, which also serves the built frontend from `frontend/dist`. No separate frontend service or CORS configuration is needed for this combined deployment.
+
+`Settings` (`backend/app/core/config.py`) requires three environment variables with no default — without them, the container's `alembic upgrade head` step fails immediately on startup with a Pydantic `ValidationError`. Set these in the Railway service's **Variables** tab before the first deploy:
+
+| Variable | Notes |
+| --- | --- |
+| `DATABASE_URL` | Add a Railway PostgreSQL plugin, then use its connection string **with the scheme changed to `postgresql+psycopg://`** (not the plugin's default `postgresql://`) — this project installs the `psycopg` v3 driver, not `psycopg2`, so the default scheme fails to connect. |
+| `JWT_SECRET_KEY` | Long random signing key, e.g. `python -c "import secrets; print(secrets.token_urlsafe(64))"`. |
+| `OTP_SECRET` | Random value of at least 16 characters, used to hash OTP codes. |
+
+Also set `CYBERSHIELD_ADMIN_PASSWORD` to seed the initial Admin account, and `AUTH_COOKIE_SECURE=true` since Railway serves over HTTPS. See [Environment Variables](docs/deployment_and_documentation.md#environment-variables) and [Railway Deployment](docs/deployment_and_documentation.md#railway-deployment) for the full variable table and step-by-step deployment checklist.
+
 ## Tech Stack
 
 - React.js
