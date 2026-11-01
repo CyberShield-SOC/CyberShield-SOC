@@ -29,6 +29,7 @@ body:has(.soc-shell) {
 }
 button, input { font: inherit; }
 button { cursor: pointer; }
+a:focus-visible,
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--accent, #0b8a7f);
@@ -713,6 +714,8 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   align-items: center;
   margin-top: 28px;
   padding: 16px;
+  color: inherit;
+  text-decoration: none;
   border: 1px solid var(--field-border);
   border-radius: var(--radius-control);
   background: var(--field);
@@ -721,6 +724,7 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
     border-color var(--theme-duration) var(--theme-ease),
     background-color var(--theme-duration) var(--theme-ease);
 }
+a.organization-card:hover { border-color: var(--accent); }
 .organization-card > * { min-width: 0; }
 .organization-icon {
   display: grid;
