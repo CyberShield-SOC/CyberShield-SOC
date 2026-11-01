@@ -4,6 +4,9 @@ const DEFAULT_API_BASE_URL = import.meta.env?.PROD ? "/api" : "";
 const API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
 const FORCE_SAMPLE_MODE = String(import.meta.env?.VITE_USE_MOCK_DATA || "").toLowerCase() === "true";
 const REQUEST_TIMEOUT_MS = 12_000;
+// PDF export renders server-side and can take longer than the default
+// request budget, especially for a wide date range.
+const BINARY_REQUEST_TIMEOUT_MS = 45_000;
 const CSRF_COOKIE_NAME = "cybershield_csrf";
 // Pre-session lifecycle endpoints: a 401 from any of these is a normal,
 // expected outcome (wrong password, wrong/expired/used OTP), never "your
@@ -173,6 +176,78 @@ export async function apiRequest(path, {
     }
 
     return payload;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new ErrorType(timeoutMessage, { status: 0 });
+    }
+    if (error instanceof ApiRequestError) throw error;
+    if (error instanceof TypeError) {
+      throw new ErrorType(networkMessage, { status: 0 });
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
+function filenameFromContentDisposition(headerValue) {
+  const match = /filename="?([^";]+)"?/i.exec(headerValue || "");
+  return match ? match[1] : "";
+}
+
+/**
+ * Binary variant of apiRequest for endpoints that stream a file (PDF export)
+ * instead of returning JSON. Keeps the same auth-refresh, CSRF, and 401
+ * handling, but with a longer timeout — server-side rendering can take
+ * longer than the default request budget — and resolves to a Blob plus the
+ * filename the server suggested, rather than parsed JSON.
+ */
+export async function apiRequestBlob(path, {
+  errorMessage = defaultFailureMessage,
+  errorType: ErrorType = ApiRequestError,
+  networkMessage = "The service is unreachable. Check the connection and try again.",
+  timeoutMessage = "The request timed out. Please try again.",
+  timeoutMs = BINARY_REQUEST_TIMEOUT_MS,
+  _isRetry = false,
+  ...options
+} = {}) {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const method = String(options.method || "GET").toUpperCase();
+
+  try {
+    const headers = new Headers(options.headers);
+    headers.set("Accept", "application/pdf");
+    if (accessToken) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      credentials: "include",
+      headers,
+      method,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const pathname = String(path || "").split("?", 1)[0];
+      if (response.status === 401 && !_isRetry && unauthorizedRefreshHandler) {
+        const refreshedUser = await unauthorizedRefreshHandler().catch(() => null);
+        if (refreshedUser) {
+          return apiRequestBlob(path, { ...options, errorMessage, errorType: ErrorType, networkMessage, timeoutMessage, timeoutMs, _isRetry: true });
+        }
+      }
+      if (response.status === 401 && !NO_INTERCEPT_PATHS.has(pathname)) {
+        broadcastUnauthorized(path);
+      }
+      const payload = await response.json().catch(() => null);
+      throw new ErrorType(errorMessage(response.status, payload || {}), { payload, status: response.status });
+    }
+
+    const blob = await response.blob();
+    const filename = filenameFromContentDisposition(response.headers.get("content-disposition"));
+    return { blob, filename };
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new ErrorType(timeoutMessage, { status: 0 });
