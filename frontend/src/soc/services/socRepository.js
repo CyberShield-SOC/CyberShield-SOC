@@ -18,6 +18,8 @@ import { buildAnomalyStat, buildMlInsight } from "../utils/mlInsight.js";
 import { customRuleUpdates } from "../utils/customRuleDraft.js";
 import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
 
+const INVITE_REQUEST_TIMEOUT_MS = 25_000;
+
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
 const USERS_STORAGE_KEY = "cybershield-session-users";
@@ -1293,6 +1295,10 @@ export const httpRepository = {
       method: "POST",
       body: JSON.stringify({ email, role }),
       errorMessage: inviteErrorMessage,
+      // The backend gives its email provider up to 20s before giving up
+      // (see INVITE_EMAIL_SEND_TIMEOUT_SECONDS in users.py); wait longer
+      // than that so a slow-but-successful send isn't cut off here first.
+      timeoutMs: INVITE_REQUEST_TIMEOUT_MS,
     });
     return normalizeInvite(payload.invite);
   },
@@ -1300,6 +1306,7 @@ export const httpRepository = {
     const payload = await request(`/users/invites/${requireBackendId(inviteId, "Invite")}/resend`, {
       method: "POST",
       errorMessage: inviteErrorMessage,
+      timeoutMs: INVITE_REQUEST_TIMEOUT_MS,
     });
     return normalizeInvite(payload.invite);
   },
