@@ -321,6 +321,7 @@ Returns backend service health.
 | Investigations | `GET/PATCH /alerts/{alert_id}/investigation`, `POST /alerts/{alert_id}/escalate`, investigation notes/history |
 | Incident lifecycle | `POST /incidents/{incident_id}/resolve`, `/reopen`; incident alerts/history |
 | ML models | `GET /ml/models`, `POST /ml/models/{feature_set}/train`, `POST /ml/models/{model_id}/activate`, `GET /ml/scores` |
+| Reports | `GET /reports`, `GET /reports/{report_id}/pdf` (server-rendered PDF export of the four phase-1 reports) |
 
 Full request/response contracts and RBAC rules are in [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md) and the backend test suite (`backend/tests/`).
 

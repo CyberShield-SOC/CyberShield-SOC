@@ -61,8 +61,7 @@ export function downloadEventsCsv(events) {
   return downloadCsvFile(eventsToCsv(events), `cybershield-events-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
-export function downloadCsvFile(csv, filename) {
-  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+export function downloadBlobFile(blob, filename) {
   const url = URL.createObjectURL(blob);
   let link;
   try {
@@ -78,6 +77,10 @@ export function downloadCsvFile(csv, filename) {
   }
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return filename;
+}
+
+export function downloadCsvFile(csv, filename) {
+  return downloadBlobFile(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }), filename);
 }
 
 export function incidentsToCsv(incidents) {
@@ -102,6 +105,17 @@ export function alertsToCsv(alerts) {
 
 export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
   return downloadCsvFile(alertsToCsv(alerts), `cybershield-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+// One row per detection rule (see reportExport.js's summarizeRuleCoverage),
+// not one row per alert — a coverage report is about which rules are
+// firing, not a raw alert dump.
+export function detectionCoverageToCsv(rows) {
+  const columns = ["ruleId", "ruleName", "mitreTechnique", "count", "critical", "high", "medium", "low", "firstSeen", "lastSeen"];
+  return [
+    columns.map(escapeCsvCell).join(","),
+    ...rows.map((row) => columns.map((key) => escapeCsvCell(row[key])).join(",")),
+  ].join("\n");
 }
 
 export function validateLogFile(

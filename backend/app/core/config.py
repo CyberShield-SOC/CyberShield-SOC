@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfoNotFoundError, available_timezones
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -79,6 +80,21 @@ class Settings(BaseSettings):
     # app/routers/auth.py). Reuses the same Resend/SMTP settings as the
     # password-reset flow above.
     invite_token_expiry_minutes: int = Field(default=10080, ge=60, le=43200)
+
+    # Server-side PDF report export (see app/routers/reports.py and
+    # app/services/reports/). Detection rules evaluate in UTC, so reports
+    # default to it too rather than silently drifting from the data they
+    # describe.
+    report_timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    report_max_range_days: int = Field(default=90, ge=1, le=366)
+    report_max_rows_per_table: int = Field(default=200, ge=10, le=2000)
+
+    @field_validator("report_timezone")
+    @classmethod
+    def _validate_report_timezone(cls, value: str) -> str:
+        if value not in available_timezones():
+            raise ZoneInfoNotFoundError(f"Unknown REPORT_TIMEZONE '{value}'.")
+        return value
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
