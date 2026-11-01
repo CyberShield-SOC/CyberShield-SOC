@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -35,6 +36,20 @@ from app.validation import password_context_errors
 router = APIRouter(prefix="/users", tags=["Users"])
 
 INVITE_EMAIL_SEND_FAILURE_MESSAGE = "We couldn't send the invite email. Please try again shortly."
+# Upper bound on how long the request waits for the invite email provider.
+# A stuck DNS lookup (e.g. Gmail SMTP from some hosts) ignores socket-level
+# timeouts entirely, so the send runs on its own thread and is abandoned
+# past this deadline rather than hanging the request indefinitely.
+INVITE_EMAIL_SEND_TIMEOUT_SECONDS = 20
+
+
+def _send_invite_email_with_timeout(send_invite_email, *, to_email: str, invite_link: str, role: str) -> None:
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(send_invite_email, to_email=to_email, invite_link=invite_link, role=role)
+        future.result(timeout=INVITE_EMAIL_SEND_TIMEOUT_SECONDS)
+    finally:
+        executor.shutdown(wait=False)
 
 
 def serialize_user(user: User) -> dict:
@@ -204,7 +219,7 @@ def create_invite(
     frontend_base = frontend_base_url(request)
     invite_link = f"{frontend_base}/#/accept-invite?token={quote(token)}"
     try:
-        send_invite_email(to_email=payload.email, invite_link=invite_link, role=role.name)
+        _send_invite_email_with_timeout(send_invite_email, to_email=payload.email, invite_link=invite_link, role=role.name)
     except Exception as exc:
         db.rollback()
         raise HTTPException(
@@ -249,7 +264,7 @@ def resend_pending_invite(
     frontend_base = frontend_base_url(request)
     invite_link = f"{frontend_base}/#/accept-invite?token={quote(token)}"
     try:
-        send_invite_email(to_email=invite.email, invite_link=invite_link, role=invite.role.name)
+        _send_invite_email_with_timeout(send_invite_email, to_email=invite.email, invite_link=invite_link, role=invite.role.name)
     except Exception as exc:
         db.rollback()
         raise HTTPException(
