@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
@@ -34,6 +35,7 @@ from app.validation import password_context_errors
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
+logger = logging.getLogger(__name__)
 
 INVITE_EMAIL_SEND_FAILURE_MESSAGE = "We couldn't send the invite email. Please try again shortly."
 # Upper bound on how long the request waits for the invite email provider.
@@ -221,6 +223,7 @@ def create_invite(
     try:
         _send_invite_email_with_timeout(send_invite_email, to_email=payload.email, invite_link=invite_link, role=role.name)
     except Exception as exc:
+        logger.exception("Invite email send failed for a new invite")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -266,6 +269,7 @@ def resend_pending_invite(
     try:
         _send_invite_email_with_timeout(send_invite_email, to_email=invite.email, invite_link=invite_link, role=invite.role.name)
     except Exception as exc:
+        logger.exception("Invite email send failed for a resend")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
