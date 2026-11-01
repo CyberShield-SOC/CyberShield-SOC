@@ -24,6 +24,7 @@ from app.routers import (
     investigations,
     ml_models,
     notes,
+    reports,
     threat_intel,
     upload,
     users,
@@ -55,6 +56,9 @@ app.add_middleware(
     # the CSRF value, and an optional bearer credential for non-browser clients.
     allow_headers=["Accept", "Authorization", "Content-Type", "X-CSRF-Token"],
     allow_credentials=True,
+    # The browser can't read a response header via JS unless it's exposed —
+    # PDF export needs the filename FastAPI puts in Content-Disposition.
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -131,6 +135,7 @@ for prefix in ("", "/api"):
         correlation,
         investigations,
         incident_history,
+        reports,
     ):
         app.include_router(module.router, prefix=prefix)
 

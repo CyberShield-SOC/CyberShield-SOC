@@ -22,3 +22,11 @@ joblib>=1.4,<2
 
 # IANA timezone database for timezone-aware rule conditions (Windows has no system zoneinfo).
 tzdata>=2024.1
+
+# Server-side PDF report export (see app/services/reports/). Pure Python,
+# installs without extra system packages on slim/Windows/CI. Pulls in Pillow,
+# whose manylinux/win wheels bundle their own image libraries.
+reportlab>=4.2,<5
+
+# Test-only: extracts text from generated PDFs to assert on rendered counts.
+pypdf>=5.0,<6
