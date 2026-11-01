@@ -21,7 +21,12 @@ from app.security import require_roles
 router = APIRouter(tags=["Assistant"])
 
 MAX_MESSAGES = 20
-MAX_MESSAGE_CHARS = 4000
+# Must stay well above what one model turn can actually produce — a reply
+# capped at settings.assistant_max_tokens (default 4096, up to 16000) can
+# easily run past 4000 characters, especially in dense bullet-list output.
+# Too low here means a long-but-successful reply can never be saved to
+# history even though the chat itself worked.
+MAX_MESSAGE_CHARS = 24000
 SAVED_HISTORY_LIMIT = 100
 
 
