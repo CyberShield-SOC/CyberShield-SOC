@@ -2,6 +2,8 @@
 
 AI-Powered Log Monitoring and Threat Detection Platform
 
+New here? See the [User Guide](docs/USER_GUIDE.md).
+
 ## Overview
 
 CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, email-based two-factor verification, and role-based access control (Admin, Analyst, Viewer).
@@ -402,8 +404,8 @@ Also set `CYBERSHIELD_ADMIN_PASSWORD` to seed the initial Admin account, and `AU
 
 | Name | Role |
 | --- | --- |
-| Yugal Limbu | Project Manager / Documentation Lead |
+| Yugal Limbu | Project Manager / Documentation Lead / ML |
 | Marvellous Obasanya | Scrum Master |
 | Paul Truong | Frontend Developer |
 | Samin Rijal | Backend Developer |
-| Kapil Khanal | ML / DevOps / Testing Lead |
+| Kapil Khanal | DevOps / Testing Lead |
