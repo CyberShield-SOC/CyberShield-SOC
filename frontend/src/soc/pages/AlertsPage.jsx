@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { socRepository } from "../services/socRepository";
 import { formatTimestamp } from "../utils/eventUtils";
@@ -63,7 +64,7 @@ export default function AlertsPage({ navigate }) {
     setTrackingIncidentId,
     setGlobalTimeRange,
   } = useSocWorkspace();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(readHashQuery);
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
   const [detectionMethod, setDetectionMethod] = useState("");
@@ -108,6 +109,8 @@ export default function AlertsPage({ navigate }) {
   const recommendations = selected ? getAlertRecommendations(selected) : [];
   const linkedIncidentIsTerminal = linkedIncident ? isTerminalIncidentStatus(linkedIncident.status) : false;
   const incidentActionLabel = getIncidentActionLabel(linkedIncident, selected?.severity);
+
+  useHashQuery(setQuery);
 
   useEffect(() => {
     setPage(1);

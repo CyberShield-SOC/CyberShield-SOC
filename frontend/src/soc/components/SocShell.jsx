@@ -33,11 +33,12 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { SOC_ROUTES } from "../../hooks/useAuthRoute";
+import { canAccessSocRoute, SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { BrandLogo } from "../../components/BrandLogo";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { searchShortcutLabel, shouldFocusGlobalSearch } from "../utils/searchShortcuts";
 import { formatNavigationBadgeCount } from "../utils/countFormat";
+import { resolveNavDestination } from "../utils/navSearch";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cybershield-sidebar-collapsed";
 
@@ -86,6 +87,11 @@ const ROUTE_LABELS = Object.fromEntries(
 );
 ROUTE_LABELS[SOC_ROUTES.help] = "Help center";
 
+// Every nav item's own label, so a query that names a section ("users",
+// "integrations", "quick resolve"...) jumps straight there instead of
+// always falling through to Event Logs. See utils/navSearch.js.
+const NAV_SEARCH_TARGETS = NAV_GROUPS.flatMap((group) => group.items).map(([route, label]) => [route, label]);
+
 export function SocShell({ children, expiresAt, navigate, onSignOut, route, theme, toggleTheme, user }) {
   const {
     activeAlertCount,
@@ -112,6 +118,8 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     setGlobalTimeRange,
     setSelectedAlertId,
     setSelectedIncidentId,
+    timeFilteredAlerts,
+    timeFilteredIncidents,
   } = useSocWorkspace();
   // Child routes stay attached to their parent navigation item.
   const navigationRoute = route === SOC_ROUTES.ruleBuilder ? SOC_ROUTES.threatDetection : route;
@@ -191,12 +199,43 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     };
   }, [notificationsOpen]);
 
+  // Routes a query to whichever workspace the text actually matches, instead
+  // of always landing on Event Logs. A section name ("users", "settings",
+  // "quick resolve"...) jumps straight to that page. Otherwise, incidents
+  // and alerts are smaller, more targeted datasets than raw events, so they
+  // take priority when the query matches there too.
+  function resolveSearchDestination(query) {
+    const needle = query.toLowerCase();
+    const matchesIncident = timeFilteredIncidents.some((incident) => (
+      [incident.id, incident.title, incident.owner, incident.summary, incident.priority]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    ));
+    if (matchesIncident) return SOC_ROUTES.incidents;
+    const matchesAlert = timeFilteredAlerts.some((alert) => (
+      [alert.id, alert.title, alert.sourceIp, alert.ruleId, alert.ruleName, alert.assignee]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    ));
+    if (matchesAlert) return SOC_ROUTES.alerts;
+    return SOC_ROUTES.eventLogs;
+  }
+
   function submitSearch(event) {
     event.preventDefault();
     const query = String(new FormData(event.currentTarget).get("global-search") || "").trim().slice(0, 200);
-    window.location.hash = query
-      ? `#/${SOC_ROUTES.eventLogs}?q=${encodeURIComponent(query)}`
-      : `#/${SOC_ROUTES.eventLogs}`;
+    if (!query) {
+      window.location.hash = `#/${SOC_ROUTES.eventLogs}`;
+      return;
+    }
+    // A section name is a jump, not a filter: "#/alerts?q=alerts" would open
+    // Alerts with its text filter set to the word "alerts" and show nothing.
+    const navDestination = resolveNavDestination(query, NAV_SEARCH_TARGETS, (route) => canAccessSocRoute(route, user));
+    window.location.hash = navDestination
+      ? `#/${navDestination}`
+      : `#/${resolveSearchDestination(query)}?q=${encodeURIComponent(query)}`;
   }
 
   return (
@@ -311,7 +350,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
             <button type="submit" className="global-search-submit" aria-label="Run event search" title="Run search">
               <Search size={16} aria-hidden="true" />
             </button>
-            <input ref={searchRef} name="global-search" type="search" maxLength="200" placeholder="Search events, IPs, rules…" aria-label="Search security events" aria-keyshortcuts="Control+K Meta+K /" title="Press Ctrl or Command + K, or /, to focus search" />
+            <input ref={searchRef} name="global-search" type="search" maxLength="200" placeholder="Search events, alerts, incidents…" aria-label="Search events, alerts, and incidents" aria-keyshortcuts="Control+K Meta+K /" title="Press Ctrl or Command + K, or /, to focus search" />
             <kbd aria-hidden="true">{shortcutLabel}</kbd>
           </form>
           <div className="soc-popover-anchor" ref={notificationsRef}>

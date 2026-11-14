@@ -34,12 +34,24 @@ export function formatDecisionScore(value) {
   return hasNumber(value) ? number.toFixed(3) : "—";
 }
 
-function formatDeviation(deviation) {
-  const z = Number(deviation?.z_score);
-  const value = Number(deviation?.value);
-  if (!deviation?.feature || !hasNumber(deviation.z_score)) return null;
-  const valueText = hasNumber(deviation.value) ? ` (value ${value.toFixed(2)})` : "";
-  return `${deviation.feature} ${z >= 0 ? "+" : ""}${z.toFixed(1)} SD${valueText}`;
+/**
+ * The API's { feature, value, z_score } rows (alert evidence and
+ * GET /ml/anomalies alike) as { feature, value, zScore }, dropping rows
+ * without a feature or a finite z-score. The one place that shape rule lives.
+ */
+export function normalizeDeviations(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((deviation) => deviation?.feature && hasNumber(deviation.z_score))
+    .map((deviation) => ({
+      feature: String(deviation.feature),
+      value: hasNumber(deviation.value) ? Number(deviation.value) : null,
+      zScore: Number(deviation.z_score),
+    }));
+}
+
+function formatDeviation({ feature, value, zScore }) {
+  const valueText = value === null ? "" : ` (value ${value.toFixed(2)})`;
+  return `${feature} ${zScore >= 0 ? "+" : ""}${zScore.toFixed(1)} SD${valueText}`;
 }
 
 /**
@@ -55,14 +67,16 @@ export function buildMlInsight(rawAlert) {
   if (!hasNumber(evidence.score)) return null;
   const hasThreshold = hasNumber(evidence.threshold);
   const threshold = hasThreshold ? Number(evidence.threshold) : null;
-  const deviations = Array.isArray(evidence.feature_deviations) ? evidence.feature_deviations : [];
+  const deviations = normalizeDeviations(evidence.feature_deviations);
   return {
     score,
     scoreText: formatDecisionScore(score),
     threshold,
     thresholdText: hasThreshold ? formatDecisionScore(threshold) : null,
     belowThreshold: hasThreshold ? score < threshold : null,
-    factors: deviations.map(formatDeviation).filter(Boolean),
+    factors: deviations.map(formatDeviation),
+    // The same deviations unformatted, for charting (see deviationBars).
+    deviations,
     model: {
       version: evidence.model_version ?? null,
       sampleCount: evidence.model_sample_count ?? null,
@@ -95,4 +109,74 @@ export function buildAnomalyStat(alerts, models) {
     value: String(countAnomalyAlerts(alerts)),
     trend: describeModelStatus(models),
   };
+}
+
+export const PILOT_LABELS = Object.freeze({
+  login_behavior: "Login behavior",
+  egress_volume: "Egress volume",
+  threat_log: "Threat log",
+});
+
+export function pilotLabel(featureSet) {
+  return PILOT_LABELS[featureSet] || String(featureSet || "").replace(/_/g, " ");
+}
+
+/**
+ * Where one behavioral-anomaly pilot (from GET /ml/anomalies) sits in its
+ * lifecycle, in words a Viewer can read without knowing the backend:
+ *   collecting -> ready to train -> scoring in shadow mode -> alerting.
+ * `status` matches the StatusBadge vocabulary used elsewhere in the UI.
+ */
+export function describePilotStage(pilot) {
+  if (!pilot) return { key: "unknown", status: "disabled", label: "Unavailable", detail: "" };
+  const { sampleCount = 0, minSamples = 0, activeModel, shadowMode, scoredCount = 0, ruleEnabled = true } = pilot;
+  if (!activeModel) {
+    if (sampleCount < minSamples) {
+      const needed = Math.max(0, minSamples - sampleCount);
+      return {
+        key: "collecting",
+        status: "pending",
+        label: "Collecting samples",
+        detail: `${sampleCount} of ${minSamples} samples stored. ${needed} more before a model can be trained.`,
+      };
+    }
+    return {
+      key: "ready",
+      status: "pending",
+      label: "Ready to train",
+      detail: `${sampleCount} samples stored. An Admin can train the first model from the Threat Detection page.`,
+    };
+  }
+  if (!ruleEnabled) {
+    return { key: "disabled", status: "disabled", label: "Rule disabled", detail: "A model is trained, but the detection rule is switched off." };
+  }
+  if (shadowMode) {
+    return {
+      key: "shadow",
+      status: "pending",
+      label: "Shadow mode",
+      detail: scoredCount
+        ? `Model v${activeModel.version} has scored ${scoredCount} events. Findings are logged here, not raised as alerts, until an Analyst promotes the rule.`
+        : `Model v${activeModel.version} is active and will score the next upload. Nothing scored yet.`,
+    };
+  }
+  return {
+    key: "live",
+    status: "enabled",
+    label: "Alerting",
+    detail: `Model v${activeModel.version} raises alerts when a score falls below the threshold.`,
+  };
+}
+
+/**
+ * Horizontal-bar items for a list of {feature, value, zScore} deviations:
+ * bar length is |z|, so the biggest driver is the longest bar, and the colour
+ * says which direction it moved from the baseline.
+ */
+export function deviationBars(deviations) {
+  return (Array.isArray(deviations) ? deviations : []).map((d) => ({
+    label: d.value === null ? d.feature : `${d.feature} (${d.value.toFixed(2)})`,
+    value: Math.abs(d.zScore),
+    color: d.zScore < 0 ? "var(--severity-high)" : "var(--severity-medium)",
+  }));
 }

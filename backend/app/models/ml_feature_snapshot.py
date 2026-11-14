@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, Index, String, func, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,6 +38,8 @@ class MLFeatureSnapshot(Base):
         # human looking at before flipping a rule out of shadow_mode.
         Index("ix_ml_feature_snapshots_set", "feature_set", "entity_type"),
         Index("ix_ml_feature_snapshots_score", "feature_set", "entity_type", "score"),
+        # GET /ml/anomalies ranks only the scores the *active* model produced.
+        Index("ix_ml_feature_snapshots_model_score", "model_id", "score"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -53,6 +55,13 @@ class MLFeatureSnapshot(Base):
     # This is what makes shadow mode reviewable rather than just silent: an
     # admin can see what a rule *would* have flagged before turning it on.
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Which ml_models row produced `score`. Scores from different versions
+    # aren't comparable, and a score can only be explained against the
+    # means/stds of the model that produced it, so readers filter on this
+    # rather than guessing from timestamps. Null whenever score is null.
+    model_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("ml_models.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

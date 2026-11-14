@@ -14,7 +14,7 @@ import { restoreStoredNotes, restoreStoredSettings } from "../utils/storageValid
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
 import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
-import { buildAnomalyStat, buildMlInsight } from "../utils/mlInsight.js";
+import { buildAnomalyStat, buildMlInsight, normalizeDeviations } from "../utils/mlInsight.js";
 import { customRuleUpdates } from "../utils/customRuleDraft.js";
 import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
 
@@ -386,6 +386,54 @@ export function normalizeHostHeartbeat(host) {
   };
 }
 
+export function normalizeMlModel(model) {
+  if (!model) return null;
+  return {
+    id: model.id,
+    featureSet: model.feature_set,
+    entityType: model.entity_type,
+    version: Number(model.version) || 0,
+    isActive: Boolean(model.is_active),
+    sampleCount: Number(model.sample_count) || 0,
+    trainedAt: model.trained_at || null,
+  };
+}
+
+function normalizeAnomalyScore(row) {
+  const score = Number(row.score);
+  return {
+    // The snapshot's own id: two snapshots for one entity can share a
+    // captured_at (same-second logins, a re-uploaded file), so this is the
+    // only stable identity a list key can use.
+    id: Number(row.id) || null,
+    entityId: String(row.entity_id || ""),
+    capturedAt: row.captured_at || null,
+    score: Number.isFinite(score) ? score : null,
+    belowThreshold: Boolean(row.below_threshold),
+    // Same shape the alert evidence carries, so the dashboard can chart a
+    // shadow-mode row exactly like a real alert.
+    deviations: normalizeDeviations(row.feature_deviations),
+  };
+}
+
+export function normalizeMlAnomalyPilot(row) {
+  const threshold = Number(row.score_threshold);
+  return {
+    featureSet: row.feature_set,
+    ruleName: row.rule_name || null,
+    entityType: row.entity_type,
+    minSamples: Number(row.min_samples) || 0,
+    sampleCount: Number(row.sample_count) || 0,
+    ready: Boolean(row.ready),
+    scoredCount: Number(row.scored_count) || 0,
+    activeModel: normalizeMlModel(row.active_model),
+    ruleEnabled: row.rule_enabled !== false,
+    scoreThreshold: Number.isFinite(threshold) ? threshold : null,
+    shadowMode: row.shadow_mode !== false,
+    scores: (Array.isArray(row.scores) ? row.scores : []).map(normalizeAnomalyScore),
+  };
+}
+
 async function request(path, options = {}) {
   const payload = await apiRequest(path, {
     ...options,
@@ -497,6 +545,7 @@ function normalizeEvent(log, alerts = []) {
     event: log.event || "Security event",
     severity,
     status,
+    port: log.port ?? null,
     risk: SEVERITY_RISK[severity] ?? SEVERITY_RISK.info,
     rule: ruleId,
     message: log.raw_message || alert?.description || "Normalized security event.",
@@ -993,6 +1042,47 @@ const mockRepository = {
   async checkHostSilence() {
     throw new Error("Host silence checks require the connected backend.");
   },
+  async trainMlModel() {
+    throw new Error("Model training requires the connected backend.");
+  },
+  async getMlAnomalyOverview() {
+    await wait(90);
+    const readiness = [
+      {
+        featureSet: "login_behavior", entityType: "account", minSamples: 50, sampleCount: 418, ready: true,
+        activeModel: { id: 1, featureSet: "login_behavior", entityType: "account", version: 3, isActive: true, sampleCount: 418, trainedAt: "2026-11-02T04:00:00Z" },
+      },
+      {
+        featureSet: "egress_volume", entityType: "host", minSamples: 50, sampleCount: 365, ready: true,
+        activeModel: { id: 2, featureSet: "egress_volume", entityType: "host", version: 2, isActive: true, sampleCount: 365, trainedAt: "2026-10-29T04:00:00Z" },
+      },
+      { featureSet: "threat_log", entityType: "source_ip", minSamples: 50, sampleCount: 31, ready: false, activeModel: null },
+    ];
+    const sample = {
+      login_behavior: {
+        ruleName: "behavioral_anomaly_login", scoreThreshold: -0.02, scoredCount: 212,
+        scores: [
+          { id: 7101, entityId: "jchen", capturedAt: "2026-11-10T20:51:12Z", score: -0.104, belowThreshold: true, deviations: [{ feature: "hour_cos", value: 0.97, zScore: 2.1 }, { feature: "is_new_geo", value: 1, zScore: 2.6 }] },
+          { id: 7102, entityId: "svc-backup", capturedAt: "2026-11-09T03:12:40Z", score: -0.047, belowThreshold: true, deviations: [{ feature: "hour_sin", value: -0.71, zScore: -1.9 }, { feature: "dow_cos", value: 0.62, zScore: 1.2 }] },
+          { id: 7103, entityId: "mpatel", capturedAt: "2026-11-08T11:05:02Z", score: 0.031, belowThreshold: false, deviations: [{ feature: "dow_sin", value: 0.43, zScore: 0.8 }] },
+        ],
+      },
+      egress_volume: {
+        ruleName: "behavioral_anomaly_egress", scoreThreshold: -0.02, scoredCount: 140,
+        scores: [
+          { id: 7201, entityId: "fs-02", capturedAt: "2026-11-10T18:00:00Z", score: -0.041, belowThreshold: true, deviations: [{ feature: "log_bytes_out", value: 20.8, zScore: 3.4 }, { feature: "distinct_destinations", value: 11, zScore: 1.8 }] },
+          { id: 7202, entityId: "web-01", capturedAt: "2026-11-10T09:00:00Z", score: 0.052, belowThreshold: false, deviations: [{ feature: "connection_count", value: 84, zScore: 0.6 }] },
+        ],
+      },
+      threat_log: { ruleName: "behavioral_anomaly_threat_log", scoreThreshold: -0.12, scoredCount: 0, scores: [] },
+    };
+    return readiness.map((row) => ({
+      ...row,
+      ruleEnabled: true,
+      shadowMode: true,
+      ...sample[row.featureSet],
+    }));
+  },
   async createCustomRule(rule) {
     await wait(150);
     const rules = readSessionCustomRules();
@@ -1443,6 +1533,15 @@ export const httpRepository = {
   async checkHostSilence() {
     const payload = await request("/detection/host-silence/check", { method: "POST" });
     return responseArray(payload, "alerts").map((alert) => normalizeAlert(alert));
+  },
+  async trainMlModel(featureSet) {
+    const payload = await request(`/ml/models/${encodeURIComponent(featureSet)}/train`, { method: "POST" });
+    return normalizeMlModel(payload.model);
+  },
+  async getMlAnomalyOverview({ limit = 5 } = {}) {
+    const safeLimit = Math.min(50, Math.max(1, Math.trunc(Number(limit)) || 5));
+    const payload = await request(`/ml/anomalies?limit=${safeLimit}`);
+    return responseArray(payload, "pilots").map(normalizeMlAnomalyPilot);
   },
   async createCustomRule(rule) {
     const payload = await request("/custom-rules", {

@@ -41,6 +41,10 @@ const RESOURCE_LOADERS = Object.freeze({
   notes: () => socRepository.getNotes(),
   settings: () => socRepository.getSettings(),
   customRules: () => socRepository.getCustomRules(),
+  // Behavioral-anomaly pilots with their top shadow-mode scores, read by both
+  // the dashboard panel and the Threat Detection training panel, so one
+  // fetch serves both and Refresh anywhere updates both.
+  mlAnomalies: () => socRepository.getMlAnomalyOverview({ limit: 3 }),
 });
 
 const INITIAL_CUSTOM_RULES = Object.freeze({ rules: Object.freeze([]), nextRuleId: "R-109" });
@@ -64,6 +68,7 @@ export function SocWorkspaceProvider({ children, user }) {
   const [notes, setNotes] = useState([]);
   const [settings, setSettings] = useState(null);
   const [customRules, setCustomRules] = useState(INITIAL_CUSTOM_RULES);
+  const [mlAnomalies, setMlAnomalies] = useState([]);
   const [resources, setResources] = useState(INITIAL_RESOURCE_STATE);
   const [mutation, setMutation] = useState({ loading: false, error: "", message: "" });
   const [notificationState, setNotificationState] = useState(readNotificationState);
@@ -139,6 +144,7 @@ export function SocWorkspaceProvider({ children, user }) {
     notes: setNotes,
     settings: setSettings,
     customRules: setCustomRules,
+    mlAnomalies: setMlAnomalies,
   }), []);
 
   const refresh = useCallback(async (key) => {
@@ -552,6 +558,8 @@ export function SocWorkspaceProvider({ children, user }) {
         refresh("events"),
         refresh("alerts"),
         refresh("dashboard"),
+        // The upload was just scored by whatever models are active.
+        refresh("mlAnomalies"),
       ]);
       // Imported SIEM exports often contain historical event timestamps. Show
       // the completed import immediately instead of hiding it behind 24h.
@@ -758,6 +766,7 @@ export function SocWorkspaceProvider({ children, user }) {
     openIncidentCount,
     unreadNotificationCount,
     storage: { used: storageUsed, limit: 256 * 1024 },
+    mlAnomalies,
     refresh,
     refreshAll,
     addNote,
@@ -812,6 +821,7 @@ export function SocWorkspaceProvider({ children, user }) {
     markAllNotificationsUnread,
     markNotificationRead,
     markNotificationUnread,
+    mlAnomalies,
     mutation,
     notes,
     notifications,

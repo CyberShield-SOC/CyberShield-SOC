@@ -87,6 +87,7 @@ def record_and_score(
         captured_at=captured_at,
         features=features,
         score=scored.score if scored is not None else None,
+        model_id=model_row.id if scored is not None else None,
     )
     return snapshot, scored
 

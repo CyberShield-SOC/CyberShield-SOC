@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BrainCircuit,
   Clock3,
   HeartPulse,
   Plus,
@@ -43,6 +44,7 @@ import {
 import { formatTimestamp } from "../utils/eventUtils";
 import { ThreatIntelPanel } from "../components/ThreatIntelPanel";
 import { HostHeartbeatPanel } from "../components/HostHeartbeatPanel";
+import { MlModelsPanel } from "../components/MlModelsPanel";
 import RuleDeleteDialog from "../components/RuleDeleteDialog";
 
 const WINDOW_LABELS = Object.freeze({
@@ -583,6 +585,16 @@ export default function ThreatDetectionPage({ navigate }) {
       <div className="secondary-workspace detection-rule-workspace">
         <ThreatIntelPanel canWrite={canWrite} canAdminister={canAdminister} icon={RadioTower} />
         <HostHeartbeatPanel canWrite={canWrite} icon={HeartPulse} />
+      </div>
+
+      <div className="full-width-workspace">
+        <MlModelsPanel
+          canAdminister={canAdminister}
+          canManageRules={canManageRules}
+          ruleSettings={builtInSettings}
+          onRuleUpdated={(updated) => updated && setBuiltInSettings((current) => ({ ...current, [updated.engineKey]: updated }))}
+          icon={BrainCircuit}
+        />
       </div>
 
       {pendingDelete && <RuleDeleteDialog rule={pendingDelete} busy={mutation.loading} error={deleteError} onCancel={() => setPendingDelete(null)} onConfirm={async () => {

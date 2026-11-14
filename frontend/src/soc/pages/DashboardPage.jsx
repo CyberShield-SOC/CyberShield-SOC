@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, Sparkline, StackedBarChart } from "../components/Charts";
+import { AnomalyDetectionPanel } from "../components/AnomalyDetectionPanel";
 import {
   ErrorState,
   LoadingState,
@@ -37,6 +38,7 @@ import {
 import { formatTimestamp } from "../utils/eventUtils";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { summarizeSourceActivity } from "../utils/ipLocation";
+import { isLearnedAnomalyRule } from "../utils/mlInsight";
 import {
   buildSeverityBuckets,
   buildTimeBuckets,
@@ -118,6 +120,7 @@ export default function DashboardPage({ navigate }) {
     timeFilteredAlerts: alerts,
     timeFilteredIngestedEvents: events,
     timeFilteredIncidents: incidents,
+    mlAnomalies,
     resources,
     refresh,
     setSelectedAlertId,
@@ -172,6 +175,11 @@ export default function DashboardPage({ navigate }) {
   const maxPortCount = Math.max(1, ...portActivity.map((p) => p.count));
   const maxSourceCount = Math.max(1, ...sourceActivity.map((source) => source.count));
   const threatAnalysis = deriveThreatAnalysis(alerts, events);
+  // Real learned-model alerts from the behavioral_anomaly_* rules. These run
+  // in shadow mode by default (see DEFAULT_PARAMS in the rule files): every
+  // score is logged for analyst review, never auto-blocking on its own.
+  const anomalyAlerts = alerts.filter((alert) => isLearnedAnomalyRule(alert.engineRule || alert.ruleId));
+  const anomalyStat = (Array.isArray(data?.stats) ? data.stats : []).find((stat) => stat.label === "Anomaly alerts") || null;
   const {
     state: telemetryState,
     latestIngestion,
@@ -407,6 +415,15 @@ export default function DashboardPage({ navigate }) {
             title={`Alert volume by severity during ${rangeLabel.toLowerCase()}`}
           />
         </Panel>
+
+        <AnomalyDetectionPanel
+          alerts={anomalyAlerts}
+          modelStatus={anomalyStat?.trend}
+          navigate={navigate}
+          pilots={mlAnomalies}
+          loading={resources.mlAnomalies.loading}
+          error={resources.mlAnomalies.error}
+        />
       </section>
 
       <section className="dashboard-threat-grid" aria-label="Threat intelligence and detection coverage">

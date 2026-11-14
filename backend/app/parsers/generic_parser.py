@@ -21,11 +21,21 @@ _LEVEL_PATTERN = re.compile(
 
 _KV_PATTERN = re.compile(r'(\w+)=(?:"([^"]*)"|([\w./:\-]+))')
 
+# A line is a comment when it opens with "#" or ";" followed by anything but
+# a digit: "# exported 2024-01-01", "#Fields: date time", ";; config".
+# "#4821 2024-01-01T00:00:00Z user=svc ..." is a ticket/IDS id, not a
+# comment, and must still parse (this is the fallback parser for free text).
+_COMMENT_LINE = re.compile(r"\s*[#;](?![0-9])")
+
 
 def parse_generic_log(content: str, lines: list[str]) -> dict:
     entries = []
+    skipped = []
 
     for idx, line in enumerate(lines):
+        if _COMMENT_LINE.match(line):
+            skipped.append({"line_number": idx + 1, "reason": "comment", "raw": line})
+            continue
         timestamp = _extract_timestamp(line)
         key_values = _extract_kv(line)
         json_data = _extract_json(line)
@@ -53,7 +63,7 @@ def parse_generic_log(content: str, lines: list[str]) -> dict:
         "fields": CORE_FIELDS + ["level", "key_values", "json", "message"],
         "total_lines": len(lines),
         "entries": entries,
-        "skipped_lines": [],
+        "skipped_lines": skipped,
     }
 
 
