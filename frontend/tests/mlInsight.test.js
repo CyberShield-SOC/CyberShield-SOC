@@ -8,8 +8,12 @@ import {
   buildMlInsight,
   countAnomalyAlerts,
   describeModelStatus,
+  describePilotStage,
+  deviationBars,
+  normalizeDeviations,
   formatDecisionScore,
   isLearnedAnomalyRule,
+  pilotLabel,
 } from "../src/soc/utils/mlInsight.js";
 
 // Evidence exactly as the backend's behavioral_anomaly_* rules write it.
@@ -72,6 +76,13 @@ test("returns null instead of inventing a score when evidence is missing or malf
   assert.equal(buildMlInsight({ rule: "behavioral_anomaly_login", evidence: { score: "abc" } }), null);
 });
 
+test("exposes the same deviations unformatted for charting", () => {
+  assert.deepEqual(buildMlInsight(loginAlert).deviations, [
+    { feature: "hour_cos", value: 0.9659, zScore: 2.14 },
+    { feature: "is_new_geo", value: 1, zScore: -1.3 },
+  ]);
+});
+
 test("tolerates a missing threshold and ignores malformed deviations", () => {
   const insight = buildMlInsight({
     rule: "behavioral_anomaly_egress",
@@ -81,6 +92,7 @@ test("tolerates a missing threshold and ignores malformed deviations", () => {
   assert.equal(insight.thresholdText, null);
   assert.equal(insight.belowThreshold, null);
   assert.deepEqual(insight.factors, []);
+  assert.deepEqual(insight.deviations, []);
 });
 
 test("counts only learned-model alerts, using the engine rule key", () => {
@@ -161,4 +173,61 @@ test("connected mode can never return the canned sample analysis", () => {
   assert.ok(connected.length > 0, "found the connected repository");
   assert.ok(!connected.includes("aiAnalysisSeed"), "the connected repository must not use the canned analysis");
   assert.match(connected, /runAiAnalysis\(\) \{\s*[^}]*throw new Error/);
+});
+
+test("pilot stage walks collecting -> ready -> shadow -> alerting", () => {
+  const base = { featureSet: "login_behavior", minSamples: 50, sampleCount: 12, activeModel: null, shadowMode: true, scoredCount: 0, ruleEnabled: true };
+  assert.equal(describePilotStage(base).key, "collecting");
+  assert.match(describePilotStage(base).detail, /12 of 50 samples/);
+  assert.match(describePilotStage(base).detail, /38 more/);
+
+  assert.equal(describePilotStage({ ...base, sampleCount: 61 }).key, "ready");
+
+  const model = { version: 2, sampleCount: 219, trainedAt: "2026-11-11T04:27:13Z" };
+  const shadow = describePilotStage({ ...base, sampleCount: 289, activeModel: model, scoredCount: 70 });
+  assert.equal(shadow.key, "shadow");
+  assert.equal(shadow.status, "pending");
+  assert.match(shadow.detail, /v2 has scored 70 events/);
+
+  const idle = describePilotStage({ ...base, sampleCount: 289, activeModel: model, scoredCount: 0 });
+  assert.match(idle.detail, /Nothing scored yet/);
+
+  const live = describePilotStage({ ...base, activeModel: model, shadowMode: false, scoredCount: 5 });
+  assert.equal(live.key, "live");
+  assert.equal(live.status, "enabled");
+
+  assert.equal(describePilotStage({ ...base, activeModel: model, ruleEnabled: false }).key, "disabled");
+  assert.equal(describePilotStage(null).key, "unknown");
+});
+
+test("normalizeDeviations keeps only rows with a feature and a finite z-score", () => {
+  assert.deepEqual(normalizeDeviations([
+    { feature: "hour_cos", value: "0.9659", z_score: 2.14 },
+    { feature: "broken", value: 1, z_score: "nope" },
+    { value: 1, z_score: 1.0 },
+    { feature: "no_value", z_score: "0.5" },
+    null,
+  ]), [
+    { feature: "hour_cos", value: 0.9659, zScore: 2.14 },
+    { feature: "no_value", value: null, zScore: 0.5 },
+  ]);
+  assert.deepEqual(normalizeDeviations(undefined), []);
+});
+
+test("deviation bars use |z| for length and colour the direction", () => {
+  const bars = deviationBars(normalizeDeviations([
+    { feature: "hour_cos", value: 0.9659, z_score: 2.14 },
+    { feature: "is_new_geo", value: 1, z_score: -1.3 },
+    { feature: "no_value", value: null, z_score: 0.5 },
+  ]));
+  assert.deepEqual(bars.map((b) => b.label), ["hour_cos (0.97)", "is_new_geo (1.00)", "no_value"]);
+  assert.deepEqual(bars.map((b) => b.value), [2.14, 1.3, 0.5]);
+  assert.equal(bars[0].color, "var(--severity-medium)");
+  assert.equal(bars[1].color, "var(--severity-high)");
+  assert.deepEqual(deviationBars(undefined), []);
+});
+
+test("pilot labels are human, with a readable fallback", () => {
+  assert.equal(pilotLabel("login_behavior"), "Login behavior");
+  assert.equal(pilotLabel("some_new_pilot"), "some new pilot");
 });

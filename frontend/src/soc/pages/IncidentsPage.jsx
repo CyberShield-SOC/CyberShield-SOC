@@ -4,6 +4,7 @@ import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { InvestigationTimeline } from "../components/InvestigationTimeline";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { socRepository } from "../services/socRepository";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { downloadIncidentsCsv, formatTimestamp } from "../utils/eventUtils";
@@ -60,7 +61,7 @@ export default function IncidentsPage({ navigate }) {
     updateIncidentAssignee,
     createIncident: createWorkspaceIncident,
   } = useSocWorkspace();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(readHashQuery);
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -130,6 +131,8 @@ export default function IncidentsPage({ navigate }) {
     .filter(Boolean);
   const loading = resources.incidents.loading || resources.events.loading || resources.alerts.loading;
   const error = resources.incidents.error || resources.events.error || resources.alerts.error;
+
+  useHashQuery(setQuery);
 
   useEffect(() => {
     setPage(1);

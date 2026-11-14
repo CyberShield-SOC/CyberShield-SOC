@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.detection import DetectionEngine
+from app.detection.engine import DetectionEngine
 from app.detection.alert_store import serialize_alert
 from app.detection.geoip import enrich_records, get_geo_resolver
 from app.detection.normalize import log_record_from_entry

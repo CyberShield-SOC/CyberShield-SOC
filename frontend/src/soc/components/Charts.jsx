@@ -49,6 +49,45 @@ export function Sparkline({ values = [], color = "var(--soc-accent)" }) {
   );
 }
 
+// A single IsolationForest decision score plotted against its alert
+// threshold on a number line: below the threshold line is the "anomalous"
+// zone (lower is more anomalous), so an analyst sees at a glance how far
+// past the line a score fell rather than reading two raw floats.
+export function ScoreGauge({ score, threshold, belowThreshold }) {
+  const safeScore = finiteNumber(score);
+  const hasThreshold = typeof threshold === "number" && Number.isFinite(threshold);
+  const anchors = [safeScore, 0, ...(hasThreshold ? [threshold] : [])];
+  const lo = Math.min(...anchors);
+  const hi = Math.max(...anchors);
+  const pad = Math.max((hi - lo) * 0.35, 0.03);
+  const domainMin = lo - pad;
+  const domainMax = hi + pad;
+  const span = domainMax - domainMin || 1;
+  const toPercent = (value) => Math.min(100, Math.max(0, ((value - domainMin) / span) * 100));
+  const scorePct = toPercent(safeScore);
+  const thresholdPct = hasThreshold ? toPercent(threshold) : null;
+  const anomalous = belowThreshold === true;
+
+  return (
+    <div
+      className="score-gauge"
+      role="img"
+      aria-label={`Decision score ${safeScore.toFixed(3)}${hasThreshold ? `, alert threshold ${threshold.toFixed(3)}` : ""}${anomalous ? " — below threshold, flagged anomalous" : ""}`}
+    >
+      <div className="score-gauge-track">
+        {hasThreshold && <span className="score-gauge-zone" style={{ width: `${thresholdPct}%` }} />}
+        {hasThreshold && <span className="score-gauge-threshold" style={{ left: `${thresholdPct}%` }} />}
+        <span className={`score-gauge-marker${anomalous ? " anomalous" : ""}`} style={{ left: `${scorePct}%` }} />
+      </div>
+      <div className="score-gauge-labels" aria-hidden="true">
+        <span>{domainMin.toFixed(2)}</span>
+        {hasThreshold && <span className="score-gauge-threshold-label">threshold {threshold.toFixed(3)}</span>}
+        <span>{domainMax.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
 export function LineAreaChart({ values = [], labels = [], title }) {
   const chartRef = useRef(null);
   const hintId = `soc-chart-hint-${useId().replace(/:/g, "")}`;

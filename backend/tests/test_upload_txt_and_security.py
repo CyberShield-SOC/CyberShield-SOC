@@ -223,6 +223,28 @@ def test_upload_short_csv_rows_are_skipped_not_silently_shifted():
     assert data["parsing"]["skipped_lines"] == 1
 
 
+def test_upload_txt_comment_lines_are_skipped_but_numeric_ids_are_not():
+    """'# ...' and '; ...' are comments. '#4821 ...' is a ticket/IDS id and
+    must still parse, or an export of such lines would be rejected whole."""
+
+    content = (
+        b"# exported from the ticketing system\n"
+        b"; generator=ids-export\n"
+        b"#4821 2024-01-01T00:00:00Z user=svc ip=10.0.0.5 status=FAILED\n"
+        b"#4822 2024-01-01T00:00:05Z user=svc ip=10.0.0.5 status=FAILED\n"
+    )
+    response = client.post(
+        "/upload",
+        files={"logfile": ("tickets.txt", BytesIO(content), "text/plain")},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["parsing"]["stored_entries"] == 2
+    assert data["parsing"]["skipped_lines"] == 2
+    assert {row["reason"] for row in data["skipped_lines"]} == {"comment"}
+    assert {entry["parsed"]["ip_address"] for entry in data["entries"]} == {"10.0.0.5"}
+
+
 def test_upload_txt_with_only_garbage_lines_returns_no_parseable_events():
     """Content that matches no parser produces a clean 422, never a crash."""
 
