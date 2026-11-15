@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BookOpenCheck, CheckCircle2, Download, History, Plus, RefreshCw, RotateCcw, Search, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
+import { InvestigationTimeline } from "../components/InvestigationTimeline";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { socRepository } from "../services/socRepository";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
 import { downloadIncidentsCsv, formatTimestamp } from "../utils/eventUtils";
@@ -51,6 +53,7 @@ export default function IncidentsPage({ navigate }) {
     resources,
     refresh,
     setTrackingIncidentId,
+    setGlobalTimeRange,
     selectedIncidentId,
     setSelectedIncidentId,
     setSelectedAlertId,
@@ -58,7 +61,7 @@ export default function IncidentsPage({ navigate }) {
     updateIncidentAssignee,
     createIncident: createWorkspaceIncident,
   } = useSocWorkspace();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(readHashQuery);
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
@@ -77,12 +80,13 @@ export default function IncidentsPage({ navigate }) {
   // local to this page rather than in the shared workspace context, since
   // it's only needed here and in the incident detail's reassignment control.
   useEffect(() => {
+    if (!canWrite) { setAssignableUsers([]); return; }
     let active = true;
     socRepository.getAssignableUsers()
       .then((users) => { if (active) setAssignableUsers(users); })
       .catch(() => { if (active) setAssignableUsers([]); });
     return () => { active = false; };
-  }, []);
+  }, [canWrite]);
 
   const usersById = useMemo(() => new Map(assignableUsers.map((user) => [user.id, user])), [assignableUsers]);
 
@@ -127,6 +131,8 @@ export default function IncidentsPage({ navigate }) {
     .filter(Boolean);
   const loading = resources.incidents.loading || resources.events.loading || resources.alerts.loading;
   const error = resources.incidents.error || resources.events.error || resources.alerts.error;
+
+  useHashQuery(setQuery);
 
   useEffect(() => {
     setPage(1);
@@ -353,6 +359,7 @@ export default function IncidentsPage({ navigate }) {
                   }}
                 >
                   <option value="">Unassigned</option>
+                  {selected.assignedUserId && !usersById.has(selected.assignedUserId) && <option value={selected.assignedUserId}>{displayOwner(selected)}</option>}
                   {assignableUsers.map((user) => (
                     <option key={user.id} value={user.id}>{assigneeName(user)}{user.role ? ` · ${user.role}` : ""}</option>
                   ))}
@@ -371,14 +378,8 @@ export default function IncidentsPage({ navigate }) {
               </div>
               <div className="incident-timeline-section">
                 {persisted.data?.alerts.map((alert) => <button key={alert.id} className="soc-text-button" onClick={() => openLinkedAlert(alert)}>Linked alert: {alert.id} · {alert.title}</button>)}
-                {persisted.loading && <p>Loading recorded history…</p>}
-                {persisted.error && <p role="alert">{persisted.error}</p>}
                 <h4>Status and note history <span>{selectedHistory.length}</span></h4>
-                <ol className="timeline-list compact">
-                  {selectedHistory.map((item) => (
-                    <li key={item.id}><History size={16} /><div><strong>{item.title}</strong><span>{formatTimestamp(item.at)} · {item.detail}</span></div></li>
-                  ))}
-                </ol>
+                <InvestigationTimeline key={selected.id} items={selectedHistory} loading={persisted.loading} error={persisted.error} onRetry={persisted.reload} />
               </div>
               {selected.status === "open" && <button className="soc-button primary full" type="button" disabled={mutation.loading || !canWrite} onClick={startSelectedInvestigation}><CheckCircle2 size={15} />Start investigation</button>}
               <button className="soc-button secondary full" type="button" onClick={openTracking}>Open investigation timeline</button>
@@ -461,6 +462,7 @@ export default function IncidentsPage({ navigate }) {
                   <strong>{incident.title}</strong>
                   <p>{incident.summary}</p>
                   <footer><span>{incident.status === "false positive" ? "Marked false positive" : "Resolved"} by {incident.completedBy || "Unknown analyst"} · {incident.priority}</span><time>{formatIncidentUpdated(incident.completedAt || incident.updated)}</time></footer>
+                  <button className="soc-button secondary" type="button" onClick={() => { setTrackingIncidentId(incident.id); setGlobalTimeRange("all"); closeHistory(); navigate(SOC_ROUTES.incidentTracking); }}>View timeline and resolution</button>
                   <button className="soc-button secondary" type="button" disabled={!canWrite || mutation.loading} title={!canWrite ? "Viewer access is read-only." : undefined} onClick={() => reopenIncident(incident)}><RotateCcw size={15} />Reopen</button>
                 </article>
               ))}

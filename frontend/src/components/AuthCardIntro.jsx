@@ -1,8 +1,8 @@
 import { ArrowLeft } from "lucide-react";
 
-export function AuthBackButton({ children = "Back to sign in", onClick }) {
+export function AuthBackButton({ children = "Back to sign in", onClick, disabled = false }) {
   return (
-    <button className="back-button" type="button" onClick={onClick}>
+    <button className="back-button" type="button" onClick={onClick} disabled={disabled}>
       <ArrowLeft size={16} aria-hidden="true" /> {children}
     </button>
   );
@@ -18,10 +18,12 @@ export function AuthCardIntro({
 }) {
   return (
     <>
-      <div className={`card-symbol ${iconState}`} aria-hidden="true">
-        <Icon size={22} />
-      </div>
-      <p className="card-kicker">{kicker}</p>
+      {Icon && (
+        <div className={`card-symbol ${iconState}`} aria-hidden="true">
+          <Icon size={22} />
+        </div>
+      )}
+      {kicker && <p className="card-kicker">{kicker}</p>}
       <h1 id={titleId}>{title}</h1>
       <div className="card-copy">{children}</div>
     </>

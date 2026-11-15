@@ -37,3 +37,7 @@ frontend/.env.*
 
 Dataset for anamoly detection/
 ml_experiments/models/
+
+# Collector state (holds the refresh session, offsets and quarantine)
+.cybershield-collector/
+collector/collector.json

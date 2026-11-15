@@ -28,7 +28,7 @@ const HELP_TOPICS = [
   {
     category: "Investigation",
     title: "Triage an alert",
-    description: "Review severity, affected identity, detection logic, matched evidence, and recommended response actions.",
+    description: "Review severity, affected identity, matched evidence, and recommended response actions.",
     route: SOC_ROUTES.alerts,
     action: "Open Alerts",
     icon: FileSearch,

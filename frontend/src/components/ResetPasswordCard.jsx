@@ -6,19 +6,12 @@ import {
   PasswordRequirementsChecklist,
 } from "../soc/components/PasswordField";
 import { isPasswordPolicyMet, passwordsMatch } from "../soc/utils/passwordPolicy";
+import { readTokenFromLocation } from "../utils/authValidation";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 import { FormField } from "./FormField";
 
-function readResetTokenFromLocation() {
-  if (typeof window === "undefined") return "";
-  const hash = window.location.hash || "";
-  const queryIndex = hash.indexOf("?");
-  if (queryIndex === -1) return "";
-  return new URLSearchParams(hash.slice(queryIndex + 1)).get("token") || "";
-}
-
-export function ResetPasswordCard({ onBack, onComplete }) {
-  const [token] = useState(readResetTokenFromLocation);
+export function ResetPasswordCard({ onBack, onComplete, onRequestNewLink }) {
+  const [token] = useState(readTokenFromLocation);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [requestError, setRequestError] = useState("");
@@ -75,9 +68,10 @@ export function ResetPasswordCard({ onBack, onComplete }) {
         >
           Open the link from your most recent recovery email, or request a new one.
         </AuthCardIntro>
-        <button className="primary-button auth-primary-action" type="button" onClick={onBack}>
+        {onRequestNewLink && <button className="primary-button auth-primary-action" type="button" onClick={onRequestNewLink}>Request a new reset link <ArrowRight size={17} aria-hidden="true" /></button>}
+        {!onRequestNewLink && <button className="primary-button auth-primary-action" type="button" onClick={onBack}>
           Return to sign in <ArrowRight size={17} aria-hidden="true" />
-        </button>
+        </button>}
       </section>
     );
   }
@@ -92,7 +86,7 @@ export function ResetPasswordCard({ onBack, onComplete }) {
           title="Your password has been reset"
           titleId="reset-done-title"
         >
-          Every other session for this account has been signed out. Sign in with your new password.
+          Your password has been updated. Sign in again with your new password.
         </AuthCardIntro>
         <button className="primary-button auth-primary-action" type="button" onClick={onComplete}>
           Continue to sign in <ArrowRight size={17} aria-hidden="true" />
@@ -108,7 +102,7 @@ export function ResetPasswordCard({ onBack, onComplete }) {
       noValidate
       onSubmit={submitReset}
     >
-      <AuthBackButton onClick={onBack} />
+      <AuthBackButton onClick={onBack} disabled={submitting} />
       <AuthCardIntro
         icon={KeyRound}
         kicker="Account recovery"
@@ -126,6 +120,7 @@ export function ResetPasswordCard({ onBack, onComplete }) {
             label="New password"
             icon={KeyRound}
             inputRef={passwordInput}
+            disabled={submitting}
             type="password"
             value={password}
             onChange={(event) => {
@@ -143,6 +138,7 @@ export function ResetPasswordCard({ onBack, onComplete }) {
         <div>
           <FormField
             id="reset-confirm-password"
+            disabled={submitting}
             name="confirmPassword"
             label="Confirm new password"
             icon={KeyRound}
@@ -166,6 +162,7 @@ export function ResetPasswordCard({ onBack, onComplete }) {
           {requestError}
         </p>
       )}
+      {requestError && onRequestNewLink && <button className="text-link" type="button" disabled={submitting} onClick={onRequestNewLink}>Request a new reset link</button>}
 
       <button
         className="primary-button auth-primary-action"

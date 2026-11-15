@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, ChevronLeft, ChevronRight, Database, Download, Files, FileUp, RefreshCw, Search, X } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
+import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { socRepository } from "../services/socRepository";
 import {
   downloadEventsCsv,
@@ -30,11 +31,6 @@ import {
 const PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 25;
 
-function initialQuery() {
-  const queryString = window.location.hash.split("?", 2)[1] || "";
-  return (new URLSearchParams(queryString).get("q") || "").slice(0, 200);
-}
-
 export default function EventLogsPage({ navigate }) {
   const {
     canWrite,
@@ -54,7 +50,7 @@ export default function EventLogsPage({ navigate }) {
     uploadLogFile,
   } = useSocWorkspace();
   const { error, loading } = resources.events;
-  const [filters, setFilters] = useState({ query: initialQuery(), severity: "", status: "", source: "" });
+  const [filters, setFilters] = useState({ query: readHashQuery(), severity: "", status: "", source: "" });
   const [page, setPage] = useState(1);
   const [fileResult, setFileResult] = useState(null);
   const [fileError, setFileError] = useState("");
@@ -73,14 +69,8 @@ export default function EventLogsPage({ navigate }) {
   const [isCsvDragActive, setIsCsvDragActive] = useState(false);
   const historyRequestId = useRef(0);
 
-  useEffect(() => {
-    function syncGlobalSearch() {
-      setFilters((current) => ({ ...current, query: initialQuery() }));
-    }
-
-    window.addEventListener("hashchange", syncGlobalSearch);
-    return () => window.removeEventListener("hashchange", syncGlobalSearch);
-  }, []);
+  const syncGlobalSearch = useCallback((query) => setFilters((current) => ({ ...current, query })), []);
+  useHashQuery(syncGlobalSearch);
 
   useEffect(() => {
     if (!dataSyncMessage) return undefined;
@@ -365,7 +355,7 @@ export default function EventLogsPage({ navigate }) {
       <div className="soc-stats-grid">
         <StatCard label="Records available" value={allEvents.length.toLocaleString()} trend={`${filteredEvents.length} match time and page filters`} />
         <StatCard label="Sources connected" value={sources.length} trend={sources.join(", ")} />
-        <StatCard label="Failed events" value={failedCount} trend="Review authentication failures" tone="critical" />
+        <StatCard label="Failed events" value={failedCount} trend="Review authentication failures" tone={failedCount ? "critical" : "success"} />
         <StatCard
           label="Parser health"
           value={parserHealthPct === null ? "—" : `${parserHealthPct}%`}
@@ -457,7 +447,7 @@ export default function EventLogsPage({ navigate }) {
         <aside className={`event-detail ${selectedEvent ? "open" : ""}`} aria-label="Scrollable selected event details" tabIndex="0">
           {selectedEvent ? (
             <>
-              <header><div><SeverityBadge severity={selectedEvent.severity} /><span>{selectedEvent.id}</span></div><button type="button" onClick={() => setSelectedEventId(null)} aria-label="Close event details"><X size={17} /></button></header>
+              <header><div><SeverityBadge severity={selectedEvent.severity} /><span className="mono">{selectedEvent.id}</span></div><button type="button" onClick={() => setSelectedEventId(null)} aria-label="Close event details"><X size={17} /></button></header>
               <h2>{selectedEvent.event}</h2>
               <p>{selectedEvent.message}</p>
               <SeverityMeter severity={selectedEvent.severity} />
@@ -466,7 +456,7 @@ export default function EventLogsPage({ navigate }) {
                 <div><dt>Source</dt><dd>{selectedEvent.source}</dd></div>
                 <div><dt>Source IP</dt><dd className="mono">{selectedEvent.sourceIp}</dd></div>
                 <div><dt>User</dt><dd className="mono">{selectedEvent.user}</dd></div>
-                <div><dt>Observed</dt><dd>{formatTimestamp(selectedEvent.timestamp)}</dd></div>
+                <div><dt>Observed</dt><dd className="mono">{formatTimestamp(selectedEvent.timestamp)}</dd></div>
                 <div><dt>Status</dt><dd><StatusBadge status={selectedEvent.status} /></dd></div>
               </dl>
               <button
@@ -555,7 +545,7 @@ export default function EventLogsPage({ navigate }) {
                     <div><dt>Format</dt><dd>{upload.format.toUpperCase()}</dd></div>
                     <div><dt>Events</dt><dd>{upload.storedEntries.toLocaleString()}</dd></div>
                     <div><dt>Alerts</dt><dd>{upload.storedAlerts.toLocaleString()}</dd></div>
-                    <div><dt>Ingested</dt><dd>{formatTimestamp(upload.uploadedAt)}</dd></div>
+                    <div><dt>Ingested</dt><dd className="mono">{formatTimestamp(upload.uploadedAt)}</dd></div>
                   </dl>
                   <span className="file-history-open">{historySelectionId === upload.uploadId ? "Loading events…" : "View event logs →"}</span>
                 </article>

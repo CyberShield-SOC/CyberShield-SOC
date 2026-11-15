@@ -1,5 +1,7 @@
-import { CircleAlert, Headphones, KeyRound, ShieldAlert } from "lucide-react";
+import { CircleAlert, Headphones, KeyRound, Mail, ShieldAlert } from "lucide-react";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
+
+const SUPPORT_EMAIL = "ugallimbu9@gmail.com";
 
 const SUPPORT_TOPICS = [
   {
@@ -31,6 +33,16 @@ export function SupportCard({ onBack }) {
       >
         Choose the support path that best matches your access issue.
       </AuthCardIntro>
+
+      <a className="organization-card" href={`mailto:${SUPPORT_EMAIL}`}>
+        <span className="organization-icon" aria-hidden="true">
+          <Mail size={21} />
+        </span>
+        <span>
+          <strong>{SUPPORT_EMAIL}</strong>
+          <small>Email the security support team</small>
+        </span>
+      </a>
 
       <div className="support-list">
         {SUPPORT_TOPICS.map(({ icon: Icon, title, copy }) => (

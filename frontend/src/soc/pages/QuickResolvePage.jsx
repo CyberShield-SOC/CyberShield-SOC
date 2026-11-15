@@ -30,7 +30,7 @@ import { ErrorState, InlineNotice, PageHeader, Panel, SeverityBadge, SeverityMet
 const MAX_INCIDENT_NOTES = 5;
 const CHECKLIST = [
   "Validate source and affected identity",
-  "Review matched evidence and detection logic",
+  "Review matched evidence",
   "Record the response decision",
   "Confirm containment or escalation",
 ];
@@ -107,7 +107,7 @@ function SearchableAlertPicker({ alerts, onChange, value }) {
               >
                 <span><strong className="mono">{alert.id}</strong><SeverityBadge severity={alert.severity} /></span>
                 <b>{alert.title}</b>
-                <small>{alert.sourceIp} · {alert.ruleId} · {alert.status}</small>
+                <small><span className="mono">{alert.sourceIp}</span> · <span className="mono">{alert.ruleId}</span> · {alert.status}</small>
               </button>
             ))}
             {!filteredAlerts.length && <p>No alerts match “{query.trim()}”.</p>}
@@ -349,9 +349,9 @@ export default function QuickResolvePage({ navigate }) {
 
           <div className="quick-resolve-grid">
             <Panel className="quick-evidence-panel span-2" title="Alert evidence" subtitle={`${evidence.length} matched records · ${selectedAlert.ruleId}`} actions={<button className="soc-text-button" type="button" onClick={() => navigate(SOC_ROUTES.alerts)}>Open full alert <FileSearch size={13} /></button>}>
-              <div className="quick-alert-overview"><div><h3>{selectedAlert.title}</h3><p>{selectedAlert.summary}</p><dl><div><dt>Source IP</dt><dd className="mono">{selectedAlert.sourceIp}</dd></div><div><dt>Affected user</dt><dd className="mono">{selectedAlert.user || "Unknown"}</dd></div><div><dt>Observed</dt><dd>{formatTimestamp(selectedAlert.observedAt || selectedAlert.createdAt)}</dd></div></dl></div><SeverityMeter severity={selectedAlert.severity} /></div>
+              <div className="quick-alert-overview"><div><h3>{selectedAlert.title}</h3><p>{selectedAlert.summary}</p><dl><div><dt>Source IP</dt><dd className="mono">{selectedAlert.sourceIp}</dd></div><div><dt>Affected user</dt><dd className="mono">{selectedAlert.user || "Unknown"}</dd></div><div><dt>Observed</dt><dd className="mono">{formatTimestamp(selectedAlert.observedAt || selectedAlert.createdAt)}</dd></div></dl></div><SeverityMeter severity={selectedAlert.severity} /></div>
               <div className="quick-evidence-list">{evidence.slice(0, 5).map((event) => <article key={event.id}><div><code>{event.id}</code><StatusBadge status={event.status} /></div><strong>{event.event}</strong><p className="mono">{formatTimestamp(event.timestamp)} · {event.sourceIp} · {event.user}</p><span>{event.message}</span></article>)}{!evidence.length && <p className="empty-inline">No normalized evidence is linked to this alert.</p>}</div>
-              {rule && <div className="quick-rule"><span><Sparkles size={15} />Detection rule</span><strong>{rule.id} · {rule.name}</strong><p>{rule.description}</p><code>{rule.query}</code></div>}
+              {rule && <div className="quick-rule"><span><Sparkles size={15} />Detection rule</span><strong>{rule.id} · {rule.name}</strong><p>{rule.description}</p></div>}
             </Panel>
 
             <Panel title="Response workflow" subtitle="Persisted alert and incident controls">
@@ -375,7 +375,7 @@ export default function QuickResolvePage({ navigate }) {
 
             <Panel title="Analyst note" subtitle={linkedIncident ? `${incidentNotes.length} of ${MAX_INCIDENT_NOTES} incident notes used` : "Create an incident before recording a note"}>
               <form className="quick-note-form" onSubmit={saveNote} noValidate><textarea value={note} disabled={!canWrite || !linkedIncident || incidentNotes.length >= MAX_INCIDENT_NOTES} maxLength="1200" rows="5" onChange={(event) => { setNote(event.target.value); if (noteError) setNoteError(""); }} placeholder={linkedIncident ? "Record verification, decision, and next action…" : "Create an incident to enable notes"} aria-label="Quick resolve analyst note" aria-invalid={Boolean(noteError)} aria-describedby={noteError ? "quick-note-error" : undefined} /><ValidationMessage id="quick-note-error">{noteError}</ValidationMessage><button className="soc-button primary" type="submit" disabled={!canWrite || mutation.loading || !linkedIncident || !note.trim()}><MessageSquareText size={15} />Add note</button></form>
-              {incidentNotes.slice(0, 2).map((item) => <article className="quick-note-preview" key={item.id}><strong>{item.author}</strong><small>{formatTimestamp(item.updatedAt)}</small><p>{item.body}</p></article>)}
+              {incidentNotes.slice(0, 2).map((item) => <article className="quick-note-preview" key={item.id}><strong>{item.author}</strong><small className="mono">{formatTimestamp(item.updatedAt)}</small><p>{item.body}</p></article>)}
             </Panel>
 
             <Panel className="quick-ai-panel" title="AI analysis" subtitle="Evidence-grounded guidance with human approval" actions={<button className="soc-button secondary compact" type="button" disabled={!aiEnabled || analyzing} onClick={runAnalysis}>{analyzing ? <span className="soc-spinner small" /> : <Bot size={15} />}{analyzing ? "Analyzing…" : "Analyze alert"}</button>}>

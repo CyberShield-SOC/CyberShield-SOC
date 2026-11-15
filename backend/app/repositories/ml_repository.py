@@ -18,12 +18,13 @@ def save_feature_snapshot(
     captured_at: datetime,
     features: dict,
     score: float | None = None,
+    model_id: int | None = None,
 ) -> MLFeatureSnapshot:
     """Append one training sample. Flushes but does not commit — same
     convention as the rest of the detection pipeline (see
-    app/repositories/alert_repository.py). `score` is set whenever a rule
-    scored this event against an active model, null otherwise (no model
-    yet) — see app/ml/pipeline.py."""
+    app/repositories/alert_repository.py). `score` and `model_id` are set
+    together whenever a rule scored this event against an active model,
+    null otherwise (no model yet) — see app/ml/pipeline.py."""
 
     row = MLFeatureSnapshot(
         feature_set=feature_set,
@@ -32,6 +33,7 @@ def save_feature_snapshot(
         captured_at=captured_at,
         features=features,
         score=score,
+        model_id=model_id,
     )
     db.add(row)
     db.flush()
@@ -44,12 +46,16 @@ def list_scored_snapshots(
     feature_set: str,
     entity_type: str,
     below: float | None = None,
+    model_id: int | None = None,
     limit: int = 50,
 ) -> list[MLFeatureSnapshot]:
     """Most-anomalous-first snapshots with a recorded score — the shadow-mode
     review queue (GET /ml/scores). `below` narrows to scores under a cutoff;
     without it, this is just "lowest scores regardless of any threshold,"
-    useful for eyeballing the shape of the distribution."""
+    useful for eyeballing the shape of the distribution. `model_id` limits
+    the queue to scores one model version produced, so a retrain (or a
+    rollback to an older version) never ranks another version's scores
+    alongside the active one's."""
 
     statement = (
         select(MLFeatureSnapshot)
@@ -59,17 +65,28 @@ def list_scored_snapshots(
     )
     if below is not None:
         statement = statement.where(MLFeatureSnapshot.score < below)
+    if model_id is not None:
+        statement = statement.where(MLFeatureSnapshot.model_id == model_id)
     statement = statement.order_by(MLFeatureSnapshot.score.asc()).limit(limit)
     return list(db.scalars(statement).all())
 
 
-def count_feature_snapshots(db: Session, *, feature_set: str, entity_type: str) -> int:
-    return db.scalar(
+def count_feature_snapshots(
+    db: Session, *, feature_set: str, entity_type: str, model_id: int | None = None
+) -> int:
+    """How many snapshots are stored for one pilot; with `model_id`, only
+    those that one model version scored (zero until that model has seen an
+    upload)."""
+
+    statement = (
         select(func.count())
         .select_from(MLFeatureSnapshot)
         .where(MLFeatureSnapshot.feature_set == feature_set)
         .where(MLFeatureSnapshot.entity_type == entity_type)
-    ) or 0
+    )
+    if model_id is not None:
+        statement = statement.where(MLFeatureSnapshot.model_id == model_id)
+    return db.scalar(statement) or 0
 
 
 def list_feature_snapshots(

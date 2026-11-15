@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { canAdministerWorkspace, canMutateInvestigations } from "../../utils/permissions";
+import { canAdministerWorkspace, canMutateInvestigations, canManageRules as mayManageRules, canExportReports as mayExportReports } from "../../utils/permissions";
 import { detectionRules } from "../data/mockData";
 import { socRepository } from "../services/socRepository";
 import { nextSequentialId } from "../utils/recordIds";
@@ -41,6 +41,10 @@ const RESOURCE_LOADERS = Object.freeze({
   notes: () => socRepository.getNotes(),
   settings: () => socRepository.getSettings(),
   customRules: () => socRepository.getCustomRules(),
+  // Behavioral-anomaly pilots with their top shadow-mode scores, read by both
+  // the dashboard panel and the Threat Detection training panel, so one
+  // fetch serves both and Refresh anywhere updates both.
+  mlAnomalies: () => socRepository.getMlAnomalyOverview({ limit: 3 }),
 });
 
 const INITIAL_CUSTOM_RULES = Object.freeze({ rules: Object.freeze([]), nextRuleId: "R-109" });
@@ -64,12 +68,14 @@ export function SocWorkspaceProvider({ children, user }) {
   const [notes, setNotes] = useState([]);
   const [settings, setSettings] = useState(null);
   const [customRules, setCustomRules] = useState(INITIAL_CUSTOM_RULES);
+  const [mlAnomalies, setMlAnomalies] = useState([]);
   const [resources, setResources] = useState(INITIAL_RESOURCE_STATE);
   const [mutation, setMutation] = useState({ loading: false, error: "", message: "" });
   const [notificationState, setNotificationState] = useState(readNotificationState);
   const [globalTimeRange, setGlobalTimeRangeState] = useState("24h");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [trackingIncidentId, setTrackingIncidentId] = useState(null);
+  const [editingCustomRuleId, setEditingCustomRuleId] = useState(null);
   // Keep explicit investigation selections stable while route components
   // mount and unmount. They reset with the workspace provider on sign-out.
   const [selectedAlertId, setSelectedAlertId] = useState(null);
@@ -88,6 +94,8 @@ export function SocWorkspaceProvider({ children, user }) {
   const pendingMutationsRef = useRef(new Set());
   const canWrite = canMutateInvestigations(user);
   const canAdminister = canAdministerWorkspace(user);
+  const canManageRules = mayManageRules(user);
+  const canExportReports = mayExportReports(user);
   const currentActor = user?.full_name || user?.username || user?.email || "Yugal P.";
 
   function rejectReadOnlyMutation() {
@@ -136,6 +144,7 @@ export function SocWorkspaceProvider({ children, user }) {
     notes: setNotes,
     settings: setSettings,
     customRules: setCustomRules,
+    mlAnomalies: setMlAnomalies,
   }), []);
 
   const refresh = useCallback(async (key) => {
@@ -485,13 +494,13 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite, refresh]);
 
-  const updateCustomRuleStatus = useCallback(async (backendId, status) => {
+  const updateCustomRule = useCallback(async (backendId, updates) => {
     if (rejectReadOnlyMutation()) return null;
     const mutationKey = `update-custom-rule-${backendId}`;
     if (!acquireMutation(mutationKey)) return null;
     setMutation({ loading: true, error: "", message: "Updating custom rule…" });
     try {
-      const updated = await socRepository.updateCustomRule(backendId, { status });
+      const updated = await socRepository.updateCustomRule(backendId, updates);
       setCustomRules((current) => ({
         rules: current.rules.map((rule) => (rule.backendId === backendId ? updated : rule)),
         nextRuleId: current.nextRuleId,
@@ -505,6 +514,8 @@ export function SocWorkspaceProvider({ children, user }) {
       releaseMutation(mutationKey);
     }
   }, [canWrite]);
+
+  const updateCustomRuleStatus = useCallback((backendId, status) => updateCustomRule(backendId, { status }), [updateCustomRule]);
 
   const deleteCustomRule = useCallback(async (backendId) => {
     if (rejectReadOnlyMutation()) return false;
@@ -527,7 +538,10 @@ export function SocWorkspaceProvider({ children, user }) {
     }
   }, [canWrite]);
 
-  const testCustomRule = useCallback((rule) => socRepository.testCustomRule(rule), []);
+  const testCustomRule = useCallback((rule) => {
+    if (!canManageRules) return Promise.reject(new Error("Your role cannot test or change detection rules."));
+    return socRepository.testCustomRule(rule);
+  }, [canManageRules]);
 
   const uploadLogFile = useCallback(async (file) => {
     if (rejectReadOnlyMutation()) {
@@ -544,6 +558,8 @@ export function SocWorkspaceProvider({ children, user }) {
         refresh("events"),
         refresh("alerts"),
         refresh("dashboard"),
+        // The upload was just scored by whatever models are active.
+        refresh("mlAnomalies"),
       ]);
       // Imported SIEM exports often contain historical event timestamps. Show
       // the completed import immediately instead of hiding it behind 24h.
@@ -725,6 +741,8 @@ export function SocWorkspaceProvider({ children, user }) {
     timeFilteredIncidents,
     trackingIncidentId,
     setTrackingIncidentId,
+    editingCustomRuleId,
+    setEditingCustomRuleId,
     selectedAlertId,
     setSelectedAlertId,
     selectedIncidentId,
@@ -739,6 +757,8 @@ export function SocWorkspaceProvider({ children, user }) {
     setPendingAiRequest,
     canWrite,
     canAdminister,
+    canManageRules,
+    canExportReports,
     currentUser: user,
     currentActor,
     notifications,
@@ -746,6 +766,7 @@ export function SocWorkspaceProvider({ children, user }) {
     openIncidentCount,
     unreadNotificationCount,
     storage: { used: storageUsed, limit: 256 * 1024 },
+    mlAnomalies,
     refresh,
     refreshAll,
     addNote,
@@ -756,6 +777,7 @@ export function SocWorkspaceProvider({ children, user }) {
     updateIncidentAssignee,
     createIncident,
     createCustomRule,
+    updateCustomRule,
     updateCustomRuleStatus,
     deleteCustomRule,
     testCustomRule,
@@ -773,11 +795,14 @@ export function SocWorkspaceProvider({ children, user }) {
     alerts,
     apiHealth,
     canAdminister,
+    canManageRules,
+    canExportReports,
     canWrite,
     user,
     currentActor,
     createIncident,
     createCustomRule,
+    updateCustomRule,
     updateCustomRuleStatus,
     deleteCustomRule,
     testCustomRule,
@@ -796,6 +821,7 @@ export function SocWorkspaceProvider({ children, user }) {
     markAllNotificationsUnread,
     markNotificationRead,
     markNotificationUnread,
+    mlAnomalies,
     mutation,
     notes,
     notifications,
@@ -811,6 +837,7 @@ export function SocWorkspaceProvider({ children, user }) {
     timeFilteredIngestedEvents,
     timeFilteredIncidents,
     trackingIncidentId,
+    editingCustomRuleId,
     aiMessages,
     aiLastAnalysis,
     selectedAlertId,

@@ -17,6 +17,8 @@ import {
   Menu,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   RefreshCw,
@@ -31,11 +33,22 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { SOC_ROUTES } from "../../hooks/useAuthRoute";
+import { canAccessSocRoute, SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { BrandLogo } from "../../components/BrandLogo";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { searchShortcutLabel, shouldFocusGlobalSearch } from "../utils/searchShortcuts";
 import { formatNavigationBadgeCount } from "../utils/countFormat";
+import { resolveNavDestination } from "../utils/navSearch";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "cybershield-sidebar-collapsed";
+
+function readInitialSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 const NAV_GROUPS = [
   {
@@ -74,6 +87,11 @@ const ROUTE_LABELS = Object.fromEntries(
 );
 ROUTE_LABELS[SOC_ROUTES.help] = "Help center";
 
+// Every nav item's own label, so a query that names a section ("users",
+// "integrations", "quick resolve"...) jumps straight there instead of
+// always falling through to Event Logs. See utils/navSearch.js.
+const NAV_SEARCH_TARGETS = NAV_GROUPS.flatMap((group) => group.items).map(([route, label]) => [route, label]);
+
 export function SocShell({ children, expiresAt, navigate, onSignOut, route, theme, toggleTheme, user }) {
   const {
     activeAlertCount,
@@ -100,14 +118,18 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     setGlobalTimeRange,
     setSelectedAlertId,
     setSelectedIncidentId,
+    timeFilteredAlerts,
+    timeFilteredIncidents,
   } = useSocWorkspace();
   // Child routes stay attached to their parent navigation item.
   const navigationRoute = route === SOC_ROUTES.ruleBuilder ? SOC_ROUTES.threatDetection : route;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState("all");
   const [profileOpen, setProfileOpen] = useState(false);
   const searchRef = useRef(null);
+  const notificationsRef = useRef(null);
   const platform = typeof navigator === "undefined"
     ? ""
     : navigator.userAgentData?.platform || navigator.platform;
@@ -156,12 +178,64 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     setProfileOpen(false);
   }, [route]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+    } catch {
+      // The collapsed state still works for the current page session.
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    function dismissOutside(event) {
+      if (!notificationsRef.current?.contains(event.target)) setNotificationsOpen(false);
+    }
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside, true);
+    };
+  }, [notificationsOpen]);
+
+  // Routes a query to whichever workspace the text actually matches, instead
+  // of always landing on Event Logs. A section name ("users", "settings",
+  // "quick resolve"...) jumps straight to that page. Otherwise, incidents
+  // and alerts are smaller, more targeted datasets than raw events, so they
+  // take priority when the query matches there too.
+  function resolveSearchDestination(query) {
+    const needle = query.toLowerCase();
+    const matchesIncident = timeFilteredIncidents.some((incident) => (
+      [incident.id, incident.title, incident.owner, incident.summary, incident.priority]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    ));
+    if (matchesIncident) return SOC_ROUTES.incidents;
+    const matchesAlert = timeFilteredAlerts.some((alert) => (
+      [alert.id, alert.title, alert.sourceIp, alert.ruleId, alert.ruleName, alert.assignee]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    ));
+    if (matchesAlert) return SOC_ROUTES.alerts;
+    return SOC_ROUTES.eventLogs;
+  }
+
   function submitSearch(event) {
     event.preventDefault();
     const query = String(new FormData(event.currentTarget).get("global-search") || "").trim().slice(0, 200);
-    window.location.hash = query
-      ? `#/${SOC_ROUTES.eventLogs}?q=${encodeURIComponent(query)}`
-      : `#/${SOC_ROUTES.eventLogs}`;
+    if (!query) {
+      window.location.hash = `#/${SOC_ROUTES.eventLogs}`;
+      return;
+    }
+    // A section name is a jump, not a filter: "#/alerts?q=alerts" would open
+    // Alerts with its text filter set to the word "alerts" and show nothing.
+    const navDestination = resolveNavDestination(query, NAV_SEARCH_TARGETS, (route) => canAccessSocRoute(route, user));
+    window.location.hash = navDestination
+      ? `#/${navDestination}`
+      : `#/${resolveSearchDestination(query)}?q=${encodeURIComponent(query)}`;
   }
 
   return (
@@ -172,6 +246,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
       data-text-size={settings?.workspace?.textSize || "standard"}
       data-contrast={settings?.workspace?.highContrast ? "high" : "standard"}
       data-motion={settings?.workspace?.reduceMotion ? "reduced" : "standard"}
+      data-sidebar={sidebarCollapsed ? "collapsed" : "expanded"}
     >
       <a className="skip-link" href="#soc-content">Skip to main content</a>
       <div className={`soc-sidebar-scrim ${sidebarOpen ? "visible" : ""}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
@@ -240,6 +315,15 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
           <button className="soc-icon-button menu-button" type="button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
             <Menu size={19} />
           </button>
+          <button
+            className="soc-icon-button sidebar-collapse-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-label={sidebarCollapsed ? "Show navigation" : "Hide navigation"}
+            title={sidebarCollapsed ? "Show navigation" : "Hide navigation"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
           <strong className="soc-route-title">{ROUTE_LABELS[navigationRoute] || "CyberShield SOC"}</strong>
           <span className="live-pill"><i />{dashboard?.liveRateLabel || `Live · ${Number(dashboard?.liveRate || 0).toLocaleString()} events/min`}</span>
           <div className="soc-topbar-spacer" />
@@ -266,16 +350,16 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
             <button type="submit" className="global-search-submit" aria-label="Run event search" title="Run search">
               <Search size={16} aria-hidden="true" />
             </button>
-            <input ref={searchRef} name="global-search" type="search" maxLength="200" placeholder="Search events, IPs, rules…" aria-label="Search security events" aria-keyshortcuts="Control+K Meta+K /" title="Press Ctrl or Command + K, or /, to focus search" />
+            <input ref={searchRef} name="global-search" type="search" maxLength="200" placeholder="Search events, alerts, incidents…" aria-label="Search events, alerts, and incidents" aria-keyshortcuts="Control+K Meta+K /" title="Press Ctrl or Command + K, or /, to focus search" />
             <kbd aria-hidden="true">{shortcutLabel}</kbd>
           </form>
-          <div className="soc-popover-anchor">
-            <button className="soc-icon-button" type="button" onClick={() => setNotificationsOpen((current) => !current)} aria-label="Notifications" aria-expanded={notificationsOpen}>
+          <div className="soc-popover-anchor" ref={notificationsRef}>
+            <button className="soc-icon-button" type="button" onClick={() => setNotificationsOpen((current) => !current)} aria-label="Notifications" aria-expanded={notificationsOpen} aria-controls={notificationsOpen ? "soc-notification-popover" : undefined}>
               <Bell size={17} />
               {unreadNotificationCount > 0 && <span className="notification-count">{unreadNotificationCount}</span>}
             </button>
             {notificationsOpen && (
-              <div className="soc-notification-popover">
+              <div className="soc-notification-popover" id="soc-notification-popover" role="region" aria-label="Notifications">
                 <header>
                   <div><strong>Notifications</strong><span>{unreadNotificationCount} unread · {notifications.length} total</span></div>
                   <div className="notification-header-actions">

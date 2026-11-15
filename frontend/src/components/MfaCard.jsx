@@ -13,18 +13,26 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [resendAvailableAt, setResendAvailableAt] = useState(() => Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
   const inputs = useRef([]);
 
   // The backend starts its own resend cooldown the moment the first code is
   // sent (at login), so the timer here starts immediately too rather than
   // waiting for a first "Resend" click.
   useEffect(() => {
-    if (cooldown <= 0) return undefined;
-    const timeoutId = window.setTimeout(() => setCooldown((current) => current - 1), 1000);
-    return () => window.clearTimeout(timeoutId);
-  }, [cooldown]);
+    const remaining = () => Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000));
+    setCooldown(remaining());
+    if (remaining() === 0) return undefined;
+    const intervalId = window.setInterval(() => {
+      const seconds = remaining();
+      setCooldown(seconds);
+      if (seconds === 0) window.clearInterval(intervalId);
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [resendAvailableAt]);
 
   function updateDigits(startIndex, value) {
+    if (sanitizeOtp(value).length === OTP_LENGTH) startIndex = 0;
     const incomingDigits = sanitizeOtp(value).slice(0, OTP_LENGTH - startIndex);
     if (!incomingDigits) return;
 
@@ -43,7 +51,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
 
   async function submitCode(event) {
     event.preventDefault();
-    if (submitting) return;
+    if (submitting || resending) return;
 
     if (!isCompleteOtp(digits)) {
       setError("Enter the complete six-digit verification code.");
@@ -66,7 +74,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
   }
 
   async function submitResend() {
-    if (resending || cooldown > 0) return;
+    if (submitting || resending || cooldown > 0) return;
     setResendStatus("");
     setError("");
     setResending(true);
@@ -76,8 +84,9 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
       setDigits(Array(OTP_LENGTH).fill(""));
       inputs.current[0]?.focus();
       setCooldown(RESEND_COOLDOWN_SECONDS);
+      setResendAvailableAt(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
     } catch (resendError) {
-      setResendStatus(resendError.message || "The verification code could not be resent. Please try again.");
+      setError(resendError.message || "The verification code could not be resent. Please try again.");
     } finally {
       setResending(false);
     }
@@ -90,7 +99,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
       noValidate
       onSubmit={submitCode}
     >
-      <AuthBackButton onClick={onBack} />
+      <AuthBackButton onClick={onBack} disabled={submitting || resending} />
       <AuthCardIntro
         icon={Fingerprint}
         kicker="Additional verification"
@@ -102,6 +111,8 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
 
       <div
         className={`otp-grid ${error ? "has-error" : ""}`}
+        role="group"
+        aria-label="Six-digit verification code"
         aria-describedby={error ? "otp-error" : undefined}
       >
         {digits.map((digit, index) => (
@@ -116,15 +127,19 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
             autoComplete={index === 0 ? "one-time-code" : "off"}
             inputMode="numeric"
             pattern="[0-9]*"
-            maxLength={1}
+            maxLength={index === 0 ? OTP_LENGTH : 1}
             value={digit}
             required
-            disabled={submitting}
+            disabled={submitting || resending}
             onPaste={(event) => {
               event.preventDefault();
               updateDigits(index, event.clipboardData.getData("text"));
             }}
             onChange={(event) => {
+              if (sanitizeOtp(event.target.value).length > 1) {
+                updateDigits(index, event.target.value);
+                return;
+              }
               const nextDigit = sanitizeOtp(event.target.value).slice(-1);
               setDigits((current) => current.map((item, itemIndex) => (
                 itemIndex === index ? nextDigit : item
@@ -157,7 +172,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
         </p>
       )}
 
-      <button className="primary-button auth-primary-action" type="submit" disabled={submitting}>
+      <button className="primary-button auth-primary-action" type="submit" disabled={submitting || resending}>
         {submitting ? "Verifying…" : "Verify identity"} <ArrowRight size={17} aria-hidden="true" />
       </button>
       <div className="mfa-footer">
@@ -165,7 +180,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
         <button
           className="text-link"
           type="button"
-          disabled={resending || cooldown > 0}
+          disabled={submitting || resending || cooldown > 0}
           onClick={submitResend}
         >
           {resending ? "Sending…" : cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}

@@ -2,13 +2,15 @@
 
 AI-Powered Log Monitoring and Threat Detection Platform
 
+New here? See the [User Guide](docs/USER_GUIDE.md).
+
 ## Overview
 
 CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, email-based two-factor verification, and role-based access control (Admin, Analyst, Viewer).
 
 Sprint 6 adds correlation, exact evidence APIs, investigation states, and incident assignment/resolution/reopening with history. See [Sprint 6 additions](docs/sprint6.md).
 
-Sprint 7 adds authenticated collector ingestion through `POST /api/ingest`, source provenance, and custom-rule fixes. See the [ingestion contract and authentication review](docs/SPRINT7_INGESTION_AND_RULES.md).
+Sprint 7 adds authenticated collector ingestion through `POST /api/ingest`, source provenance, and custom-rule fixes. See the [ingestion contract and authentication review](docs/SPRINT7_INGESTION_AND_RULES.md). The watched-directory collector that feeds it, with deduplication and retry handling, lives in [`collector/`](collector/README.md).
 
 ## Detection Rules
 
@@ -321,6 +323,7 @@ Returns backend service health.
 | Investigations | `GET/PATCH /alerts/{alert_id}/investigation`, `POST /alerts/{alert_id}/escalate`, investigation notes/history |
 | Incident lifecycle | `POST /incidents/{incident_id}/resolve`, `/reopen`; incident alerts/history |
 | ML models | `GET /ml/models`, `POST /ml/models/{feature_set}/train`, `POST /ml/models/{model_id}/activate`, `GET /ml/scores` |
+| Reports | `GET /reports`, `GET /reports/{report_id}/pdf` (server-rendered PDF export of the four phase-1 reports) |
 
 Full request/response contracts and RBAC rules are in [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md) and the backend test suite (`backend/tests/`).
 
@@ -362,6 +365,20 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 - [Interaction test report (archived)](frontend/docs/archive/INTERACTION_TEST_REPORT.md)
 - [Security policy and frontend boundary](SECURITY.md)
 
+## Deployment
+
+Railway builds and runs the repository's `Dockerfile` (pinned in `railway.json`) as a single combined service: it builds the frontend, installs backend dependencies, runs Alembic migrations, seeds the initial Admin account, and starts FastAPI, which also serves the built frontend from `frontend/dist`. No separate frontend service or CORS configuration is needed for this combined deployment.
+
+`Settings` (`backend/app/core/config.py`) requires three environment variables with no default — without them, the container's `alembic upgrade head` step fails immediately on startup with a Pydantic `ValidationError`. Set these in the Railway service's **Variables** tab before the first deploy:
+
+| Variable | Notes |
+| --- | --- |
+| `DATABASE_URL` | Add a Railway PostgreSQL plugin, then use its connection string **with the scheme changed to `postgresql+psycopg://`** (not the plugin's default `postgresql://`) — this project installs the `psycopg` v3 driver, not `psycopg2`, so the default scheme fails to connect. |
+| `JWT_SECRET_KEY` | Long random signing key, e.g. `python -c "import secrets; print(secrets.token_urlsafe(64))"`. |
+| `OTP_SECRET` | Random value of at least 16 characters, used to hash OTP codes. |
+
+Also set `CYBERSHIELD_ADMIN_PASSWORD` to seed the initial Admin account, and `AUTH_COOKIE_SECURE=true` since Railway serves over HTTPS. See [Environment Variables](docs/deployment_and_documentation.md#environment-variables) and [Railway Deployment](docs/deployment_and_documentation.md#railway-deployment) for the full variable table and step-by-step deployment checklist.
+
 ## Tech Stack
 
 - React.js
@@ -387,8 +404,8 @@ The production-oriented frontend is a React, Vite, and Tailwind CSS security-ope
 
 | Name | Role |
 | --- | --- |
-| Yugal Limbu | Project Manager / Documentation Lead |
+| Yugal Limbu | Project Manager / Documentation Lead / ML |
 | Marvellous Obasanya | Scrum Master |
 | Paul Truong | Frontend Developer |
 | Samin Rijal | Backend Developer |
-| Kapil Khanal | ML / DevOps / Testing Lead |
+| Kapil Khanal | DevOps / Testing Lead |

@@ -150,7 +150,7 @@ export function deriveThreatAnalysis(alerts, events) {
   const failuresByUser = new Map();
   (Array.isArray(events) ? events : []).forEach((event) => {
     const user = cleanText(event?.user);
-    if (!user || user.toLowerCase() === "unknown" || cleanText(event?.status).toLowerCase() !== "failed") return;
+    if (!user || ["unknown", "n/a"].includes(user.toLowerCase()) || cleanText(event?.status).toLowerCase() !== "failed") return;
     if (!failuresByUser.has(user)) failuresByUser.set(user, []);
     failuresByUser.get(user).push(event);
   });

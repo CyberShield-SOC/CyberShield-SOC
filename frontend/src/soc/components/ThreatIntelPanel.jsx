@@ -11,7 +11,7 @@ const TYPE_LABELS = Object.freeze({ ip: "IPs", cidr: "Ranges", domain: "Domains"
  * One IP/CIDR/domain per line; re-importing the same source name replaces
  * that feed's indicators (see backend/app/repositories/threat_intel_repository.py).
  */
-export function ThreatIntelPanel({ canWrite, icon: Icon }) {
+export function ThreatIntelPanel({ canWrite, canAdminister, icon: Icon }) {
   const [feeds, setFeeds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -86,7 +86,7 @@ export function ThreatIntelPanel({ canWrite, icon: Icon }) {
                   {feed.updatedAt && <> · updated {formatTimestamp(feed.updatedAt)}</>}
                 </small>
               </span>
-              {canWrite && (
+              {canAdminister && (
                 <button className="soc-button danger compact" type="button" onClick={() => removeFeed(feed.source)}>
                   <Trash2 size={14} aria-hidden="true" /> Remove
                 </button>
@@ -101,6 +101,11 @@ export function ThreatIntelPanel({ canWrite, icon: Icon }) {
             </div>
           )}
         </div>
+      )}
+      {canWrite && !canAdminister && Boolean(feeds.length) && (
+        <InlineNotice tone="info" title="Removal is Admin-only">
+          Only an Admin can remove an imported feed. Re-import a feed by its existing name to replace its indicators.
+        </InlineNotice>
       )}
 
       {canWrite && (

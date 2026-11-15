@@ -1,16 +1,15 @@
 import {
   Activity,
-  AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   ExternalLink,
   Network,
   ShieldAlert,
-  ShieldCheck,
   UsersRound,
+  Zap,
 } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
-import { CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, StackedBarChart } from "../components/Charts";
+import { CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, Sparkline, StackedBarChart } from "../components/Charts";
+import { AnomalyDetectionPanel } from "../components/AnomalyDetectionPanel";
 import {
   ErrorState,
   LoadingState,
@@ -39,10 +38,10 @@ import {
 import { formatTimestamp } from "../utils/eventUtils";
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow";
 import { summarizeSourceActivity } from "../utils/ipLocation";
+import { isLearnedAnomalyRule } from "../utils/mlInsight";
 import {
   buildSeverityBuckets,
   buildTimeBuckets,
-  calculateSecurityGrade,
   summarizeIpActivity,
   TIME_RANGE_LABELS,
 } from "../utils/timeRange";
@@ -95,22 +94,21 @@ function threatTitleClass(threat) {
   return undefined;
 }
 
-function DashboardSummaryCard({ detail, icon: Icon, label, onClick, tone = "default", value }) {
+function KpiTile({ detail, icon: Icon, label, onClick, sparkline, tone = "default", value }) {
   return (
     <button
-      className="dashboard-summary-card"
+      className="kpi-tile"
       data-card-tone={tone}
       type="button"
       onClick={onClick}
       aria-label={`${label}: ${value}. ${detail}`}
     >
-      <span className="dashboard-summary-icon"><Icon size={18} aria-hidden="true" /></span>
-      <span className="dashboard-summary-copy">
+      <span className="kpi-tile-icon"><Icon size={15} aria-hidden="true" /></span>
+      <span className="kpi-tile-copy">
         <small>{label}</small>
         <strong>{value}</strong>
-        <span>{detail}</span>
       </span>
-      <ArrowRight className="dashboard-summary-arrow" size={14} aria-hidden="true" />
+      {sparkline}
     </button>
   );
 }
@@ -122,6 +120,7 @@ export default function DashboardPage({ navigate }) {
     timeFilteredAlerts: alerts,
     timeFilteredIngestedEvents: events,
     timeFilteredIncidents: incidents,
+    mlAnomalies,
     resources,
     refresh,
     setSelectedAlertId,
@@ -150,11 +149,8 @@ export default function DashboardPage({ navigate }) {
   const rangeLabel = TIME_RANGE_LABELS[globalTimeRange];
   const activeAlerts = alerts.filter((alert) => !["contained", "resolved", "closed", "false positive"].includes(alert.status));
   const openIncidents = incidents.filter((incident) => !isTerminalIncidentStatus(incident.status));
-  const completedIncidents = incidents.length - openIncidents.length;
-  const containedAlerts = alerts.filter((alert) => ["contained", "resolved", "closed"].includes(alert.status)).length;
   const ingestion = buildTimeBuckets(events, globalTimeRange, ["ingestedAt", "timestamp"]);
   const severityBuckets = buildSeverityBuckets(alerts, globalTimeRange);
-  const securityGrade = calculateSecurityGrade({ alerts, incidents, events });
   const ipActivity = summarizeIpActivity(events);
   const severity = Object.keys(SEVERITY_COLORS).map((key) => ({
     label: key[0].toUpperCase() + key.slice(1),
@@ -179,6 +175,11 @@ export default function DashboardPage({ navigate }) {
   const maxPortCount = Math.max(1, ...portActivity.map((p) => p.count));
   const maxSourceCount = Math.max(1, ...sourceActivity.map((source) => source.count));
   const threatAnalysis = deriveThreatAnalysis(alerts, events);
+  // Real learned-model alerts from the behavioral_anomaly_* rules. These run
+  // in shadow mode by default (see DEFAULT_PARAMS in the rule files): every
+  // score is logged for analyst review, never auto-blocking on its own.
+  const anomalyAlerts = alerts.filter((alert) => isLearnedAnomalyRule(alert.engineRule || alert.ruleId));
+  const anomalyStat = (Array.isArray(data?.stats) ? data.stats : []).find((stat) => stat.label === "Anomaly alerts") || null;
   const {
     state: telemetryState,
     latestIngestion,
@@ -193,54 +194,47 @@ export default function DashboardPage({ navigate }) {
     escalatedAlerts,
     investigatingIncidents,
   } = deriveAnalystWorkload(activeAlerts, openIncidents);
-  const summaryCards = [
+  // Ingestion EPS reads the rate of the most recent time bucket; every other
+  // KPI tile reads a value the dashboard already computes elsewhere.
+  const latestBucketSeconds = Math.max(ingestion.bucketMs / 1000, 1);
+  const ingestionEps = (ingestion.values.at(-1) || 0) / latestBucketSeconds;
+  const criticalSeries = severityBuckets.map((bucket) => bucket.critical);
+  const kpiCards = [
     {
-      label: "Total events",
+      label: "Ingestion EPS",
+      value: ingestionEps.toLocaleString(undefined, { maximumFractionDigits: ingestionEps < 10 ? 1 : 0 }),
+      detail: `${rangeLabel} · events/sec`,
+      icon: Zap,
+      route: SOC_ROUTES.eventLogs,
+      tone: "info",
+      sparkline: <Sparkline values={ingestion.values} color="var(--soc-accent-bright)" />,
+    },
+    {
+      label: "Total Log Volume",
       value: events.length.toLocaleString(),
       detail: rangeLabel,
       icon: Activity,
       route: SOC_ROUTES.eventLogs,
-      tone: "info",
+      tone: "teal",
+      sparkline: <Sparkline values={ingestion.values} color="var(--soc-accent)" />,
     },
     {
-      label: "Critical alerts",
+      label: "Critical Alerts",
       value: criticalActiveAlerts.toLocaleString(),
       detail: unassignedAlerts ? `${unassignedAlerts.toLocaleString()} unassigned` : "Queue assigned",
       icon: ShieldAlert,
       route: SOC_ROUTES.alerts,
       tone: criticalActiveAlerts ? "critical" : "success",
+      sparkline: <Sparkline values={criticalSeries} color="var(--severity-critical)" />,
     },
     {
-      label: "Threats contained",
-      value: containedAlerts.toLocaleString(),
-      detail: `${completedIncidents.toLocaleString()} incidents completed`,
-      icon: CheckCircle2,
-      route: SOC_ROUTES.incidents,
-      tone: "success",
-    },
-    {
-      label: "Active incidents",
-      value: openIncidents.length.toLocaleString(),
-      detail: `${investigatingIncidents.toLocaleString()} investigating`,
-      icon: AlertTriangle,
-      route: SOC_ROUTES.incidents,
-      tone: openIncidents.length ? "warning" : "success",
-    },
-    {
-      label: "Monitored sources",
+      label: "Active Sensors",
       value: activeSources.toLocaleString(),
       detail: `${ipActivity.unique.toLocaleString()} unique IPs`,
       icon: Network,
       route: SOC_ROUTES.eventLogs,
-      tone: "teal",
-    },
-    {
-      label: "Security posture",
-      value: securityGrade.grade,
-      detail: `${securityGrade.score}/100 · ${securityGrade.score >= 80 ? "Stable" : securityGrade.score >= 60 ? "Elevated risk" : "Review now"}`,
-      icon: ShieldCheck,
-      route: SOC_ROUTES.alerts,
-      tone: securityGrade.tone,
+      tone: "success",
+      sparkline: null,
     },
   ];
 
@@ -297,9 +291,9 @@ export default function DashboardPage({ navigate }) {
         )}
       />
 
-      <section className="dashboard-summary-strip" aria-label="Security posture summary">
-        {summaryCards.map((card) => (
-          <DashboardSummaryCard
+      <section className="kpi-strip" aria-label="Ingestion and threat KPIs">
+        {kpiCards.map((card) => (
+          <KpiTile
             key={card.label}
             {...card}
             onClick={() => navigate(card.route)}
@@ -358,7 +352,7 @@ export default function DashboardPage({ navigate }) {
                   <div>
                     <span className="dashboard-source-identity">
                       <span className="source-location-flag" role="img" aria-label={source.location.label} title={source.location.label}>{source.location.flag}</span>
-                      <strong>{source.sourceIp}</strong>
+                      <strong className="mono">{source.sourceIp}</strong>
                     </span>
                     <span>{source.count.toLocaleString()}</span>
                   </div>
@@ -421,6 +415,15 @@ export default function DashboardPage({ navigate }) {
             title={`Alert volume by severity during ${rangeLabel.toLowerCase()}`}
           />
         </Panel>
+
+        <AnomalyDetectionPanel
+          alerts={anomalyAlerts}
+          modelStatus={anomalyStat?.trend}
+          navigate={navigate}
+          pilots={mlAnomalies}
+          loading={resources.mlAnomalies.loading}
+          error={resources.mlAnomalies.error}
+        />
       </section>
 
       <section className="dashboard-threat-grid" aria-label="Threat intelligence and detection coverage">
@@ -448,7 +451,7 @@ export default function DashboardPage({ navigate }) {
             <button className="soc-button secondary compact" type="button" onClick={analyzeThreatFinding}>
               Analyze with AI
             </button>
-            <span>{threatAnalysis.ruleId}</span>
+            <span className="mono">{threatAnalysis.ruleId}</span>
           </footer>
         </article>
 

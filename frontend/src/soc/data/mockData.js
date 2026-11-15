@@ -10,7 +10,7 @@ export const dashboardData = Object.freeze({
     { label: "Events ingested (24h)", value: "1.84M", trend: "2.1% vs previous 24h", direction: "up" },
     { label: "Active alerts", value: "14", trend: "5 new in the last hour", tone: "critical" },
     { label: "Open incidents", value: "3", trend: "2 resolved today", direction: "down", tone: "success" },
-    { label: "Anomaly alerts", value: "—", trend: "Demo mode: connect the backend for real model status" },
+    { label: "Anomaly alerts", value: "2", trend: "Shadow mode · login_behavior v3 (418 samples), egress_volume v2 (365 samples)" },
   ],
   alertVolume: [
     { label: "00:00", critical: 0, high: 1, medium: 2, low: 7 },
@@ -44,6 +44,32 @@ export const dashboardData = Object.freeze({
 });
 
 export const securityEvents = Object.freeze([
+  {
+    id: "EVT-78423",
+    timestamp: "2026-11-10T20:51:12Z",
+    source: "auth.log",
+    sourceIp: "198.51.100.77",
+    user: "jchen",
+    event: "Login timing anomaly",
+    severity: "low",
+    status: "review",
+    risk: 41,
+    rule: "behavioral_anomaly_login · Behavioral anomaly: login outlier",
+    message: "IsolationForest flagged this login as a statistical outlier against jchen's learned baseline. Shadow mode: logged for review, not auto-blocked.",
+  },
+  {
+    id: "EVT-78422",
+    timestamp: "2026-11-10T18:20:47Z",
+    source: "netflow",
+    sourceIp: "10.0.4.2",
+    user: "system",
+    event: "Egress volume anomaly",
+    severity: "low",
+    status: "review",
+    risk: 38,
+    rule: "behavioral_anomaly_egress · Behavioral anomaly: egress outlier",
+    message: "IsolationForest flagged host fs-02's outbound traffic volume as a statistical outlier against its learned baseline. Shadow mode: logged for review, not auto-blocked.",
+  },
   {
     id: "EVT-78421",
     timestamp: "2026-07-16T14:32:09Z",
@@ -284,6 +310,30 @@ export const aiAnalysisSeed = Object.freeze({
 });
 
 const detectionRuleCatalog = {
+  "behavioral_anomaly_login": {
+    id: "behavioral_anomaly_login",
+    name: "Behavioral anomaly: login outlier",
+    description: "Flags logins that are statistical outliers against a per-user IsolationForest baseline (login hour, geography, device). Shadow mode: logs the finding for review instead of blocking.",
+    technique: "T1078 · Valid Accounts",
+    severity: "low",
+    version: "model v3",
+    status: "enabled",
+    owner: "Detection Engineering",
+    lastUpdated: "2026-11-02",
+    query: "IsolationForest(login_behavior).decision_function < -0.02",
+  },
+  "behavioral_anomaly_egress": {
+    id: "behavioral_anomaly_egress",
+    name: "Behavioral anomaly: egress outlier",
+    description: "Flags hosts whose outbound traffic volume and destination fan-out are statistical outliers against a learned baseline. Shadow mode: logs the finding for review instead of blocking.",
+    technique: "T1030 · Data Transfer Size Limits",
+    severity: "low",
+    version: "model v2",
+    status: "enabled",
+    owner: "Detection Engineering",
+    lastUpdated: "2026-10-29",
+    query: "IsolationForest(egress_volume).decision_function < -0.02",
+  },
   "R-101": {
     id: "R-101",
     name: "Brute-force login detection",
@@ -401,6 +451,8 @@ export const detectionRules = Object.freeze({
   ...CURRENT_DETECTION_RULES,
 });
 
+// Append new ids at the end: alert ids are derived from the index, and the
+// analyst notes link to those ids by value (e.g. NOTE-206 -> ALT-0909).
 const ALERT_EVENT_IDS = [
   "EVT-78421",
   "EVT-78420",
@@ -411,9 +463,13 @@ const ALERT_EVENT_IDS = [
   "EVT-78413",
   "EVT-78412",
   "EVT-78410",
+  "EVT-78423",
+  "EVT-78422",
 ];
 
 const ALERT_STATUSES = Object.freeze({
+  "EVT-78423": "new",
+  "EVT-78422": "new",
   "EVT-78421": "new",
   "EVT-78420": "triaging",
   "EVT-78417": "acknowledged",
@@ -423,6 +479,35 @@ const ALERT_STATUSES = Object.freeze({
   "EVT-78413": "contained",
   "EVT-78412": "resolved",
   "EVT-78410": "investigating",
+});
+
+// Real learned-model alerts (behavioral_anomaly_* rules) carry the same
+// evidence shape the backend's buildMlInsight() produces from a live
+// IsolationForest decision: a native (never 0-100) decision score, the
+// per-rule threshold, the feature deviations that drove it, and which
+// trained model version scored it. These rules run in shadow mode by
+// default — logged for analyst review, never auto-blocking on their own.
+const ANOMALY_INSIGHTS = Object.freeze({
+  behavioral_anomaly_login: {
+    score: -0.034,
+    scoreText: "-0.034",
+    threshold: -0.02,
+    thresholdText: "-0.020",
+    belowThreshold: true,
+    factors: ["login_hour_local -2.1 SD (value 3.00)", "distinct_countries_7d +2.6 SD (value 4.00)"],
+    deviations: [{ feature: "login_hour_local", value: 3, zScore: -2.1 }, { feature: "distinct_countries_7d", value: 4, zScore: 2.6 }],
+    model: { version: 3, sampleCount: 418, trainedAt: "2026-11-02T04:00:00Z" },
+  },
+  behavioral_anomaly_egress: {
+    score: -0.041,
+    scoreText: "-0.041",
+    threshold: -0.02,
+    thresholdText: "-0.020",
+    belowThreshold: true,
+    factors: ["bytes_out_1h +3.4 SD (value 912.40)", "unique_dest_ips_1h +1.8 SD (value 11.00)"],
+    deviations: [{ feature: "bytes_out_1h", value: 912.4, zScore: 3.4 }, { feature: "unique_dest_ips_1h", value: 11, zScore: 1.8 }],
+    model: { version: 2, sampleCount: 365, trainedAt: "2026-10-29T04:00:00Z" },
+  },
 });
 
 export const alertRecords = Object.freeze(
@@ -444,7 +529,9 @@ export const alertRecords = Object.freeze(
       lastSeen: event.timestamp,
       timeWindowSeconds: 0,
       ruleId,
+      engineRule: ruleId,
       ruleName: detectionRules[ruleId]?.name || event.rule,
+      mlInsight: ANOMALY_INSIGHTS[ruleId] || null,
       summary: event.message,
       reason: event.message,
       assignee: index % 3 === 0 ? "Yugal P." : index % 3 === 1 ? "Marvellous" : "Unassigned",
@@ -520,7 +607,7 @@ export const analystNotesSeed = Object.freeze([
 
 export const workspaceSettings = Object.freeze({
   workspace: {
-    name: "UTA CyberShield SOC",
+    name: "CyberShield SOC",
     timezone: "America/Chicago",
     defaultTimeRange: "24h",
     density: "comfortable",

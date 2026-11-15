@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
+  BrainCircuit,
   Clock3,
   HeartPulse,
   Plus,
+  Pencil,
   RadioTower,
   RefreshCw,
   Search,
@@ -43,6 +44,8 @@ import {
 import { formatTimestamp } from "../utils/eventUtils";
 import { ThreatIntelPanel } from "../components/ThreatIntelPanel";
 import { HostHeartbeatPanel } from "../components/HostHeartbeatPanel";
+import { MlModelsPanel } from "../components/MlModelsPanel";
+import RuleDeleteDialog from "../components/RuleDeleteDialog";
 
 const WINDOW_LABELS = Object.freeze({
   300: "5 minutes", 600: "10 minutes", 1800: "30 minutes", 3600: "1 hour", 86400: "24 hours",
@@ -99,6 +102,10 @@ export default function ThreatDetectionPage({ navigate }) {
   const {
     alerts,
     canWrite,
+    canManageRules,
+    canAdminister,
+    setEditingCustomRuleId,
+    mutation,
     customRules,
     deleteCustomRule,
     detectionRules,
@@ -109,6 +116,10 @@ export default function ThreatDetectionPage({ navigate }) {
   } = useSocWorkspace();
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [ruleType, setRuleType] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
   const [selectedId, setSelectedId] = useState(CURRENT_DETECTION_RULE_IDS[0]);
   const tabRefs = useRef([]);
   // detectionRules is a static import, never a fetched resource — the only
@@ -168,6 +179,7 @@ export default function ThreatDetectionPage({ navigate }) {
   }, [alerts, customRules, detectionRules, builtInSettings]);
 
   async function updateBuiltInRule(engineKey, updates) {
+    if (!canManageRules || ruleConfigSaving || mutation.loading) return null;
     setRuleConfigSaving(true);
     setRuleConfigError("");
     try {
@@ -221,6 +233,10 @@ export default function ThreatDetectionPage({ navigate }) {
     const term = query.trim().toLowerCase();
     return rules.filter((rule) => {
       if (categoryFilter !== "all" && rule.category !== categoryFilter) return false;
+      if (statusFilter && rule.status !== statusFilter) return false;
+      if (ruleType === "custom" && !rule.isCustom) return false;
+      if (ruleType === "builtin" && (rule.isCustom || !rule.executable)) return false;
+      if (ruleType === "examples" && rule.executable) return false;
       if (!term) return true;
       return [
         rule.id,
@@ -234,7 +250,7 @@ export default function ThreatDetectionPage({ navigate }) {
         rule.status,
       ].join(" ").toLowerCase().includes(term);
     });
-  }, [categoryFilter, query, rules]);
+  }, [categoryFilter, query, rules, statusFilter, ruleType]);
 
   const selected = filtered.find((rule) => rule.id === selectedId) || filtered[0] || null;
   const executableRules = rules.filter((rule) => rule.executable);
@@ -286,11 +302,11 @@ export default function ThreatDetectionPage({ navigate }) {
               <RefreshCw size={15} className={resources.alerts.loading || ruleResource.loading || builtInSettingsLoading ? "spin" : ""} />
               Refresh activity
             </button>
-            {canWrite && (
+            {canManageRules && (
               <button
                 className="soc-button primary"
                 type="button"
-                onClick={() => navigate?.(SOC_ROUTES.ruleBuilder)}
+                onClick={() => { setEditingCustomRuleId(null); navigate?.(SOC_ROUTES.ruleBuilder); }}
               >
                 <Plus size={15} aria-hidden="true" />
                 New custom rule
@@ -299,6 +315,9 @@ export default function ThreatDetectionPage({ navigate }) {
           </>
         )}
       />
+
+      {!canManageRules && <InlineNotice title="Read-only rule access">Your role can inspect detection rules and their activity. Rule changes require an Admin or Analyst.</InlineNotice>}
+      {(ruleResource.error || builtInSettingsError) && <InlineNotice tone="error" title="Some rule settings are unavailable">{ruleResource.error || builtInSettingsError}</InlineNotice>}
 
       <div className="soc-stats-grid">
         <StatCard label="Executable rules" value={String(executableRules.length)} trend="Built into DetectionEngine" tone="success" />
@@ -345,6 +364,8 @@ export default function ThreatDetectionPage({ navigate }) {
         role="tabpanel"
       >
         <Panel title="Rule inventory" subtitle={`${filtered.length} of ${rules.length} definitions`}>
+          <label className="rule-status-filter"><span>Rule type</span><select aria-label="Rule type" value={ruleType} onChange={(event) => setRuleType(event.target.value)}><option value="">All types</option><option value="custom">Custom rules</option><option value="builtin">Built-in detectors</option><option value="examples">Category examples</option></select></label>
+          <label className="rule-status-filter"><span>Rule status</span><select aria-label="Rule status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rules.map((rule) => rule.status))].sort().map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
           <label className="secondary-search">
             <Search size={16} />
             <span className="sr-only">Search detection rules</span>
@@ -356,7 +377,7 @@ export default function ThreatDetectionPage({ navigate }) {
               placeholder="Search rule ID, category, technique, or behavior…"
             />
           </label>
-          <div className="config-list detection-rule-list">
+          <div className="config-list detection-rule-list" role="region" aria-label="Detection rule inventory" tabIndex="0">
             {filtered.map((rule) => (
               <button
                 type="button"
@@ -366,7 +387,7 @@ export default function ThreatDetectionPage({ navigate }) {
               >
                 <span className="config-icon"><ShieldCheck size={17} /></span>
                 <span>
-                  <strong>{rule.id} · {rule.name}</strong>
+                  <strong><span className="mono">{rule.id}</span> · {rule.name}</strong>
                   <small>{rule.criteria}</small>
                 </span>
                 <SeverityBadge severity={rule.severity} />
@@ -424,7 +445,7 @@ export default function ThreatDetectionPage({ navigate }) {
                   </div>
                 )}
                 {selected.executable && <div><dt>Loaded matches</dt><dd>{selected.activity.total}</dd></div>}
-                {selected.executable && <div><dt>Latest match</dt><dd>{selected.activity.latest ? formatTimestamp(selected.activity.latest) : "No loaded match"}</dd></div>}
+                {selected.executable && <div><dt>Latest match</dt><dd className={selected.activity.latest ? "mono" : undefined}>{selected.activity.latest ? formatTimestamp(selected.activity.latest) : "No loaded match"}</dd></div>}
               </dl>
               {selected.setupNote && (
                 <InlineNotice tone="warning" title="Setup required">{selected.setupNote}</InlineNotice>
@@ -434,10 +455,6 @@ export default function ThreatDetectionPage({ navigate }) {
                   This rule matches nothing until you add at least one entry to its allowlist below.
                 </InlineNotice>
               )}
-              <div className="rule-logic-block">
-                <span><Activity size={14} /> {selected.executable ? "Detection logic" : "Example logic"}</span>
-                <code>{selected.query}</code>
-              </div>
               <div className="rule-response-block">
                 <span><Clock3 size={14} /> Recommended response</span>
                 <p>{selected.response}</p>
@@ -451,14 +468,14 @@ export default function ThreatDetectionPage({ navigate }) {
                     : "Sample alert activity is shown locally; this definition still mirrors a built-in backend detector.")
                   : "This draft or template helps organize future work. It has no engine key and cannot inspect events or generate alerts."}
               </InlineNotice>
-              {selected.executable && !selected.isCustom && canWrite && (
+              {selected.executable && !selected.isCustom && canManageRules && (
                 <div className="rule-custom-actions built-in-rule-config">
                   {ruleConfigError && <InlineNotice tone="error" title="Update failed" onDismiss={() => setRuleConfigError("")}>{ruleConfigError}</InlineNotice>}
                   <div className="rule-custom-actions">
                     <button
                       className="soc-button secondary compact"
                       type="button"
-                      disabled={!selected.live || ruleConfigSaving}
+                      disabled={!selected.live || ruleConfigSaving || mutation.loading}
                       onClick={() => updateBuiltInRule(selected.engineKey, { enabled: !selected.live.enabled })}
                     >
                       {selected.live?.enabled === false ? "Enable rule" : "Disable rule"}
@@ -467,6 +484,7 @@ export default function ThreatDetectionPage({ navigate }) {
                       <button
                         className="soc-button secondary compact"
                         type="button"
+                        disabled={ruleConfigSaving || mutation.loading}
                         onClick={() => startRuleConfigEdit(selected)}
                       >
                         Edit thresholds
@@ -523,12 +541,14 @@ export default function ThreatDetectionPage({ navigate }) {
                   )}
                 </div>
               )}
-              {selected.isCustom && canWrite && (
+              {selected.isCustom && canManageRules && (
                 <div className="rule-custom-actions">
+                  <button className="soc-button secondary compact" type="button" disabled={mutation.loading || ruleConfigSaving} onClick={() => { setEditingCustomRuleId(selected.backendId); navigate?.(SOC_ROUTES.ruleBuilder); }}><Pencil size={14} />Edit rule</button>
                   {selected.status !== "enabled" && (
                     <button
                       className="soc-button secondary compact"
                       type="button"
+                      disabled={mutation.loading || ruleConfigSaving}
                       onClick={() => updateCustomRuleStatus(selected.backendId, "enabled")}
                     >
                       Enable rule
@@ -538,6 +558,7 @@ export default function ThreatDetectionPage({ navigate }) {
                     <button
                       className="soc-button secondary compact"
                       type="button"
+                      disabled={mutation.loading || ruleConfigSaving}
                       onClick={() => updateCustomRuleStatus(selected.backendId, "disabled")}
                     >
                       Disable rule
@@ -546,7 +567,8 @@ export default function ThreatDetectionPage({ navigate }) {
                   <button
                     className="soc-button danger compact"
                     type="button"
-                    onClick={() => deleteCustomRule(selected.backendId)}
+                    disabled={mutation.loading || ruleConfigSaving}
+                    onClick={() => { setDeleteError(""); setPendingDelete(selected); }}
                   >
                     <Trash2 size={14} aria-hidden="true" />
                     Delete rule
@@ -561,9 +583,25 @@ export default function ThreatDetectionPage({ navigate }) {
       </div>
 
       <div className="secondary-workspace detection-rule-workspace">
-        <ThreatIntelPanel canWrite={canWrite} icon={RadioTower} />
+        <ThreatIntelPanel canWrite={canWrite} canAdminister={canAdminister} icon={RadioTower} />
         <HostHeartbeatPanel canWrite={canWrite} icon={HeartPulse} />
       </div>
+
+      <div className="full-width-workspace">
+        <MlModelsPanel
+          canAdminister={canAdminister}
+          canManageRules={canManageRules}
+          ruleSettings={builtInSettings}
+          onRuleUpdated={(updated) => updated && setBuiltInSettings((current) => ({ ...current, [updated.engineKey]: updated }))}
+          icon={BrainCircuit}
+        />
+      </div>
+
+      {pendingDelete && <RuleDeleteDialog rule={pendingDelete} busy={mutation.loading} error={deleteError} onCancel={() => setPendingDelete(null)} onConfirm={async () => {
+        if (!canManageRules || mutation.loading) return;
+        if (await deleteCustomRule(pendingDelete.backendId)) setPendingDelete(null);
+        else setDeleteError("The rule could not be deleted. Check your connection and permissions, then try again.");
+      }} />}
     </>
   );
 }

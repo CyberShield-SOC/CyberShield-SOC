@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.detection import DetectionEngine
+from app.detection.engine import DetectionEngine
 from app.detection.models import LogRecord
 from app.parsers.log_parser import parse_log
 

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
-import { InlineNotice, Panel } from "../components/Ui";
+import { InlineNotice, LoadingState, Panel } from "../components/Ui";
 import {
   ACTION_OPTIONS,
   FIELD_CATALOG,
@@ -26,6 +26,7 @@ import {
   WINDOW_SECONDS_BY_VALUE,
 } from "../data/ruleBuilderMockData";
 import "./RuleBuilderPage.css";
+import { actionIsEnabled, toggleRuleAction, validateCustomRuleDraft } from "../utils/customRuleDraft";
 import { RULE_CATEGORIES } from "../data/ruleCategories";
 import {
   TIMEZONE_OPTIONS,
@@ -35,7 +36,6 @@ import {
 } from "../utils/ruleConditions";
 
 const FIELD_TYPES = Object.fromEntries(FIELD_CATALOG.map((field) => [field.value, field.type]));
-const VALID_SEVERITIES = new Set(SEVERITY_OPTIONS.map((option) => option.value));
 
 function fieldTypeOf(field) {
   return FIELD_TYPES[field] || "string";
@@ -45,47 +45,34 @@ function operatorsFor(field) {
   return OPERATORS_BY_TYPE[fieldTypeOf(field)] || OPERATORS_BY_TYPE.string;
 }
 
-function validateDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }) {
-  const problems = [];
-  if (!ruleName.trim()) problems.push("Rule name is required");
-  if (!category) problems.push("Category is required");
-  if (!VALID_SEVERITIES.has(severity)) problems.push("Severity is not a supported level");
-  conditions.forEach((condition, index) => {
-    const position = index + 1;
-    if (!FIELD_TYPES[condition.field]) return; // reported by the schema check
-    if (!operatorsFor(condition.field).includes(condition.operator)) {
-      problems.push(`Condition ${position} operator is not valid for ${condition.field}`);
-    }
-    if (!String(condition.value || "").trim()) {
-      problems.push(`Condition ${position} is missing a value`);
-    }
-  });
-  if (!groupBy) problems.push("Group by is required");
-  if (!windowValue) problems.push("Window is required");
-
-  const unknownFields = conditions
-    .filter((condition) => !FIELD_TYPES[condition.field])
-    .map((condition) => condition.field || "(empty)");
-
-  return { syntaxProblems: problems, unknownFields };
+export default function RuleBuilderPage({ navigate }) {
+  const { customRules, editingCustomRuleId, refresh, resources, setEditingCustomRuleId } = useSocWorkspace();
+  const initialRule = editingCustomRuleId === null ? null : customRules.find((rule) => rule.backendId === editingCustomRuleId);
+  function leaveEditor(route) { setEditingCustomRuleId(null); navigate(route); }
+  if (editingCustomRuleId !== null && resources.customRules.loading) return <LoadingState label="Loading the custom rule…" />;
+  if (editingCustomRuleId !== null && !initialRule) return <Panel title="Custom rule unavailable">
+    <p role="alert">{resources.customRules.error || "This custom rule no longer exists. Refresh the library or return to the rule inventory."}</p>
+    <div className="rule-custom-actions"><button className="soc-button secondary" type="button" onClick={() => refresh("customRules")}>Refresh rules</button><button className="soc-button primary" type="button" onClick={() => leaveEditor(SOC_ROUTES.threatDetection)}>Back to rules</button></div>
+  </Panel>;
+  return <RuleBuilderForm key={initialRule?.backendId ?? "new"} navigate={leaveEditor} initialRule={initialRule || null} />;
 }
 
-export default function RuleBuilderPage({ navigate }) {
+function RuleBuilderForm({ navigate, initialRule }) {
   const baseId = useId();
   const conditionKeyRef = useRef(0);
-  const { canWrite, createCustomRule, nextCustomRuleId, testCustomRule } = useSocWorkspace();
-  const [ruleName, setRuleName] = useState(RULE_BUILDER_DEFAULTS.name);
-  const [category, setCategory] = useState(RULE_BUILDER_DEFAULTS.category);
-  const [severity, setSeverity] = useState(RULE_BUILDER_DEFAULTS.severity);
-  const [tactic, setTactic] = useState(RULE_BUILDER_DEFAULTS.tactic);
-  const [conditions, setConditions] = useState(() => INITIAL_CONDITIONS.map((condition) => ({
+  const { canManageRules, createCustomRule, updateCustomRule, nextCustomRuleId, testCustomRule } = useSocWorkspace();
+  const [ruleName, setRuleName] = useState(initialRule?.name ?? RULE_BUILDER_DEFAULTS.name);
+  const [category, setCategory] = useState(initialRule?.category ?? RULE_BUILDER_DEFAULTS.category);
+  const [severity, setSeverity] = useState(initialRule?.severity ?? RULE_BUILDER_DEFAULTS.severity);
+  const [tactic, setTactic] = useState(initialRule ? initialRule.tactic || "" : RULE_BUILDER_DEFAULTS.tactic);
+  const [conditions, setConditions] = useState(() => (initialRule?.conditions || INITIAL_CONDITIONS).map((condition) => ({
     ...condition,
     key: `c${(conditionKeyRef.current += 1)}`,
   })));
-  const [groupBy, setGroupBy] = useState(RULE_BUILDER_DEFAULTS.groupBy);
-  const [windowValue, setWindowValue] = useState(RULE_BUILDER_DEFAULTS.window);
+  const [groupBy, setGroupBy] = useState(initialRule?.groupBy ?? RULE_BUILDER_DEFAULTS.groupBy);
+  const [windowValue, setWindowValue] = useState(initialRule ? Object.keys(WINDOW_SECONDS_BY_VALUE).find((value) => WINDOW_SECONDS_BY_VALUE[value] === initialRule.windowSeconds) || "" : RULE_BUILDER_DEFAULTS.window);
   const [actions, setActions] = useState(() => Object.fromEntries(
-    ACTION_OPTIONS.map((action) => [action.id, action.checked]),
+    ACTION_OPTIONS.map((action) => [action.id, initialRule ? initialRule.actions?.[action.id] ?? false : action.checked]),
   ));
   const [testState, setTestState] = useState("idle");
   const [testResult, setTestResult] = useState(null);
@@ -94,13 +81,15 @@ export default function RuleBuilderPage({ navigate }) {
   const [saveError, setSaveError] = useState("");
   const [savingAction, setSavingAction] = useState(null); // "draft" | "enable" | null
   const [savedRule, setSavedRule] = useState(null);
+  const [ruleStatus, setRuleStatus] = useState(initialRule?.status || "draft");
+  const savedNewRule = Boolean(savedRule) && !initialRule;
 
   const ruleIdLabel = savedRule
     ? `${savedRule.id} · saved`
-    : `${nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId} · auto-assigned`;
+    : initialRule ? `${initialRule.id} · editing` : `${nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId} · auto-assigned`;
 
   const validation = useMemo(
-    () => validateDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }),
+    () => validateCustomRuleDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }),
     [conditions, groupBy, ruleName, severity, windowValue, category],
   );
   const syntaxValid = !validation.syntaxProblems.length;
@@ -110,7 +99,7 @@ export default function RuleBuilderPage({ navigate }) {
   const dslLines = useMemo(() => {
     const lines = [[
       { text: "rule ", kind: "keyword" },
-      { text: savedRule?.id || nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId, kind: "field" },
+      { text: savedRule?.id || initialRule?.id || nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId, kind: "field" },
       { text: ` "${ruleName.trim()}" `, kind: "value" },
       { text: "{", kind: "punct" },
     ]];
@@ -132,18 +121,23 @@ export default function RuleBuilderPage({ navigate }) {
     ]);
     lines.push([{ text: "}", kind: "punct" }]);
     return lines;
-  }, [conditions, groupBy, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category]);
+  }, [conditions, groupBy, initialRule, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category]);
 
   const dslText = useMemo(
     () => dslLines.map((line) => line.map((fragment) => fragment.text).join("")).join("\n"),
     [dslLines],
   );
 
+  function clearDraftFeedback() {
+    setConfirmation(""); setSaveError(""); setTestResult(null); setTestState("idle"); setTestError("");
+    if (initialRule) setSavedRule(null);
+  }
+
   function updateCondition(key, patch) {
     setConditions((current) => current.map((condition) => (
       condition.key === key ? { ...condition, ...patch } : condition
     )));
-    setConfirmation("");
+    clearDraftFeedback();
   }
 
   function changeConditionField(key, field) {
@@ -161,14 +155,14 @@ export default function RuleBuilderPage({ navigate }) {
       value: "",
       timezone: "",
     }]);
-    setConfirmation("");
+    clearDraftFeedback();
   }
 
   function removeCondition(key) {
     setConditions((current) => (current.length > 1
       ? current.filter((condition) => condition.key !== key)
       : current));
-    setConfirmation("");
+    clearDraftFeedback();
   }
 
   function buildPayload(status) {
@@ -192,7 +186,7 @@ export default function RuleBuilderPage({ navigate }) {
   }
 
   async function runTest() {
-    if (testState === "loading") return;
+    if (!canManageRules || testState === "loading" || !syntaxValid || !schemaValid) return;
     setTestState("loading");
     setTestError("");
     try {
@@ -200,25 +194,26 @@ export default function RuleBuilderPage({ navigate }) {
       setTestResult(result);
       setTestState("done");
     } catch (error) {
-      setTestError(error.message || "The rule could not be tested against sample logs.");
+      setTestError(error.message || "The rule could not be tested against recent logs.");
       setTestState("idle");
     }
   }
 
   async function saveRule(status) {
-    if (savingAction) return;
+    if (!canManageRules || savingAction || !syntaxValid || !schemaValid || testState === "loading") return;
     setSavingAction(status);
     setSaveError("");
     try {
-      const created = await createCustomRule(buildPayload(status));
+      const created = initialRule ? await updateCustomRule(initialRule.backendId, buildPayload(status)) : await createCustomRule(buildPayload(status));
       if (!created) {
         setSaveError("The custom rule could not be saved. Check the form and try again.");
         return;
       }
       setSavedRule(created);
+      setRuleStatus(created.status);
       setConfirmation(status === "enabled"
-        ? `Rule ${created.id} "${ruleName.trim() || "Untitled rule"}" is enabled. It now runs alongside R-101…R-106 on every future upload.`
-        : `Draft saved. ${created.id} "${ruleName.trim() || "Untitled rule"}" is kept in the custom rule library.`);
+        ? `Rule ${created.id} "${ruleName.trim() || "Untitled rule"}" is enabled. It runs alongside the built-in detectors on future uploads.`
+        : `Rule ${created.id} "${ruleName.trim() || "Untitled rule"}" saved as ${status}.`);
     } catch (error) {
       setSaveError(error.message || "The custom rule could not be saved.");
     } finally {
@@ -236,29 +231,29 @@ export default function RuleBuilderPage({ navigate }) {
             <ArrowLeft size={14} aria-hidden="true" />
             Back to rules
           </button>
-          <h1>New custom rule</h1>
-          <p>Added to the custom rule library · runs alongside R-101…R-106</p>
+          <h1>{initialRule ? "Edit custom rule" : "New custom rule"}</h1>
+          <p>{initialRule ? `Update ${initialRule.id} without changing existing alert evidence.` : "Create a custom rule for future uploads."}</p>
         </div>
         <div className="soc-page-actions">
           <button
             className="soc-button secondary"
             type="button"
-            disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue}
-            title={savedRule
+            disabled={!canManageRules || savedNewRule || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid || testState === "loading"}
+            title={savedNewRule
               ? `${savedRule.id} is already saved — go back to author another rule`
               : hasEmptyConditionValue
               ? "Every condition needs a value before the draft can be saved"
               : undefined}
-            onClick={() => saveRule("draft")}
+            onClick={() => saveRule(initialRule ? ruleStatus : "draft")}
           >
             {savingAction === "draft" ? <span className="soc-spinner small" aria-hidden="true" /> : null}
-            Save draft
+            {savingAction ? "Saving…" : initialRule ? "Save changes" : "Save draft"}
           </button>
           <button
             className="soc-button primary"
             type="button"
-            disabled={!canWrite || Boolean(savedRule) || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid}
-            title={savedRule
+            disabled={!canManageRules || savedNewRule || Boolean(savingAction) || hasEmptyConditionValue || !syntaxValid || !schemaValid || testState === "loading"}
+            title={savedNewRule
               ? `${savedRule.id} is already saved — go back to author another rule`
               : hasEmptyConditionValue
               ? "Every condition needs a value before the rule can be enabled"
@@ -266,7 +261,7 @@ export default function RuleBuilderPage({ navigate }) {
             onClick={() => saveRule("enabled")}
           >
             {savingAction === "enabled" ? <span className="soc-spinner small" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
-            Enable rule
+            {initialRule ? "Save and enable" : "Enable rule"}
           </button>
         </div>
       </header>
@@ -283,7 +278,8 @@ export default function RuleBuilderPage({ navigate }) {
         </InlineNotice>
       )}
 
-      <div className="rule-builder-workspace">
+      {!canManageRules && <InlineNotice title="Read-only access">Your role can view rules but cannot change or test them.</InlineNotice>}
+      <fieldset className="rule-builder-workspace" disabled={!canManageRules || Boolean(savingAction) || savedNewRule || testState === "loading"}>
         <div className="rule-builder-editor">
           <Panel title="Rule definition">
             <div className="rule-builder-definition-grid">
@@ -294,7 +290,7 @@ export default function RuleBuilderPage({ navigate }) {
                   type="text"
                   maxLength="120"
                   value={ruleName}
-                  onChange={(event) => { setRuleName(event.target.value); setConfirmation(""); }}
+                  onChange={(event) => { setRuleName(event.target.value); clearDraftFeedback(); }}
                 />
               </label>
               <label className="rule-builder-field" htmlFor={`${baseId}-rule-id`}>
@@ -309,7 +305,7 @@ export default function RuleBuilderPage({ navigate }) {
               </label>
               <label className="rule-builder-field" htmlFor={`${baseId}-category`}>
                 <span>Category</span>
-                <select id={`${baseId}-category`} value={category} onChange={(event) => { setCategory(event.target.value); setConfirmation(""); }}>
+                <select id={`${baseId}-category`} value={category} onChange={(event) => { setCategory(event.target.value); clearDraftFeedback(); }}>
                   {RULE_CATEGORIES.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -317,7 +313,9 @@ export default function RuleBuilderPage({ navigate }) {
               </label>
               <label className="rule-builder-field" htmlFor={`${baseId}-tactic`}>
                 <span>MITRE ATT&amp;CK tactic</span>
-                <select id={`${baseId}-tactic`} value={tactic} onChange={(event) => { setTactic(event.target.value); setConfirmation(""); }}>
+                <select id={`${baseId}-tactic`} value={tactic} onChange={(event) => { setTactic(event.target.value); clearDraftFeedback(); }}>
+                  <option value="">Not mapped</option>
+                  {tactic && !MITRE_TACTIC_OPTIONS.some((option) => option.value === tactic) && <option value={tactic}>{tactic}</option>}
                   {MITRE_TACTIC_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -338,7 +336,7 @@ export default function RuleBuilderPage({ navigate }) {
                       name={`${baseId}-severity`}
                       value={option.value}
                       checked={severity === option.value}
-                      onChange={() => { setSeverity(option.value); setConfirmation(""); }}
+                      onChange={() => { setSeverity(option.value); clearDraftFeedback(); }}
                     />
                     <i aria-hidden="true" />
                     {option.label}
@@ -352,7 +350,7 @@ export default function RuleBuilderPage({ navigate }) {
             title="Conditions — WHEN"
             subtitle="all conditions must match"
             actions={(
-              <button className="soc-button secondary compact" type="button" onClick={addCondition}>
+              <button className="soc-button secondary compact" type="button" disabled={conditions.length >= 10} onClick={addCondition}>
                 <Plus size={14} aria-hidden="true" />
                 Add condition
               </button>
@@ -411,6 +409,7 @@ export default function RuleBuilderPage({ navigate }) {
                           value={condition.timezone || ""}
                           onChange={(event) => updateCondition(condition.key, { timezone: event.target.value })}
                         >
+                          {condition.timezone && !TIMEZONE_OPTIONS.some((zone) => zone.value === condition.timezone) && <option value={condition.timezone}>{condition.timezone}</option>}
                           {TIMEZONE_OPTIONS.map((zone) => (
                             <option key={zone.value || "utc"} value={zone.value}>{zone.label}</option>
                           ))}
@@ -436,7 +435,7 @@ export default function RuleBuilderPage({ navigate }) {
             <div className="rule-builder-scope-row">
               <label htmlFor={`${baseId}-group`}>
                 <span>GROUP</span>
-                <select id={`${baseId}-group`} className="rule-builder-mono" value={groupBy} onChange={(event) => { setGroupBy(event.target.value); setConfirmation(""); }}>
+                <select id={`${baseId}-group`} className="rule-builder-mono" value={groupBy} onChange={(event) => { setGroupBy(event.target.value); clearDraftFeedback(); }}>
                   {GROUP_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -444,7 +443,7 @@ export default function RuleBuilderPage({ navigate }) {
               </label>
               <label htmlFor={`${baseId}-window`}>
                 <span>WINDOW</span>
-                <select id={`${baseId}-window`} className="rule-builder-mono" value={windowValue} onChange={(event) => { setWindowValue(event.target.value); setConfirmation(""); }}>
+                <select id={`${baseId}-window`} className="rule-builder-mono" value={windowValue} onChange={(event) => { setWindowValue(event.target.value); clearDraftFeedback(); }}>
                   {WINDOW_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
@@ -458,20 +457,20 @@ export default function RuleBuilderPage({ navigate }) {
               {ACTION_OPTIONS.map((action) => (
                 <label
                   key={action.id}
-                  className={`rule-builder-action${action.muted && !actions[action.id] ? " muted" : ""}`}
+                  className={`rule-builder-action${action.muted && !actionIsEnabled(actions[action.id]) ? " muted" : ""}`}
                   htmlFor={`${baseId}-${action.id}`}
                 >
                   <input
                     id={`${baseId}-${action.id}`}
                     type="checkbox"
-                    checked={actions[action.id]}
+                    checked={actionIsEnabled(actions[action.id])}
                     onChange={(event) => {
                       const next = event.target.checked;
-                      setActions((current) => ({ ...current, [action.id]: next }));
-                      setConfirmation("");
+                      setActions((current) => ({ ...current, [action.id]: toggleRuleAction(current[action.id], next) }));
+                      clearDraftFeedback();
                     }}
                   />
-                  <span>{action.label}</span>
+                  <span>{action.id === "notify_slack" ? "Notify the configured Slack channel" : action.id === "auto_incident" ? "Automatically create an incident when its threshold is met" : action.id === "suggest_playbook" ? "Suggest the configured response playbook" : action.label}</span>
                 </label>
               ))}
             </div>
@@ -479,11 +478,11 @@ export default function RuleBuilderPage({ navigate }) {
         </div>
 
         <div className="rule-builder-rail">
-          <Panel title="Test against sample logs" actions={<span className="rule-builder-panel-meta">most recent logs</span>}>
+          <Panel title="Test against recent logs" actions={<span className="rule-builder-panel-meta">most recent logs</span>}>
             <button
               className="soc-button primary full rule-builder-run-test"
               type="button"
-              disabled={testState === "loading"}
+              disabled={!canManageRules || testState === "loading" || !syntaxValid || !schemaValid}
               onClick={runTest}
             >
               {testState === "loading"
@@ -520,7 +519,7 @@ export default function RuleBuilderPage({ navigate }) {
                   </ul>
                   <div className="rule-builder-noise">
                     <strong>Estimated noise: {testResult.noise.label}</strong>
-                    <span>~{testResult.noise.alertsPerDay} alerts/day at current traffic{testResult.noise.label === "LOW" ? ". Safe to enable." : "."}</span>
+                    <span>~{testResult.noise.alertsPerDay} alerts/day at current traffic. Review matching evidence before enabling.</span>
                   </div>
                 </>
               )}
@@ -530,20 +529,6 @@ export default function RuleBuilderPage({ navigate }) {
                 </div>
               )}
             </div>
-          </Panel>
-
-          <Panel title="Rule preview" actions={<span className="rule-builder-panel-meta">generated DSL</span>}>
-            <pre className="rule-builder-dsl" aria-label="Generated rule DSL">
-              <code>
-                {dslLines.map((fragments, lineIndex) => (
-                  <span className="rule-builder-dsl-line" key={lineIndex}>
-                    {fragments.map((fragment, fragmentIndex) => (
-                      <span key={fragmentIndex} data-dsl={fragment.kind}>{fragment.text}</span>
-                    ))}
-                  </span>
-                ))}
-              </code>
-            </pre>
           </Panel>
 
           <Panel title="Validation">
@@ -565,7 +550,7 @@ export default function RuleBuilderPage({ navigate }) {
             </ul>
           </Panel>
         </div>
-      </div>
+      </fieldset>
     </>
   );
 }

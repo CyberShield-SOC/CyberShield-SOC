@@ -56,14 +56,22 @@ def score_event(model_row: MLModel, estimator, features: dict[str, float]) -> Sc
 
     ordered = [float(features[name]) for name in model_row.feature_names]
     score = float(estimator.decision_function([ordered])[0])
+    return ScoredEvent(score=score, deviations=feature_deviations(model_row, features))
 
-    deviations = [
-        FeatureDeviation(
-            feature=name,
-            value=value,
-            mean=model_row.feature_means.get(name, 0.0),
-            z_score=(value - model_row.feature_means.get(name, 0.0)) / (model_row.feature_stds.get(name, 1.0) or 1.0),
-        )
-        for name, value in zip(model_row.feature_names, ordered)
-    ]
-    return ScoredEvent(score=score, deviations=deviations)
+
+def feature_deviations(model_row: MLModel, features: dict[str, float]) -> list[FeatureDeviation]:
+    """How far each feature sits from the training population, in standard
+    deviations — the explanation attached to every alert and to every
+    shadow-mode row GET /ml/anomalies shows. Features the model doesn't know
+    are skipped, so a stored snapshot from an older schema still explains
+    whatever it can instead of raising."""
+
+    deviations = []
+    for name in model_row.feature_names:
+        if name not in features:
+            continue
+        value = float(features[name])
+        mean = model_row.feature_means.get(name, 0.0)
+        std = model_row.feature_stds.get(name, 1.0) or 1.0
+        deviations.append(FeatureDeviation(feature=name, value=value, mean=mean, z_score=(value - mean) / std))
+    return deviations

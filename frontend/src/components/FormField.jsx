@@ -35,6 +35,7 @@ export function FormField({
             type="button"
             aria-label={isVisible ? "Hide password" : "Show password"}
             aria-pressed={isVisible}
+            disabled={inputProps.disabled}
             onClick={() => setIsVisible((current) => !current)}
           >
             {isVisible ? <EyeOff size={18} /> : <Eye size={18} />}

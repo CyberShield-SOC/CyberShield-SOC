@@ -14,11 +14,16 @@ import { restoreStoredNotes, restoreStoredSettings } from "../utils/storageValid
 import { isTerminalIncidentStatus } from "../utils/incidentWorkflow.js";
 import { createInFlightDeduper } from "../utils/asyncUtils.js";
 import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
-import { buildAnomalyStat, buildMlInsight } from "../utils/mlInsight.js";
+import { buildAnomalyStat, buildMlInsight, normalizeDeviations } from "../utils/mlInsight.js";
+import { customRuleUpdates } from "../utils/customRuleDraft.js";
+import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
+
+const INVITE_REQUEST_TIMEOUT_MS = 25_000;
 
 const NOTES_STORAGE_KEY = "cybershield-session-notes";
 const SETTINGS_STORAGE_KEY = "cybershield-session-settings";
 const USERS_STORAGE_KEY = "cybershield-session-users";
+const INVITES_STORAGE_KEY = "cybershield-session-invites";
 const CUSTOM_RULES_STORAGE_KEY = "cybershield-session-custom-rules";
 const BUILT_IN_RULES_STORAGE_KEY = "cybershield-session-built-in-rules";
 const CUSTOM_RULE_NUMBER_BASE = 108; // R-101..R-108 are the built-in rules
@@ -100,6 +105,18 @@ export function getRepositoryErrorMessage(status, payload = {}) {
   if (status === 422) return "Some submitted values were invalid. Review the form and try again.";
   if (status >= 500) return "The service is temporarily unavailable. Try again shortly.";
   return `The service could not complete the request (${status}).`;
+}
+
+/** Surfaces the backend's own "couldn't send the invite email" detail on a
+ * 502 instead of the generic 5xx fallback — the specific reason (e.g. the
+ * Resend sandbox sender can't deliver to an arbitrary recipient) only lives
+ * in that detail string. */
+export function inviteErrorMessage(status, payload = {}) {
+  if (status === 502) {
+    const detail = safeValidationDetail(payload);
+    if (detail) return detail;
+  }
+  return getRepositoryErrorMessage(status, payload);
 }
 
 export function assistantErrorMessage(status, payload = {}) {
@@ -229,6 +246,41 @@ export function normalizeWorkspaceUser(user) {
   };
 }
 
+export function normalizeInvite(invite) {
+  const id = Number(invite?.id);
+  const email = String(invite?.email || "").trim().toLowerCase();
+  const role = String(invite?.role || "").trim();
+  if (!Number.isSafeInteger(id) || id <= 0 || !email || !VALID_WORKSPACE_ROLES.has(role)) {
+    throw new Error("The service returned an invalid invite record.");
+  }
+  return {
+    id,
+    email,
+    role,
+    invitedBy: String(invite?.invitedBy ?? invite?.invited_by ?? "").trim() || null,
+    createdAt: String(invite?.createdAt ?? invite?.created_at ?? "").trim(),
+    expiresAt: String(invite?.expiresAt ?? invite?.expires_at ?? "").trim(),
+  };
+}
+
+function readSessionInvites() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(INVITES_STORAGE_KEY) || "null");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeInvite);
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionInvites(invites) {
+  try {
+    window.sessionStorage.setItem(INVITES_STORAGE_KEY, JSON.stringify(invites));
+  } catch {
+    // The current in-memory result remains usable if browser storage is blocked.
+  }
+}
+
 function readSessionUsers() {
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(USERS_STORAGE_KEY) || "null");
@@ -334,10 +386,58 @@ export function normalizeHostHeartbeat(host) {
   };
 }
 
+export function normalizeMlModel(model) {
+  if (!model) return null;
+  return {
+    id: model.id,
+    featureSet: model.feature_set,
+    entityType: model.entity_type,
+    version: Number(model.version) || 0,
+    isActive: Boolean(model.is_active),
+    sampleCount: Number(model.sample_count) || 0,
+    trainedAt: model.trained_at || null,
+  };
+}
+
+function normalizeAnomalyScore(row) {
+  const score = Number(row.score);
+  return {
+    // The snapshot's own id: two snapshots for one entity can share a
+    // captured_at (same-second logins, a re-uploaded file), so this is the
+    // only stable identity a list key can use.
+    id: Number(row.id) || null,
+    entityId: String(row.entity_id || ""),
+    capturedAt: row.captured_at || null,
+    score: Number.isFinite(score) ? score : null,
+    belowThreshold: Boolean(row.below_threshold),
+    // Same shape the alert evidence carries, so the dashboard can chart a
+    // shadow-mode row exactly like a real alert.
+    deviations: normalizeDeviations(row.feature_deviations),
+  };
+}
+
+export function normalizeMlAnomalyPilot(row) {
+  const threshold = Number(row.score_threshold);
+  return {
+    featureSet: row.feature_set,
+    ruleName: row.rule_name || null,
+    entityType: row.entity_type,
+    minSamples: Number(row.min_samples) || 0,
+    sampleCount: Number(row.sample_count) || 0,
+    ready: Boolean(row.ready),
+    scoredCount: Number(row.scored_count) || 0,
+    activeModel: normalizeMlModel(row.active_model),
+    ruleEnabled: row.rule_enabled !== false,
+    scoreThreshold: Number.isFinite(threshold) ? threshold : null,
+    shadowMode: row.shadow_mode !== false,
+    scores: (Array.isArray(row.scores) ? row.scores : []).map(normalizeAnomalyScore),
+  };
+}
+
 async function request(path, options = {}) {
   const payload = await apiRequest(path, {
     ...options,
-    errorMessage: getRepositoryErrorMessage,
+    errorMessage: options.errorMessage || getRepositoryErrorMessage,
   });
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("The service returned an invalid response. Refresh and try again.");
@@ -409,9 +509,7 @@ async function readHistory(path) {
     events.push(...responseArray(payload, "events"));
     afterId = payload.next_after_id;
   } while (afterId);
-  return events.map((e) => ({ id: `HISTORY-${e.id}`, at: e.occurred_at,
-    title: e.event_type.replaceAll("_", " ").toLowerCase(),
-    detail: [e.actor_name, e.reason, e.note, JSON.stringify(e.after)].filter(Boolean).join(" · ") }));
+  return events.map(normalizeWorkflowEvent);
 }
 
 function normalizeSourceEvidence(event, alert) {
@@ -443,10 +541,11 @@ function normalizeEvent(log, alerts = []) {
     ingestedAt: log.ingested_at || log.timestamp || "",
     source: log.source_filename || "ingested log",
     sourceIp: log.ip || "Unknown",
-    user: log.username || "Unknown",
+    user: log.username || "N/A",
     event: log.event || "Security event",
     severity,
     status,
+    port: log.port ?? null,
     risk: SEVERITY_RISK[severity] ?? SEVERITY_RISK.info,
     rule: ruleId,
     message: log.raw_message || alert?.description || "Normalized security event.",
@@ -638,12 +737,13 @@ function normalizeIncident(incident, alerts = [], latest = null) {
 function normalizeNote(note, incident = null) {
   const createdAt = note.created_at;
   const incidentId = incident?.id || note.incident_id;
+  const author = note.author_name || (note.author_user_id ? `User ${note.author_user_id}` : "Unknown analyst");
   return {
     id: displayId("NOTE", note.id),
     backendId: note.id,
     title: note.title || "Analyst note",
     body: note.body,
-    author: `User ${note.author_user_id}`,
+    author,
     createdAt,
     updatedAt: note.updated_at,
     tags: note.tags || [],
@@ -652,7 +752,7 @@ function normalizeNote(note, incident = null) {
     linkedBackendId: incidentId,
     pinned: Boolean(note.pinned),
     archived: Boolean(note.archived),
-    versions: [{ version: 1, at: createdAt, author: `User ${note.author_user_id}`, summary: "Stored incident note" }],
+    versions: [{ version: 1, at: createdAt, author, summary: "Stored incident note" }],
   };
 }
 
@@ -765,6 +865,44 @@ const mockRepository = {
     };
     writeSessionUsers([...users, created]);
     return clone(created);
+  },
+  async getPendingInvites() {
+    await wait(80);
+    return readSessionInvites();
+  },
+  async inviteUser({ email, role }) {
+    await wait(100);
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedRole = String(role || "").trim();
+    if (!normalizedEmail || !VALID_WORKSPACE_ROLES.has(normalizedRole)) {
+      throw new Error("Review the invite details and try again.");
+    }
+    const invites = readSessionInvites().filter((item) => item.email !== normalizedEmail);
+    const now = new Date();
+    const created = {
+      id: Math.max(0, ...invites.map((item) => item.id)) + 1,
+      email: normalizedEmail,
+      role: normalizedRole,
+      invitedBy: null,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    writeSessionInvites([...invites, created]);
+    return clone(created);
+  },
+  async resendInvite(inviteId) {
+    await wait(90);
+    const invites = readSessionInvites();
+    const target = invites.find((item) => item.id === Number(inviteId));
+    if (!target) throw new Error("That invite no longer exists.");
+    return this.inviteUser({ email: target.email, role: target.role });
+  },
+  async revokeInvite(inviteId) {
+    await wait(80);
+    const invites = readSessionInvites();
+    if (!invites.some((item) => item.id === Number(inviteId))) throw new Error("That invite no longer exists.");
+    writeSessionInvites(invites.filter((item) => item.id !== Number(inviteId)));
+    return { success: true };
   },
   async updateUser(userId, updates) {
     await wait(100);
@@ -904,6 +1042,47 @@ const mockRepository = {
   async checkHostSilence() {
     throw new Error("Host silence checks require the connected backend.");
   },
+  async trainMlModel() {
+    throw new Error("Model training requires the connected backend.");
+  },
+  async getMlAnomalyOverview() {
+    await wait(90);
+    const readiness = [
+      {
+        featureSet: "login_behavior", entityType: "account", minSamples: 50, sampleCount: 418, ready: true,
+        activeModel: { id: 1, featureSet: "login_behavior", entityType: "account", version: 3, isActive: true, sampleCount: 418, trainedAt: "2026-11-02T04:00:00Z" },
+      },
+      {
+        featureSet: "egress_volume", entityType: "host", minSamples: 50, sampleCount: 365, ready: true,
+        activeModel: { id: 2, featureSet: "egress_volume", entityType: "host", version: 2, isActive: true, sampleCount: 365, trainedAt: "2026-10-29T04:00:00Z" },
+      },
+      { featureSet: "threat_log", entityType: "source_ip", minSamples: 50, sampleCount: 31, ready: false, activeModel: null },
+    ];
+    const sample = {
+      login_behavior: {
+        ruleName: "behavioral_anomaly_login", scoreThreshold: -0.02, scoredCount: 212,
+        scores: [
+          { id: 7101, entityId: "jchen", capturedAt: "2026-11-10T20:51:12Z", score: -0.104, belowThreshold: true, deviations: [{ feature: "hour_cos", value: 0.97, zScore: 2.1 }, { feature: "is_new_geo", value: 1, zScore: 2.6 }] },
+          { id: 7102, entityId: "svc-backup", capturedAt: "2026-11-09T03:12:40Z", score: -0.047, belowThreshold: true, deviations: [{ feature: "hour_sin", value: -0.71, zScore: -1.9 }, { feature: "dow_cos", value: 0.62, zScore: 1.2 }] },
+          { id: 7103, entityId: "mpatel", capturedAt: "2026-11-08T11:05:02Z", score: 0.031, belowThreshold: false, deviations: [{ feature: "dow_sin", value: 0.43, zScore: 0.8 }] },
+        ],
+      },
+      egress_volume: {
+        ruleName: "behavioral_anomaly_egress", scoreThreshold: -0.02, scoredCount: 140,
+        scores: [
+          { id: 7201, entityId: "fs-02", capturedAt: "2026-11-10T18:00:00Z", score: -0.041, belowThreshold: true, deviations: [{ feature: "log_bytes_out", value: 20.8, zScore: 3.4 }, { feature: "distinct_destinations", value: 11, zScore: 1.8 }] },
+          { id: 7202, entityId: "web-01", capturedAt: "2026-11-10T09:00:00Z", score: 0.052, belowThreshold: false, deviations: [{ feature: "connection_count", value: 84, zScore: 0.6 }] },
+        ],
+      },
+      threat_log: { ruleName: "behavioral_anomaly_threat_log", scoreThreshold: -0.12, scoredCount: 0, scores: [] },
+    };
+    return readiness.map((row) => ({
+      ...row,
+      ruleEnabled: true,
+      shadowMode: true,
+      ...sample[row.featureSet],
+    }));
+  },
   async createCustomRule(rule) {
     await wait(150);
     const rules = readSessionCustomRules();
@@ -926,8 +1105,7 @@ const mockRepository = {
     const target = rules.find((item) => item.id === backendId);
     if (!target) throw new Error("That custom rule no longer exists.");
     Object.assign(target, {
-      ...(updates.status ? { status: updates.status.toUpperCase() } : {}),
-      ...(updates.name ? { name: updates.name } : {}),
+      ...customRuleUpdates(updates),
       updated_at: new Date().toISOString(),
     });
     writeSessionCustomRules(rules);
@@ -983,16 +1161,17 @@ async function getApiState() {
 export const httpRepository = {
   async getAlertInvestigation(alertId) {
     const id = requireBackendId(alertId, "Alert");
-    const [detail, source, groups, history] = await Promise.all([
+    const [detail, source, groups, history, notes] = await Promise.all([
       request(`/alerts/${id}/investigation`), readPages(`/alerts/${id}/evidence`, "events"),
       readPages(`/alerts/${id}/correlation-groups`, "groups"), readHistory(`/alerts/${id}/investigation/history`),
+      readPages(`/alerts/${id}/investigation/notes`, "notes"),
     ]);
     const events = source.rows.map((event) => normalizeSourceEvidence(event, detail.alert));
     const captured = await Promise.all(groups.rows.map(async (group) => {
       const [context, linked] = await Promise.all([request(`/correlation-groups/${group.id}/rule-context`), readPages(`/correlation-groups/${group.id}/alerts`, "alerts")]);
       return { ...group, ruleContext: context.rule_context, alerts: linked.rows.map((a) => normalizeAlert(a)) };
     }));
-    return { alert: normalizeAlert(detail.alert), events, groups: captured, history, completeness: source.completeness,
+    return { alert: normalizeAlert(detail.alert), events, groups: captured, history, notes: notes.rows.map((note) => ({ id: note.id, author: note.author_name || `User ${note.author_user_id}`, body: note.body, createdAt: note.created_at })), completeness: source.completeness,
       allowedStates: detail.allowed_states, activeIncidentId: detail.active_incident_id,
       related: captured.flatMap((group) => group.alerts.filter((a) => a.backendId !== id).map((alert) => ({
         alert, groupId: group.id, reason: group.reason, groupingEntity: group.entity_value,
@@ -1197,6 +1376,33 @@ export const httpRepository = {
     });
     return normalizeWorkspaceUser(payload.user);
   },
+  async getPendingInvites() {
+    const payload = await request("/users/invites");
+    return responseArray(payload, "invites").map(normalizeInvite);
+  },
+  async inviteUser({ email, role }) {
+    const payload = await request("/users/invites", {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+      errorMessage: inviteErrorMessage,
+      // The backend gives its email provider up to 20s before giving up
+      // (see INVITE_EMAIL_SEND_TIMEOUT_SECONDS in users.py); wait longer
+      // than that so a slow-but-successful send isn't cut off here first.
+      timeoutMs: INVITE_REQUEST_TIMEOUT_MS,
+    });
+    return normalizeInvite(payload.invite);
+  },
+  async resendInvite(inviteId) {
+    const payload = await request(`/users/invites/${requireBackendId(inviteId, "Invite")}/resend`, {
+      method: "POST",
+      errorMessage: inviteErrorMessage,
+      timeoutMs: INVITE_REQUEST_TIMEOUT_MS,
+    });
+    return normalizeInvite(payload.invite);
+  },
+  async revokeInvite(inviteId) {
+    return request(`/users/invites/${requireBackendId(inviteId, "Invite")}`, { method: "DELETE" });
+  },
   async updateUser(userId, updates) {
     const payload = await request(`/users/${requireBackendId(userId, "User")}`, {
       method: "PATCH",
@@ -1328,6 +1534,15 @@ export const httpRepository = {
     const payload = await request("/detection/host-silence/check", { method: "POST" });
     return responseArray(payload, "alerts").map((alert) => normalizeAlert(alert));
   },
+  async trainMlModel(featureSet) {
+    const payload = await request(`/ml/models/${encodeURIComponent(featureSet)}/train`, { method: "POST" });
+    return normalizeMlModel(payload.model);
+  },
+  async getMlAnomalyOverview({ limit = 5 } = {}) {
+    const safeLimit = Math.min(50, Math.max(1, Math.trunc(Number(limit)) || 5));
+    const payload = await request(`/ml/anomalies?limit=${safeLimit}`);
+    return responseArray(payload, "pilots").map(normalizeMlAnomalyPilot);
+  },
   async createCustomRule(rule) {
     const payload = await request("/custom-rules", {
       method: "POST",
@@ -1337,9 +1552,7 @@ export const httpRepository = {
   },
   async updateCustomRule(ruleId, updates) {
     const numericId = requireBackendId(ruleId, "Custom rule");
-    const body = {};
-    if (updates.status) body.status = updates.status.toUpperCase();
-    if (updates.name) body.name = updates.name;
+    const body = customRuleUpdates(updates);
     const payload = await request(`/custom-rules/${numericId}`, {
       method: "PATCH",
       body: JSON.stringify(body),

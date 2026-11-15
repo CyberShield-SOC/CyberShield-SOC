@@ -6,12 +6,15 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.urls import frontend_base_url
 from app.db.session import get_db
 from app.dispatch.otp_email import get_otp_email_sender
 from app.dispatch.reset_email import get_reset_email_sender
 from app.models.user import User
+from app.repositories.invite_repository import InviteTokenInvalidError, consume_invite, get_invite_details
 from app.repositories.otp_repository import (
     OtpPendingNotFoundError,
     OtpResendCooldownError,
@@ -38,6 +41,7 @@ from app.schemas.auth import (
     TwoFactorResendResponse,
     TwoFactorVerifyRequest,
 )
+from app.schemas.invite import AcceptInviteRequest, AcceptInviteResponse, InviteDetailsResponse
 from app.security import (
     authenticate_user,
     create_refresh_token,
@@ -302,40 +306,6 @@ def me(user: User = Depends(current_user)):
 GENERIC_RECOVERY_MESSAGE = "If an account matches that email, recovery instructions will be sent."
 
 
-def _password_reset_frontend_base(request: Request) -> str:
-    """Return the trusted frontend origin used in emailed reset links.
-
-    Explicit FRONTEND_BASE_URL wins. Railway's injected public domain is used
-    next for the combined deployment. Local development falls back to Vite;
-    other deployments fall back to the request origin served by FastAPI.
-    """
-
-    configured = (settings.frontend_base_url or "").strip().rstrip("/")
-    railway_domain = (settings.railway_public_domain or "").strip().rstrip("/")
-
-    # If Railway is running the app, never let an old local-dev value such as
-    # https://127.0.0.1:5173 leak into a real user's reset email.
-    configured_is_local = configured.startswith((
-        "http://localhost",
-        "https://localhost",
-        "http://127.0.0.1",
-        "https://127.0.0.1",
-    ))
-    if railway_domain and (not configured or configured_is_local):
-        if railway_domain.startswith(("http://", "https://")):
-            return railway_domain
-        return f"https://{railway_domain}"
-
-    if configured:
-        return configured
-
-    host = (request.url.hostname or "").lower()
-    if host in {"localhost", "127.0.0.1", "testserver"}:
-        return "https://127.0.0.1:5173"
-
-    return str(request.base_url).rstrip("/")
-
-
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 def forgot_password(
     payload: ForgotPasswordRequest,
@@ -357,7 +327,7 @@ def forgot_password(
 
     if user is not None and user.is_active:
         token = create_reset_challenge(db, user)
-        frontend_base = _password_reset_frontend_base(request)
+        frontend_base = frontend_base_url(request)
         reset_link = f"{frontend_base}/#/reset-password?token={quote(token)}"
         try:
             send_reset_email(to_email=user.email, reset_link=reset_link)
@@ -416,3 +386,73 @@ def reset_password(
     db.commit()
 
     return {"success": True, "message": "Your password has been reset. Sign in with your new password."}
+
+
+@router.get("/invite/{token}", response_model=InviteDetailsResponse)
+def invite_details(token: str, db: Session = Depends(get_db)):
+    """Validate a presented invite token without consuming it, so the signup
+    form can show who invited the account and in what role."""
+
+    try:
+        invite = get_invite_details(db, token)
+    except InviteTokenInvalidError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return {
+        "email": invite.email,
+        "role": invite.role.name,
+        "expires_at": invite.expires_at,
+    }
+
+
+@router.post("/accept-invite", response_model=AcceptInviteResponse)
+def accept_invite(
+    payload: AcceptInviteRequest,
+    db: Session = Depends(get_db),
+):
+    """Complete an invite: consume the token and create the account it
+    described. Does not mint a session — the new user signs in normally."""
+
+    try:
+        invite = consume_invite(db, payload.token)
+    except InviteTokenInvalidError as exc:
+        db.commit()  # persist the used=True marked on an expired/stale token
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    context_errors = password_context_errors(
+        payload.password,
+        username=payload.username,
+        email=invite.email,
+    )
+    if context_errors:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    "loc": ["body", "password"],
+                    "msg": message,
+                    "type": "value_error",
+                }
+                for message in context_errors
+            ],
+        )
+
+    new_user = User(
+        username=payload.username,
+        email=invite.email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+        role_id=invite.role_id,
+    )
+    db.add(new_user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That username or email is already in use.",
+        ) from exc
+
+    return {"success": True, "message": "Your account is ready. Sign in to continue."}

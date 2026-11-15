@@ -1,6 +1,6 @@
 // Limits mirror backend/app/routers/assistant.py (MAX_MESSAGES / MAX_MESSAGE_CHARS).
 export const ASSISTANT_MAX_MESSAGES = 20;
-export const ASSISTANT_MAX_MESSAGE_CHARS = 4000;
+export const ASSISTANT_MAX_MESSAGE_CHARS = 24000;
 
 export const ASSISTANT_TOOL_LABELS = Object.freeze({
   list_alerts: "Alerts",

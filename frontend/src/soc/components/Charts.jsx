@@ -23,9 +23,73 @@ function formatChartNumber(value) {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+const SPARKLINE_WIDTH = 72;
+const SPARKLINE_HEIGHT = 22;
+
+// A minimal inline trend indicator for KPI tiles: no axes, ticks, or tooltip,
+// just the shape of the series. Needs at least two points to draw a line.
+export function Sparkline({ values = [], color = "var(--soc-accent)" }) {
+  const series = (Array.isArray(values) ? values : []).map(finiteNumber);
+  if (series.length < 2) return null;
+  const max = Math.max(...series, 1);
+  const min = Math.min(...series, 0);
+  const span = Math.max(max - min, 1);
+  const stepX = SPARKLINE_WIDTH / (series.length - 1);
+  const points = series
+    .map((value, index) => {
+      const x = index * stepX;
+      const y = SPARKLINE_HEIGHT - ((value - min) / span) * SPARKLINE_HEIGHT;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg className="kpi-sparkline" viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// A single IsolationForest decision score plotted against its alert
+// threshold on a number line: below the threshold line is the "anomalous"
+// zone (lower is more anomalous), so an analyst sees at a glance how far
+// past the line a score fell rather than reading two raw floats.
+export function ScoreGauge({ score, threshold, belowThreshold }) {
+  const safeScore = finiteNumber(score);
+  const hasThreshold = typeof threshold === "number" && Number.isFinite(threshold);
+  const anchors = [safeScore, 0, ...(hasThreshold ? [threshold] : [])];
+  const lo = Math.min(...anchors);
+  const hi = Math.max(...anchors);
+  const pad = Math.max((hi - lo) * 0.35, 0.03);
+  const domainMin = lo - pad;
+  const domainMax = hi + pad;
+  const span = domainMax - domainMin || 1;
+  const toPercent = (value) => Math.min(100, Math.max(0, ((value - domainMin) / span) * 100));
+  const scorePct = toPercent(safeScore);
+  const thresholdPct = hasThreshold ? toPercent(threshold) : null;
+  const anomalous = belowThreshold === true;
+
+  return (
+    <div
+      className="score-gauge"
+      role="img"
+      aria-label={`Decision score ${safeScore.toFixed(3)}${hasThreshold ? `, alert threshold ${threshold.toFixed(3)}` : ""}${anomalous ? " — below threshold, flagged anomalous" : ""}`}
+    >
+      <div className="score-gauge-track">
+        {hasThreshold && <span className="score-gauge-zone" style={{ width: `${thresholdPct}%` }} />}
+        {hasThreshold && <span className="score-gauge-threshold" style={{ left: `${thresholdPct}%` }} />}
+        <span className={`score-gauge-marker${anomalous ? " anomalous" : ""}`} style={{ left: `${scorePct}%` }} />
+      </div>
+      <div className="score-gauge-labels" aria-hidden="true">
+        <span>{domainMin.toFixed(2)}</span>
+        {hasThreshold && <span className="score-gauge-threshold-label">threshold {threshold.toFixed(3)}</span>}
+        <span>{domainMax.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
 export function LineAreaChart({ values = [], labels = [], title }) {
   const chartRef = useRef(null);
-  const gradientId = `soc-area-${useId().replace(/:/g, "")}`;
   const hintId = `soc-chart-hint-${useId().replace(/:/g, "")}`;
   const [chartWidth, setChartWidth] = useState(CHART_FALLBACK_WIDTH);
   const [activeIndex, setActiveIndex] = useState(null);
@@ -60,8 +124,8 @@ export function LineAreaChart({ values = [], labels = [], title }) {
   const plotWidth = chartWidth - CHART_PLOT.left - CHART_PLOT.right;
   const maxXAxisLabels = Math.max(2, Math.min(6, Math.floor(plotWidth / 125) + 1));
   const visibleLabelIndexes = new Set(buildVisibleTickIndexes(points.length, maxXAxisLabels));
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = `M ${points[0].x} ${baseline} L ${line.replace(/ /g, " L ")} L ${points.at(-1).x} ${baseline} Z`;
+  const slotWidth = plotWidth / points.length;
+  const barWidth = Math.max(2, Math.min(26, slotWidth * 0.6));
   const activePoint = activeIndex === null ? null : points[activeIndex];
   const tooltipLabel = activeIndex === null ? "" : displayLabels[activeIndex].replace(/\s*\n\s*/g, " · ");
   const tooltipWidth = 172;
@@ -112,13 +176,6 @@ export function LineAreaChart({ values = [], labels = [], title }) {
           if (event.pointerType === "mouse") setActiveIndex(null);
         }}
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--soc-accent-bright)" stopOpacity="0.42" />
-            <stop offset="0.72" stopColor="var(--soc-accent)" stopOpacity="0.14" />
-            <stop offset="1" stopColor="var(--soc-accent)" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
         {ticks.map((tick) => (
           <g key={tick.value}>
             {tick.value !== 0 && <line x1={CHART_PLOT.left} y1={tick.y} x2={chartWidth - CHART_PLOT.right} y2={tick.y} className="chart-grid-line" />}
@@ -127,8 +184,6 @@ export function LineAreaChart({ values = [], labels = [], title }) {
         ))}
         <line x1={CHART_PLOT.left} y1={CHART_PLOT.top} x2={CHART_PLOT.left} y2={baseline} className="chart-axis-line" />
         <line x1={CHART_PLOT.left} y1={baseline} x2={chartWidth - CHART_PLOT.right} y2={baseline} className="chart-axis-line" />
-        <path d={area} fill={`url(#${gradientId})`} />
-        <polyline points={line} className="chart-line" />
         {points.map((point, index) => (
           <g key={`${displayLabels[index]}-${index}`}>
             <rect
@@ -141,14 +196,23 @@ export function LineAreaChart({ values = [], labels = [], title }) {
               onPointerEnter={() => setActiveIndex(index)}
               onPointerMove={() => setActiveIndex(index)}
             />
-            <circle cx={point.x} cy={point.y} r={activeIndex === index ? 6 : 4} className="chart-point" data-active={activeIndex === index || undefined} />
+            <rect
+              className="chart-bar-segment"
+              data-active={activeIndex === index || undefined}
+              fill="var(--soc-accent)"
+              x={point.x - barWidth / 2}
+              y={point.y}
+              width={barWidth}
+              height={Math.max(0, baseline - point.y)}
+              rx={barWidth >= 4 ? 2 : 0}
+            />
           </g>
         ))}
         {activePoint && (
           <g className="chart-active-layer" aria-hidden="true">
             <line x1={activePoint.x} y1={CHART_PLOT.top} x2={activePoint.x} y2={baseline} className="chart-active-guide" />
             <g className="chart-tooltip" transform={`translate(${tooltipX} ${tooltipY})`}>
-              <rect width={tooltipWidth} height={tooltipHeight} rx="7" />
+              <rect width={tooltipWidth} height={tooltipHeight} rx="4" />
               <text x="12" y="20">{tooltipLabel}</text>
               <text x="12" y="41" className="chart-tooltip-value">{activePoint.value.toLocaleString()} {activePoint.value === 1 ? "event" : "events"}</text>
             </g>
@@ -348,7 +412,7 @@ export function StackedBarChart({ buckets = [], series = [], title }) {
         </g>
         {activeBar && (
           <g className="chart-active-layer chart-tooltip" aria-hidden="true" transform={`translate(${tooltipX} ${tooltipY})`}>
-            <rect width={tooltipWidth} height={tooltipHeight} rx="7" />
+            <rect width={tooltipWidth} height={tooltipHeight} rx="4" />
             <text x="12" y="20">{tooltipLabel}</text>
             <text x="12" y="42" className="chart-tooltip-value">{activeBar.total.toLocaleString()} {activeBar.total === 1 ? "alert" : "alerts"}</text>
             {tooltipBreakdownRows.map((row, rowIndex) => (

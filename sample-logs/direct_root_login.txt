@@ -1,4 +1,4 @@
-# direct_root_login.log -- exercises DirectRootLoginRule (HIGH, account entity)
+# direct_root_login.txt -- exercises DirectRootLoginRule (HIGH, account entity)
 # Expected: 2 alerts, entity 'root', from 45.33.12.9 and 45.33.12.9 (publickey + password)
 Sep 14 04:10:00 prod-db01 sshd[45751]: Accepted password for root from 45.33.12.9 port 51022 ssh2
 Sep 14 04:16:00 prod-db01 sshd[13521]: Accepted publickey for root from 45.33.12.9 port 51090 ssh2

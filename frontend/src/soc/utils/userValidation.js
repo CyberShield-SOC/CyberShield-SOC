@@ -74,3 +74,19 @@ export function normalizeWorkspaceUserUpdate({ email, fullName, isActive, role, 
     isActive: Boolean(isActive),
   };
 }
+
+/** Validate an Admin-sent account invite: just an email and a role. */
+export function validateInvite({ email, role }) {
+  const errors = {};
+  const emailError = validateEmail(email);
+  if (emailError) errors.email = emailError;
+  if (!WORKSPACE_ROLES.has(role)) errors.role = "Select a supported workspace role.";
+  return errors;
+}
+
+export function normalizeInviteDraft({ email, role }) {
+  return {
+    email: normalizeEmail(email),
+    role: String(role || ""),
+  };
+}

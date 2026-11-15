@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, LogOut, Plus, RefreshCw, Save, Search, ShieldCheck, UserRoundCog, X } from "lucide-react";
+import { Ban, KeyRound, LogOut, Mail, Plus, RefreshCw, Save, Search, Send, ShieldCheck, UserRoundCog, X } from "lucide-react";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
 import { PasswordFieldGroup, PasswordInput, PasswordMatchStatus } from "../components/PasswordField";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
 import { isPasswordPolicyMet, passwordsMatch, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 import {
+  normalizeInviteDraft,
   normalizeNewWorkspaceUser,
   normalizeWorkspaceUserUpdate,
+  validateInvite,
   validateNewWorkspaceUser,
   validateWorkspacePassword,
   validateWorkspaceUserUpdate,
@@ -23,6 +25,17 @@ const EMPTY_NEW_USER = Object.freeze({
 });
 
 const EMPTY_PASSWORD = Object.freeze({ password: "", confirmPassword: "" });
+const EMPTY_INVITE = Object.freeze({ email: "", role: "Analyst" });
+
+function timeUntil(isoString) {
+  const target = new Date(isoString).getTime();
+  if (!Number.isFinite(target)) return "";
+  const diffMs = target - Date.now();
+  const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "in 1 day";
+  return `in ${diffDays} days`;
+}
 
 function notifySessionInvalidated() {
   const detail = Object.freeze({ path: "/users", reason: "credentials_changed" });
@@ -45,6 +58,11 @@ export default function UsersPage() {
   const [passwordDraft, setPasswordDraft] = useState(EMPTY_PASSWORD);
   const [passwordErrors, setPasswordErrors] = useState({});
   const [revokeTarget, setRevokeTarget] = useState(null);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteDraft, setInviteDraft] = useState(EMPTY_INVITE);
+  const [inviteErrors, setInviteErrors] = useState({});
+  const [revokeInviteTarget, setRevokeInviteTarget] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState({
@@ -74,9 +92,18 @@ export default function UsersPage() {
     }
   }, []);
 
+  const loadInvites = useCallback(async () => {
+    try {
+      setPendingInvites(await socRepository.getPendingInvites());
+    } catch (loadError) {
+      setError(loadError.message || "Pending invites could not be loaded.");
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+    loadInvites();
+  }, [loadUsers, loadInvites]);
 
   const selected = users.find((user) => user.id === selectedId) || null;
   useEffect(() => {
@@ -231,12 +258,77 @@ export default function UsersPage() {
     }
   }
 
+  function openInviteUser() {
+    setInviteDraft(EMPTY_INVITE);
+    setInviteErrors({});
+    setError("");
+    setInviteOpen(true);
+  }
+
+  async function sendInvite(event) {
+    event.preventDefault();
+    if (!canAdminister || saving) return;
+    const normalized = normalizeInviteDraft(inviteDraft);
+    const errors = validateInvite(normalized);
+    setInviteErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const created = await socRepository.inviteUser(normalized);
+      await loadInvites();
+      setInviteOpen(false);
+      setInviteDraft(EMPTY_INVITE);
+      setMessage(`Invite sent to ${created.email}.`);
+    } catch (inviteError) {
+      setError(inviteError.message || "The invite could not be sent.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resendPendingInvite(invite) {
+    if (!canAdminister || saving) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await socRepository.resendInvite(invite.id);
+      await loadInvites();
+      setMessage(`Invite resent to ${invite.email}.`);
+    } catch (resendError) {
+      setError(resendError.message || "The invite could not be resent.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmRevokeInvite() {
+    if (!revokeInviteTarget || !canAdminister || saving) return;
+    const target = revokeInviteTarget;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await socRepository.revokeInvite(target.id);
+      await loadInvites();
+      setRevokeInviteTarget(null);
+      setMessage(`Invite to ${target.email} was revoked.`);
+    } catch (revokeError) {
+      setError(revokeError.message || "The invite could not be revoked.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Users"
         description="Manage workspace roles and account access. Backend authorization remains the enforcement boundary."
-        actions={<><button className="soc-button secondary" type="button" disabled={loading || saving} onClick={loadUsers}><RefreshCw size={15} />Refresh users</button><button className="soc-button primary" type="button" disabled={!canAdminister || loading || saving} onClick={openCreateUser}><Plus size={15} />Create user</button></>}
+        actions={<><button className="soc-button secondary" type="button" disabled={loading || saving} onClick={loadUsers}><RefreshCw size={15} />Refresh users</button><button className="soc-button secondary" type="button" disabled={!canAdminister || loading || saving} onClick={openInviteUser}><Mail size={15} />Invite user</button><button className="soc-button primary" type="button" disabled={!canAdminister || loading || saving} onClick={openCreateUser}><Plus size={15} />Create user</button></>}
       />
 
       <div className="soc-stats-grid">
@@ -291,6 +383,38 @@ export default function UsersPage() {
           ) : <div className="detail-placeholder"><UserRoundCog size={24} /><strong>Select a workspace user</strong><span>Review identity, role, and account access.</span></div>}
         </Panel>
       </div>
+
+      <Panel title="Pending invites" subtitle={pendingInvites.length ? `${pendingInvites.length} awaiting signup` : "No outstanding invites"}>
+        {pendingInvites.length ? (
+          <div className="user-directory-list">
+            {pendingInvites.map((invite) => (
+              <div key={invite.id} className="pending-invite-row">
+                <span><strong>{invite.email}</strong><small>Invited as {invite.role} · expires {timeUntil(invite.expiresAt)}</small></span>
+                <div className="pending-invite-actions">
+                  <button className="soc-button secondary" type="button" disabled={!canAdminister || saving} onClick={() => resendPendingInvite(invite)}><Send size={14} />Resend</button>
+                  <button className="soc-button danger" type="button" disabled={!canAdminister || saving} onClick={() => setRevokeInviteTarget(invite)}><Ban size={14} />Revoke</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <div className="detail-placeholder"><Mail size={22} /><strong>No pending invites</strong><span>Invite an analyst or viewer to see it listed here until they sign up.</span></div>}
+      </Panel>
+
+      {inviteOpen && (
+        <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setInviteOpen(false); }}>
+          <section className="soc-modal invite-user-modal" role="dialog" aria-modal="true" aria-labelledby="invite-user-title">
+            <header>
+              <div><h2 id="invite-user-title">Invite workspace user</h2><p>Send a signup link so the invitee can choose their own username and password.</p></div>
+              <button type="button" disabled={saving} onClick={() => setInviteOpen(false)} aria-label="Close"><X size={18} /></button>
+            </header>
+            <form onSubmit={sendInvite} noValidate>
+              <label>Email <input type="email" value={inviteDraft.email} maxLength="254" autoComplete="email" required aria-invalid={Boolean(inviteErrors.email)} onChange={(event) => setInviteDraft((current) => ({ ...current, email: event.target.value }))} /><span className="soc-field-error">{inviteErrors.email}</span></label>
+              <label>Workspace role <select value={inviteDraft.role} aria-invalid={Boolean(inviteErrors.role)} onChange={(event) => setInviteDraft((current) => ({ ...current, role: event.target.value }))}>{roles.map((role) => <option key={role.id} value={role.name}>{role.name}</option>)}</select><span className="soc-field-error">{inviteErrors.role}</span></label>
+              <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setInviteOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving}>{saving ? <span className="soc-spinner small" /> : <Mail size={15} />}{saving ? "Sending…" : "Send invite"}</button></div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {createOpen && (
         <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreateOpen(false); }}>
@@ -382,6 +506,18 @@ export default function UsersPage() {
             </header>
             {Number(revokeTarget.id) === Number(currentUser?.id) && <InlineNotice tone="warning" title="This includes your current session">You will return to the sign-in page after the sessions are revoked.</InlineNotice>}
             <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setRevokeTarget(null)}>Cancel</button><button className="soc-button danger" type="button" disabled={saving} onClick={revokeSessions}><LogOut size={15} />{saving ? "Revoking…" : "Revoke sessions"}</button></div>
+          </section>
+        </div>
+      )}
+
+      {revokeInviteTarget && (
+        <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setRevokeInviteTarget(null); }}>
+          <section className="soc-modal confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="revoke-invite-title" aria-describedby="revoke-invite-description">
+            <header>
+              <div><h2 id="revoke-invite-title">Revoke this invite?</h2><p id="revoke-invite-description">The signup link sent to {revokeInviteTarget.email} will stop working immediately.</p></div>
+              <button type="button" disabled={saving} onClick={() => setRevokeInviteTarget(null)} aria-label="Close"><X size={18} /></button>
+            </header>
+            <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setRevokeInviteTarget(null)}>Cancel</button><button className="soc-button danger" type="button" disabled={saving} onClick={confirmRevokeInvite}><Ban size={15} />{saving ? "Revoking…" : "Revoke invite"}</button></div>
           </section>
         </div>
       )}

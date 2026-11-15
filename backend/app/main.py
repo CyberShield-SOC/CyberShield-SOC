@@ -24,6 +24,7 @@ from app.routers import (
     investigations,
     ml_models,
     notes,
+    reports,
     threat_intel,
     upload,
     users,
@@ -55,6 +56,9 @@ app.add_middleware(
     # the CSRF value, and an optional bearer credential for non-browser clients.
     allow_headers=["Accept", "Authorization", "Content-Type", "X-CSRF-Token"],
     allow_credentials=True,
+    # The browser can't read a response header via JS unless it's exposed —
+    # PDF export needs the filename FastAPI puts in Content-Disposition.
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -131,6 +135,7 @@ for prefix in ("", "/api"):
         correlation,
         investigations,
         incident_history,
+        reports,
     ):
         app.include_router(module.router, prefix=prefix)
 
@@ -168,6 +173,22 @@ def root():
     <p><a href="/health">/health</a> &nbsp; <a href="/docs">/docs</a></p>
     </body></html>
     """)
+
+
+@app.get("/.well-known/achilles.txt", include_in_schema=False)
+def well_known_achilles():
+    """Serve the verification token Vite copies from frontend/public."""
+
+    # Only /assets is mounted from the build output, so this dot-directory file
+    # needs its own route. The unbuilt source is the fallback for local runs.
+    candidates = (
+        _FRONTEND_DIST / ".well-known" / "achilles.txt",
+        _FRONTEND_DIST.parent / "public" / ".well-known" / "achilles.txt",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return FileResponse(str(candidate), media_type="text/plain")
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
 # Serve built React assets — must be mounted after all API routes

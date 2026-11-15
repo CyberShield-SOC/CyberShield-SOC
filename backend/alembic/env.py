@@ -24,7 +24,7 @@ import app.models  # noqa: E402, F401
 
 
 config = context.config
-
+print("DB URL check:", repr(settings.database_url[:25]), len(settings.database_url), flush=True)
 # Alembic's ConfigParser treats percent signs as interpolation syntax.
 # Escaping them keeps URLs with percent characters valid.
 config.set_main_option(

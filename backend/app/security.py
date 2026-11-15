@@ -54,6 +54,14 @@ def generate_reset_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_invite_token() -> str:
+    """Opaque single-use account-invite token. Only its digest (token_digest)
+    is ever persisted; the raw value is carried solely in the emailed
+    invite link, never logged or returned in an API response."""
+
+    return secrets.token_urlsafe(32)
+
+
 def generate_otp_code() -> str:
     """Cryptographically secure random 6-digit code, "000000"-"999999"."""
 

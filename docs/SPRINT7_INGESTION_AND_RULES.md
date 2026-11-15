@@ -47,6 +47,31 @@ No migration is applied automatically by the API. Database pipeline errors
 roll back the batch and its events/alerts. External notifications retain the
 existing synchronous dispatch behavior and are not a transactional outbox.
 
+## S7-02.1, S7-02.4, S7-02.5 — Watched-directory collector
+
+`collector/` is a standard-library Python client that watches configured
+directories and ships new log lines to `POST /api/ingest` as `source_type`
+`agent`, with the configured `source_name` and `source_host`. It authenticates
+through the existing login, email two-factor, and refresh flow and stores only
+the rotating refresh token, never a password.
+
+- **S7-02.1:** detects new and growing files in watched paths. It ships whole
+  lines only, replays CSV headers across batches, and handles rotated names
+  such as `auth.log.1`.
+- **S7-02.4:** offsets advance only after acknowledgement. Renamed and copied
+  files are recognized by a content hash of the bytes already shipped, so they
+  are not resent. Unavailable servers are retried with backoff. Ambiguous
+  failures are reconciled against `/api/upload/history` before resending,
+  because the endpoint is not idempotent. Rejected batches are quarantined so
+  they cannot block a file.
+- **S7-02.5:** `backend/tests/test_collector_pipeline.py` runs the collector
+  against the real app and PostgreSQL. It covers provenance, normalized rows,
+  expected alerts for the rule-test fixtures, no duplicate rows across rescans,
+  appends, rotation and restart, the real refresh/CSRF flow, and reconciliation
+  of a lost response.
+
+Usage, configuration, retry table, and known limits: [collector/README.md](../collector/README.md).
+
 ## S7-03.1 and S7-03.2 — Custom rule review and fixes
 
 - Conditions use AND semantics and the existing field/operator allowlists.
