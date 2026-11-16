@@ -2,6 +2,8 @@
 
 Nov 13, 2026 · @Yoyo
 
+Screenshots use the app’s built-in demo workspace and sample data. Available controls can vary by role and backend connection.
+
 ## Contents
 
 1. [Overview](#1-overview)
@@ -25,7 +27,7 @@ CyberShield SOC turns raw security logs into alerts, investigations and incident
 **What it does**
 
 - Ingests logs in `.log`, `.csv`, `.txt`, `.json` and `.jsonl`, by manual upload or through a watched-directory collector.
-- Detects threats with 30 built-in rules plus your own custom rules. Every alert has a severity, a separate 0–100 confidence score, a MITRE ATT&CK technique, and the entity it pivots on (source IP, account or host).
+- Detects threats with 31 built-in rules plus your own custom rules. Every alert has a severity, a separate 0–100 confidence score, a MITRE ATT&CK technique, and the entity it pivots on (source IP, account or host).
 - Correlates and preserves evidence, so each alert links back to the exact log events that triggered it.
 - Tracks investigations and incidents with states, assignment, notes, resolution and reopening, all with an audit history.
 - Answers questions through a read-only AI assistant, and exports reports as PDFs.
@@ -149,6 +151,14 @@ Every sign-in requires your password and a one-time verification code (2FA OTP) 
    - **Access Token:** Short-lived JWT (10-minute expiration) carrying user claims and assigned roles.
    - **Refresh Token:** Cryptographically secure 64-byte random string stored in `auth_sessions`. Refresh requests invoke atomic rotation using row-level database locks (`with_for_update`) to prevent concurrent token replay.
 
+![Sign-in screen with email, password, Remember me, and Forgot password controls](user-guide-images/sign-in.jpg)
+
+*Sign in with your workspace email and password, or use **Forgot password?** to start account recovery.*
+
+![Two-factor verification screen with six code fields and a resend timer](user-guide-images/verification.jpg)
+
+*Enter the six-digit code and choose **Verify identity**. The resend control becomes available when the timer ends.*
+
 A normal session lasts 60 minutes. With remember me it lasts 7 days. If you forget your password, use the recovery link on the sign-in screen; the reset link it emails you is valid for 30 minutes. These limits come from `.env` and your admin can change them.
 
 **Role-Based Access Control (RBAC) Matrix**
@@ -179,6 +189,10 @@ The interface hides or disables what your role cannot do, but the backend enforc
 ## 4. Tour of the workspace
 
 The left sidebar groups every page under three headings, with a Help center link for task guides and a role reference.
+
+![Dashboard with sidebar navigation, global time range, event volume, alert severity, and top sources](user-guide-images/dashboard.jpg)
+
+*Use the sidebar to switch pages and the global time range to change which activity appears on the dashboard.*
 
 | Group | Page | Use it to |
 | --- | --- | --- |
@@ -211,6 +225,10 @@ The interface has light and dark themes, keyboard navigation and reduced-motion 
 ## 5. Upload logs
 
 Upload is how most data enters the system. Analysts and Admins can do it; Viewers cannot. Open Event Logs and choose a file.
+
+![Event Logs page with upload drop zone, file history, and event filters](user-guide-images/event-logs.jpg)
+
+*The demo shows the CSV/TXT preview. Connect the backend to store uploads and use the full set of formats listed below.*
 
 **What you can upload**
 
@@ -275,7 +293,11 @@ Raw Logs (.log, .csv, .json, .jsonl)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Thirty built-in rules run on every upload or collected batch. Each alert carries a severity (how bad it would be if true), a separate 0–100 confidence score, a MITRE ATT&CK tactic/technique mapping, and the entity it pivots on (source IP, account, or host).
+The engine evaluates enabled rules from the 31 built-in rules on uploaded and collected batches. Each alert carries a severity (how bad it would be if true), a separate 0–100 confidence score, a MITRE ATT&CK tactic/technique mapping, and the entity it pivots on (source IP, account, or host).
+
+![Threat Detection page with executable rule counts, category filters, and a selected rule’s details](user-guide-images/threat-detection.jpg)
+
+*On **Threat Detection**, filter the inventory by category, type, or status and select a rule to read its details.*
 
 **Rule catalog**
 
@@ -311,12 +333,13 @@ Thirty built-in rules run on every upload or collected batch. Each alert carries
 | `threat_intel_match` | High | Traffic/DNS matches imported threat feed | Multiple | Network / DNS logs + Imported Feeds |
 | `behavioral_anomaly_login` | Low | Model scores login hour/geo as an anomaly | `T1078` (Valid Accounts) | Auth logs (`timestamp`, `ip_address`, `username`) |
 | `behavioral_anomaly_egress` | Low | Model scores hourly egress byte pattern as anomaly | `T1048` (Exfiltration) | Flow logs (`bytes_out`, `source_host`) |
+| `behavioral_anomaly_threat_log` | Low | Model scores a source IP’s hourly traffic pattern as anomalous | `T1046` (Network Service Discovery) | Firewall or flow logs (`ip_address`, `dest_ip`, `timestamp`) |
 
 **Things that surprise people**
 
-- Rules that keep history across uploads (dormant account, lateral movement, impossible travel, first-seen geo, egress volume, and both behavioral rules) never fire the first time they see an entity. They have nothing to compare against yet.
+- Rules that keep history across uploads (dormant account, lateral movement, impossible travel, first-seen geo, egress volume, and the behavioral rules) use accumulated data for comparison.
 - `host_log_silence` watches every host the deployment has ever seen, not just the hosts in your latest file, so an unrelated upload can surface it for other hosts.
-- Both `behavioral_anomaly_*` rules start in shadow mode. They score and store events (see `GET /ml/scores`) but raise no alerts until an Admin reviews the scores and turns shadow mode off.
+- The `behavioral_anomaly_*` rules start in shadow mode. With an active model they store scores (see `GET /ml/scores`). Alerting requires an Admin to turn shadow mode off.
 - Interactive `history -c` is a shell builtin that writes no log record, so it is only caught when run through a logged command path.
 - Only imported threat-intel feeds can trigger `threat_intel_match`. See section 11.
 
@@ -364,7 +387,19 @@ The typical flow is: read the alert, check the evidence, decide, then either clo
 
 Incident statuses in the interface are Open, Investigating, Resolved and False Positive.
 
+![Alerts page with queue filters and a selected failed SSH login showing its status and matched rule](user-guide-images/alert-triage.jpg)
+
+*Select an alert row to open its details and investigation controls.*
+
+![Incident Tracking page with the incident selector, response playbook, and resolution controls](user-guide-images/incident-tracking.jpg)
+
+*Use **Incident Tracking** for the response playbook and status controls. Scroll down for the investigation timeline and analyst notes.*
+
 **Quick Resolve** puts the whole path on one screen. Select an alert, review its evidence, use the response controls, tick the resolution checklist, add a note, and optionally run AI guidance. Use it for routine alerts and Incident Tracking for larger work.
+
+![Quick Resolve displaying a matched log event, detection rule, and resolution controls for a sample alert](user-guide-images/quick-resolve.jpg)
+
+*Choose an alert in **Quick Resolve** to review the matched logs and record an outcome for the linked incident.*
 
 **Limits and safeguards**
 
@@ -375,7 +410,11 @@ Incident statuses in the interface are Open, Investigating, Resolved and False P
 
 ## 8. Build your own rules
 
-The Rule Builder lets Admins and Analysts add detection rules without touching code. Custom rules run alongside the 30 built-in rules on every upload. Open it from Threat Detection with the new-rule button, or choose Edit rule on an existing custom rule.
+The Rule Builder lets Admins and Analysts add detection rules without touching code. Enabled custom rules run alongside the built-in rules on upload. Open it from Threat Detection with the new-rule button, or choose Edit rule on an existing custom rule.
+
+![New custom rule form with severity, conditions, Run test, Save draft, and Enable rule controls](user-guide-images/rule-builder.jpg)
+
+*Define the rule and its conditions, then use **Run test** to check it against recent logs before enabling it.*
 
 **Anatomy of a rule**
 
@@ -516,6 +555,10 @@ Collection is by polling, so new lines arrive within one poll interval.
 
 Open Reports to export any of four built-in reports as a server-rendered vector PDF. The reporting subsystem is powered by `reportlab` and `pypdf`, generating parameterized documents on demand via `GET /reports/{report_id}/pdf`. PDF export requires a connected backend and is unavailable in demo mode.
 
+![Reports page with four report choices, a CSV export button, and a disabled PDF export button in demo mode](user-guide-images/reports.jpg)
+
+*Select a report to see its export controls. In a connected workspace, choose the PDF time range and select **Export PDF**.*
+
 | Report Archetype | Lookback & Focus | Detailed Contents |
 | :--- | :--- | :--- |
 | **Daily SOC Operations** (`daily-operations`) | Past 24 Hours | Hourly alert volume by severity, triage status mix, top 10 offending source IPs and targeted users, host and log-source health, analyst incident assignment distribution. |
@@ -546,6 +589,10 @@ Integrated through Anthropic's Claude API (`ANTHROPIC_API_KEY`), the assistant p
 - Passwords must meet the minimum length (12 by default, set by `PASSWORD_MIN_LENGTH`). Set `EMAIL_VERIFY_DELIVERABILITY=true` to also check that a new user's email domain resolves in DNS; leave it false offline.
 - Passwords are hashed with Argon2. Resetting a password or disabling an account revokes that user's sessions.
 - The system refuses any change that would remove the last active Admin. The interface also stops you from demoting or disabling your own account.
+
+![Users page showing sample accounts, their roles, and the Edit workspace access panel](user-guide-images/user-management.jpg)
+
+*Select a user to review their role and account access. Use **Invite user** to start an invitation in a connected workspace.*
 
 **Machine Learning & Behavioral Anomaly Detection**
 
