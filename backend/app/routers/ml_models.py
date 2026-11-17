@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.repositories.ml_repository import (
     list_scored_snapshots,
 )
 from app.security import require_roles
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/ml", tags=["Machine Learning"])
 
@@ -71,6 +72,7 @@ def _pilot_summary(db: Session, feature_set: str) -> tuple[dict, MLModel | None]
 @router.post("/models/{feature_set}/train")
 def train_model(
     feature_set: str,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -98,6 +100,16 @@ def train_model(
         db.rollback()
         raise HTTPException(status_code=500, detail="The model could not be saved.") from exc
 
+    record_audit(
+        db,
+        request,
+        action="ml.model.train",
+        actor=user,
+        target_type="ml_model",
+        target_id=saved.id,
+        target_label=f"{saved.feature_set} v{saved.version}",
+        detail={"sample_count": saved.sample_count},
+    )
     db.commit()
     return {"success": True, "model": _serialize_model(saved)}
 
@@ -105,6 +117,7 @@ def train_model(
 @router.post("/models/{model_id}/activate")
 def activate_model(
     model_id: int,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -115,6 +128,15 @@ def activate_model(
     except ModelNotFoundError as exc:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    record_audit(
+        db,
+        request,
+        action="ml.model.activate",
+        actor=user,
+        target_type="ml_model",
+        target_id=activated.id,
+        target_label=f"{activated.feature_set} v{activated.version}",
+    )
     db.commit()
     return {"success": True, "model": _serialize_model(activated)}
 

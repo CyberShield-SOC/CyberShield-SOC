@@ -2,10 +2,9 @@
  * Fixtures for the Rule Builder screen (custom rule authoring flow). The
  * field catalog, operators, and defaults below mirror what the backend's
  * CustomConditionRule can actually evaluate (see
- * backend/app/detection/rules/custom_condition.py) — only fields that exist
- * on a parsed LogRecord (event_type, status, ip_address, username, port,
- * timestamp) are offered, so every rule saved here is executable, not
- * decorative. RULE_BUILDER_DEFAULTS.ruleId/ruleIdLabel are placeholders shown
+ * backend/app/detection/rules/custom_condition.py) — only fields the
+ * parsers fill on a LogRecord are offered, so every rule saved here is
+ * executable, not decorative. RULE_BUILDER_DEFAULTS.ruleId/ruleIdLabel are placeholders shown
  * before the backend assigns the real next id (see GET /custom-rules).
  */
 export const RULE_BUILDER_DEFAULTS = Object.freeze({
@@ -27,12 +26,20 @@ export const SEVERITY_OPTIONS = Object.freeze([
 ]);
 
 export const MITRE_TACTIC_OPTIONS = Object.freeze([
+  Object.freeze({ value: "TA0043", label: "TA0043 · Reconnaissance" }),
+  Object.freeze({ value: "TA0042", label: "TA0042 · Resource Development" }),
   Object.freeze({ value: "TA0001", label: "TA0001 · Initial Access" }),
+  Object.freeze({ value: "TA0002", label: "TA0002 · Execution" }),
+  Object.freeze({ value: "TA0003", label: "TA0003 · Persistence" }),
+  Object.freeze({ value: "TA0004", label: "TA0004 · Privilege Escalation" }),
+  Object.freeze({ value: "TA0005", label: "TA0005 · Defense Evasion" }),
   Object.freeze({ value: "TA0006", label: "TA0006 · Credential Access" }),
   Object.freeze({ value: "TA0007", label: "TA0007 · Discovery" }),
   Object.freeze({ value: "TA0008", label: "TA0008 · Lateral Movement" }),
-  Object.freeze({ value: "TA0010", label: "TA0010 · Exfiltration" }),
+  Object.freeze({ value: "TA0009", label: "TA0009 · Collection" }),
   Object.freeze({ value: "TA0011", label: "TA0011 · Command and Control" }),
+  Object.freeze({ value: "TA0010", label: "TA0010 · Exfiltration" }),
+  Object.freeze({ value: "TA0040", label: "TA0040 · Impact" }),
 ]);
 
 /** Event schema the builder validates against: field name -> value type. */
@@ -41,12 +48,21 @@ export const FIELD_CATALOG = Object.freeze([
   Object.freeze({ value: "status", type: "string" }),
   Object.freeze({ value: "ip_address", type: "string" }),
   Object.freeze({ value: "username", type: "string" }),
+  Object.freeze({ value: "hostname", type: "string" }),
+  Object.freeze({ value: "process", type: "string" }),
+  Object.freeze({ value: "command", type: "string" }),
+  Object.freeze({ value: "message", type: "string" }),
+  Object.freeze({ value: "file_path", type: "string" }),
+  Object.freeze({ value: "dest_ip", type: "string" }),
+  Object.freeze({ value: "protocol", type: "string" }),
+  Object.freeze({ value: "domain", type: "string" }),
+  Object.freeze({ value: "dns_query", type: "string" }),
   Object.freeze({ value: "port", type: "number" }),
   Object.freeze({ value: "timestamp", type: "timestamp" }),
 ]);
 
 export const OPERATORS_BY_TYPE = Object.freeze({
-  string: Object.freeze(["equals", "not equals", "contains", "in"]),
+  string: Object.freeze(["equals", "not equals", "contains", "startswith", "endswith", "in"]),
   number: Object.freeze(["equals", ">", "<", "in"]),
   timestamp: Object.freeze(["between", "before", "after"]),
 });

@@ -37,6 +37,21 @@ class Settings(BaseSettings):
     # that serves the built frontend from this same FastAPI app needs none.
     cors_allowed_origins: str = ""
 
+    # In-process request rate limiting (see app/core/rate_limit.py). Counters
+    # are per process and reset on restart. Behind a reverse proxy, set
+    # RATE_LIMIT_CLIENT_IP_HEADER to the header that proxy overwrites with
+    # the real client address; otherwise every caller shares the proxy's
+    # bucket. Leave it unset when the app is reachable directly.
+    rate_limit_enabled: bool = True
+    rate_limit_client_ip_header: str | None = Field(default=None, max_length=64)
+    rate_limit_global_per_minute: int = Field(default=600, ge=30, le=100000)
+    rate_limit_login_per_minute: int = Field(default=10, ge=1, le=1000)
+    rate_limit_login_failures: int = Field(default=5, ge=1, le=100)
+    rate_limit_login_failure_window_minutes: int = Field(default=15, ge=1, le=1440)
+    rate_limit_auth_per_minute: int = Field(default=10, ge=1, le=1000)
+    rate_limit_ingest_per_minute: int = Field(default=30, ge=1, le=10000)
+    rate_limit_assistant_per_minute: int = Field(default=20, ge=1, le=1000)
+
     # Email one-time-passcode two-factor step (see app/routers/auth.py).
     resend_api_key: str | None = None
     resend_from_email: str = Field(default="CyberShield <onboarding@resend.dev>", min_length=3)

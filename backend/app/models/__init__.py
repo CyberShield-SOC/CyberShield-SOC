@@ -1,3 +1,4 @@
+from app.models.audit_event import AuditEvent
 from app.models.auth_session import AuthSession
 from app.models.blocked_ip import BlockedIp
 from app.models.upload_batch import UploadBatch
@@ -10,6 +11,7 @@ from app.models.note import Note
 from app.models.assistant_message import AssistantMessage
 from app.models.custom_rule import CustomRule
 from app.models.otp_verification import OtpVerification
+from app.models.mfa_recovery_code import MfaRecoveryCode
 from app.models.password_reset_token import PasswordResetToken
 from app.models.invite_token import InviteToken
 from app.models.detection_rule_setting import DetectionRuleSetting
@@ -24,6 +26,7 @@ from app.models.workflow import WorkflowEvent, InvestigationNote, IncidentAlertL
 
 
 __all__ = [
+    "AuditEvent",
     "AuthSession",
     "BlockedIp",
     "UploadBatch",
@@ -36,6 +39,7 @@ __all__ = [
     "AssistantMessage",
     "CustomRule",
     "OtpVerification",
+    "MfaRecoveryCode",
     "PasswordResetToken",
     "InviteToken",
     "DetectionRuleSetting",

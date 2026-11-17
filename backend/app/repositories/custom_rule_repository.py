@@ -43,6 +43,10 @@ def create_custom_rule(
     status: str,
     dsl: str | None,
     created_by: int | None,
+    min_count: int = 1,
+    mitre_technique: str | None = None,
+    source: str = "builder",
+    external_id: str | None = None,
 ) -> CustomRule:
     """
     Persist a new custom rule with an auto-assigned rule_id.
@@ -67,6 +71,10 @@ def create_custom_rule(
             status=status,
             dsl=dsl,
             created_by=created_by,
+            min_count=min_count,
+            mitre_technique=mitre_technique,
+            source=source,
+            external_id=external_id,
         )
         try:
             with db.begin_nested():
@@ -100,6 +108,12 @@ def list_enabled_custom_rules(db: Session) -> list[CustomRule]:
     return list(db.scalars(statement).all())
 
 
+def find_by_external_id(db: Session, *, source: str, external_id: str) -> CustomRule | None:
+    return db.scalar(
+        select(CustomRule).where(CustomRule.source == source, CustomRule.external_id == external_id)
+    )
+
+
 def get_custom_rule(db: Session, *, rule_pk: int) -> CustomRule:
     rule = db.get(CustomRule, rule_pk)
     if rule is None:
@@ -118,10 +132,12 @@ def update_custom_rule(db: Session, *, rule_pk: int, updates: dict) -> CustomRul
         "severity",
         "tactic",
         "window_seconds",
+        "min_count",
+        "mitre_technique",
         "status",
         "dsl",
     ):
-        if field in updates and (updates[field] is not None or field in {"tactic", "dsl"}):
+        if field in updates and (updates[field] is not None or field in {"tactic", "dsl", "mitre_technique"}):
             setattr(rule, field, updates[field])
 
     if updates.get("actions") is not None:
@@ -156,6 +172,10 @@ def serialize_custom_rule(rule: CustomRule) -> dict:
         "conditions": rule.conditions,
         "group_by": rule.group_by or "none",
         "window_seconds": rule.window_seconds,
+        "min_count": rule.min_count,
+        "mitre_technique": rule.mitre_technique,
+        "source": rule.source,
+        "external_id": rule.external_id,
         "actions": rule.actions,
         "status": rule.status,
         "dsl": rule.dsl,

@@ -32,6 +32,73 @@ export const TIMEZONE_OPTIONS = Object.freeze([
   { value: "Australia/Sydney", label: "Australia/Sydney" },
 ]);
 
+/**
+ * "Any of" lists. A string condition (other than "in", which keeps its
+ * comma list) and a port "equals" may hold several alternatives, written
+ * with | between them: `/bin/bash | /bin/sh`. A literal pipe is \|.
+ */
+export function supportsAlternatives(type, operator) {
+  if (type === "string") return operator !== "in";
+  return type === "number" && operator === "equals";
+}
+
+export function splitAlternatives(text) {
+  const parts = [];
+  let current = "";
+  const source = String(text ?? "");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "\\" && source[index + 1] === "|") {
+      current += "|";
+      index += 1;
+    } else if (char === "|") {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
+export function joinAlternatives(values) {
+  return (values || []).map((value) => String(value).replace(/\|/g, "\\|")).join(" | ");
+}
+
+/** A stored/API condition as the builder edits it: one text value plus NOT. */
+export function conditionFromApi(condition) {
+  return {
+    field: condition.field,
+    operator: condition.operator,
+    value: Array.isArray(condition.values) ? joinAlternatives(condition.values) : String(condition.value ?? ""),
+    negate: condition.negate === true,
+    timezone: condition.timezone ?? "",
+  };
+}
+
+/** The builder's condition as the API expects it. */
+export function conditionToApi(condition, type) {
+  const payload = {
+    field: condition.field,
+    operator: condition.operator,
+    timezone: conditionTimezonePayload(condition, type),
+  };
+  const alternatives = supportsAlternatives(type, condition.operator)
+    ? splitAlternatives(condition.value)
+    : [String(condition.value ?? "")];
+  if (alternatives.length > 1) payload.values = alternatives;
+  else payload.value = alternatives[0];
+  if (condition.negate) payload.negate = true;
+  return payload;
+}
+
+/** One line for rule summaries: `NOT command endswith /bin/bash | /bin/sh`. */
+export function describeCondition(condition) {
+  const value = Array.isArray(condition.values) ? condition.values.join(" | ") : condition.value;
+  return `${condition.negate ? "NOT " : ""}${condition.field} ${condition.operator} ${value}`;
+}
+
 /** Whether a condition can carry a timezone: only timestamp "between" rows. */
 export function supportsTimezone(field, type, operator) {
   return field === "timestamp" && type === "timestamp" && operator === "between";
@@ -56,8 +123,24 @@ export function parseHourRange(value) {
  * `type` is the field's type ("string" | "number" | "timestamp").
  */
 export function conditionToDsl(condition, type) {
+  const fragments = conditionToDslPositive(condition, type);
+  return condition.negate ? [{ text: "not ", kind: "op" }, ...fragments] : fragments;
+}
+
+function conditionToDslPositive(condition, type) {
   const value = String(condition.value || "").trim();
   const field = { text: condition.field, kind: "field" };
+  const alternatives = supportsAlternatives(type, condition.operator) ? splitAlternatives(value) : [value];
+  if (alternatives.length > 1) {
+    const list = { text: `[${alternatives.map((item) => (type === "number" ? item : `"${item}"`)).join(", ")}]`, kind: "value" };
+    if (condition.operator === "equals" || condition.operator === "not equals") {
+      return [field, { text: condition.operator === "equals" ? " in " : " not in ", kind: "op" }, list];
+    }
+    return [
+      { text: `any_${condition.operator}(`, kind: "fn" }, field, { text: ", ", kind: "punct" },
+      list, { text: ")", kind: "fn" },
+    ];
+  }
 
   if (type === "number") {
     const compact = { text: value.replace(/\s+/g, ""), kind: "value" };
@@ -93,9 +176,9 @@ export function conditionToDsl(condition, type) {
     return [{ text: "ts", kind: "field" }, { text: ` ${symbol} `, kind: "op" }, { text: `"${value}"`, kind: "value" }];
   }
 
-  if (condition.operator === "contains") {
+  if (["contains", "startswith", "endswith"].includes(condition.operator)) {
     return [
-      { text: "contains(", kind: "fn" }, field, { text: ", ", kind: "punct" },
+      { text: `${condition.operator}(`, kind: "fn" }, field, { text: ", ", kind: "punct" },
       { text: `"${value}"`, kind: "value" }, { text: ")", kind: "fn" },
     ];
   }

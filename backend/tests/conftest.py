@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.rate_limit import limiter
 from app.db.session import engine, get_db
 from app.main import app
 
@@ -96,6 +97,18 @@ def test_session_factory(
         if outer_transaction.is_active:
             outer_transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def rate_limiting_off_by_default():
+    """The suite makes thousands of requests from one address. Tests that
+    exercise the limiter turn it back on for themselves."""
+
+    limiter.reset()
+    limiter.enabled = False
+    yield
+    limiter.reset()
+    limiter.enabled = True
 
 
 @pytest.fixture(autouse=True)

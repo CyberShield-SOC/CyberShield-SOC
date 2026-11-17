@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 
 class OtpVerification(Base):
     """
-    A single issued email-OTP challenge for one pending login attempt.
+    A single second-factor challenge for one pending login attempt: an
+    emailed code (method "email"), or a prompt for the account's
+    authenticator app (method "totp", which has no code of its own to hash).
 
     "The pending login attempt" is identified by pending_token_hash — the
     SHA-256 digest of an opaque token minted at /auth/login and carried only
@@ -28,6 +30,7 @@ class OtpVerification(Base):
 
     __table_args__ = (
         Index("ix_otp_verifications_pending_token_created", "pending_token_hash", "created_at"),
+        CheckConstraint("method IN ('email', 'totp')", name="ck_otp_verifications_method"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -49,9 +52,16 @@ class OtpVerification(Base):
         index=True,
     )
 
-    otp_hash: Mapped[str] = mapped_column(
+    otp_hash: Mapped[str | None] = mapped_column(
         String(64),
+        nullable=True,
+    )
+
+    method: Mapped[str] = mapped_column(
+        String(10),
         nullable=False,
+        default="email",
+        server_default="email",
     )
 
     remember_me: Mapped[bool] = mapped_column(

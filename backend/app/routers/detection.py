@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from app.repositories.detection_rule_setting_repository import (
 )
 from app.schemas.detection_rule import DetectionRuleUpdate
 from app.security import require_roles
+from app.services.audit import record_audit
 
 
 router = APIRouter(tags=["Detection"])
@@ -65,6 +66,7 @@ def get_detection_rules(
 def patch_detection_rule(
     rule_name: str,
     payload: DetectionRuleUpdate,
+    request: Request,
     user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
@@ -80,6 +82,16 @@ def patch_detection_rule(
 
     try:
         upsert_rule_setting(db, rule_name=rule_name, updates=updates, updated_by=user.id)
+        record_audit(
+            db,
+            request,
+            action="rule.builtin.update",
+            actor=user,
+            target_type="detection_rule",
+            target_id=rule_name,
+            target_label=rule_name,
+            detail={"updates": payload.model_dump(exclude_unset=True, mode="json")},
+        )
         db.commit()
     except DetectionRuleNotFoundError as exc:
         db.rollback()

@@ -9,19 +9,28 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import (
+    check_login_failures,
+    clear_login_failures,
+    limit_by_ip,
+    limit_by_user,
+    record_login_failure,
+)
 from app.core.urls import frontend_base_url
 from app.db.session import get_db
 from app.dispatch.otp_email import get_otp_email_sender
 from app.dispatch.reset_email import get_reset_email_sender
 from app.models.user import User
 from app.repositories.invite_repository import InviteTokenInvalidError, consume_invite, get_invite_details
+from app.repositories import mfa_repository
 from app.repositories.otp_repository import (
     OtpPendingNotFoundError,
     OtpResendCooldownError,
+    OtpResendNotApplicableError,
     OtpVerifyError,
     create_otp_challenge,
     resend_otp_challenge,
-    verify_otp_challenge,
+    verify_login_challenge,
 )
 from app.repositories.password_reset_repository import (
     PasswordResetTokenInvalidError,
@@ -34,6 +43,8 @@ from app.schemas.auth import (
     ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
+    MfaCodeRequest,
+    MfaDisableRequest,
     RefreshResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
@@ -46,13 +57,19 @@ from app.security import (
     authenticate_user,
     create_refresh_token,
     current_user,
+    find_user_by_id,
+    find_user_by_identifier,
     hash_password,
+    lock_auth_user,
     mint_access_token,
     revoke_refresh_token,
     revoke_user_sessions,
     rotate_refresh_token,
+    verify_password,
 )
 from app.core.config import settings
+from app.services import totp
+from app.services.audit import record_audit, user_target
 from app.validation import mask_email, password_context_errors
 
 
@@ -62,6 +79,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 EMAIL_SEND_FAILURE_MESSAGE = "We couldn't send your verification code. Please try again shortly."
 PENDING_EXPIRED_MESSAGE = "Your verification code has expired. Request a new code."
+
+login_rate_limit = limit_by_ip("login", "rate_limit_login_per_minute")
+# One shared budget per address across the unauthenticated token endpoints.
+auth_rate_limit = limit_by_ip("auth", "rate_limit_auth_per_minute")
+# Enrolment and removal each check a code, so they share one per-account budget.
+mfa_rate_limit = limit_by_user("mfa", "rate_limit_auth_per_minute")
 
 
 def user_payload(user: User) -> dict:
@@ -114,9 +137,14 @@ def _clear_pending_2fa_cookie(response: Response) -> None:
     response.delete_cookie(settings.otp_pending_cookie_name, path="/")
 
 
-@router.post("/login", response_model=TwoFactorRequiredResponse)
+@router.post(
+    "/login",
+    response_model=TwoFactorRequiredResponse,
+    dependencies=[Depends(login_rate_limit)],
+)
 def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     send_otp_email=Depends(get_otp_email_sender),
@@ -130,24 +158,54 @@ def login(
     OTP code itself never appears in the response body.
     """
 
+    # Throttle on the submitted identifier, whether or not it names a real
+    # account, so the limit itself cannot be used to enumerate accounts.
+    check_login_failures(payload.username)
     user = authenticate_user(db, payload.username, payload.password)
     if user is None:
+        record_login_failure(payload.username)
+        # The typed identifier is recorded only when it names a real account:
+        # people do paste passwords into the username box.
+        known = find_user_by_identifier(db, payload.username)
+        record_audit(
+            db,
+            request,
+            action="auth.login.password",
+            outcome="FAILURE",
+            detail={"reason": "invalid_credentials", "account_known": known is not None},
+            **(user_target(known) if known is not None else {}),
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
+    clear_login_failures(payload.username)
 
-    code, pending_token = create_otp_challenge(db, user, remember_me=payload.remember_me)
+    # An account with an authenticator app enrolled is asked for its code;
+    # nothing is emailed. Everyone else gets the emailed code as before.
+    method = "totp" if mfa_repository.active_totp_secret(user) is not None else "email"
+    code, pending_token = create_otp_challenge(
+        db, user, remember_me=payload.remember_me, method=method
+    )
 
-    try:
-        send_otp_email(to_email=user.email, code=code)
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=EMAIL_SEND_FAILURE_MESSAGE,
-        ) from exc
+    if method == "email":
+        try:
+            send_otp_email(to_email=user.email, code=code)
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=EMAIL_SEND_FAILURE_MESSAGE,
+            ) from exc
 
+    record_audit(
+        db,
+        request,
+        action="auth.login.password",
+        actor=user,
+        detail={"second_factor": method},
+    )
     db.commit()
     _set_pending_2fa_cookie(response, pending_token)
 
@@ -155,10 +213,15 @@ def login(
         "success": True,
         "requiresTwoFactor": True,
         "email": mask_email(user.email),
+        "method": method,
     }
 
 
-@router.post("/2fa/verify", response_model=LoginResponse)
+@router.post(
+    "/2fa/verify",
+    response_model=LoginResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
 def verify_two_factor(
     payload: TwoFactorVerifyRequest,
     request: Request,
@@ -173,12 +236,28 @@ def verify_two_factor(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=PENDING_EXPIRED_MESSAGE)
 
     try:
-        user, remember_me = verify_otp_challenge(db, pending_token, payload.code.strip())
+        user, remember_me, factor = verify_login_challenge(db, pending_token, payload.code.strip())
     except OtpVerifyError as exc:
+        target = db.get(User, exc.user_id) if exc.user_id is not None else None
+        record_audit(
+            db,
+            request,
+            action="auth.login.second_factor",
+            outcome="FAILURE",
+            detail={"reason": exc.message},
+            **(user_target(target) if target is not None else {}),
+        )
         db.commit()  # persist the attempt_count increment / lockout even on failure
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
     _clear_pending_2fa_cookie(response)
+    record_audit(
+        db,
+        request,
+        action="auth.login.second_factor",
+        actor=user,
+        detail={"remember_me": remember_me, "factor": factor},
+    )
 
     ttl_minutes = (
         settings.auth_remember_ttl_days * 24 * 60
@@ -217,6 +296,12 @@ def resend_two_factor(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Please wait {exc.retry_after_seconds}s before requesting another code.",
+        ) from exc
+    except OtpResendNotApplicableError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This sign-in uses your authenticator app, so there is no code to resend.",
         ) from exc
     except OtpPendingNotFoundError as exc:
         db.rollback()
@@ -287,9 +372,14 @@ def logout(
     raw_token = request.cookies.get(settings.auth_cookie_name)
     if raw_token is not None:
         try:
-            revoke_refresh_token(db, raw_token)
+            user_id = revoke_refresh_token(db, raw_token)
         except HTTPException:
             pass
+        else:
+            record_audit(
+                db, request, action="auth.logout", actor=find_user_by_id(db, user_id)
+            )
+            db.commit()
     response.delete_cookie(settings.auth_cookie_name, path="/")
     response.delete_cookie(settings.auth_csrf_cookie_name, path="/")
     return {"success": True}
@@ -303,10 +393,170 @@ def me(user: User = Depends(current_user)):
     }
 
 
+INVALID_MFA_CODE_MESSAGE = "That code is not valid. Check your authenticator app and try again."
+
+
+def _locked_account(db: Session, user: User) -> User:
+    """The caller's own row, locked, so MFA changes cannot interleave."""
+
+    locked = lock_auth_user(db, user.id)
+    if locked is None or not locked.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return locked
+
+
+@router.get("/mfa")
+def mfa_state(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """How this account proves its second factor at sign-in."""
+
+    return {"success": True, **mfa_repository.mfa_status(db, user)}
+
+
+@router.post("/mfa/totp/setup", dependencies=[Depends(mfa_rate_limit)])
+def mfa_totp_setup(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Start enrolling an authenticator app.
+
+    Returns the shared secret once, as a QR code and as text for manual
+    entry. Nothing changes at sign-in until /auth/mfa/totp/enable confirms
+    the app is producing the right codes.
+    """
+
+    account = _locked_account(db, user)
+    if mfa_repository.active_totp_secret(account) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An authenticator app is already set up. Turn it off before enrolling another.",
+        )
+    secret = mfa_repository.begin_totp_setup(account)
+    db.commit()
+    uri = totp.provisioning_uri(secret, account.email)
+    return {
+        "success": True,
+        "secret": secret,
+        "otpauth_uri": uri,
+        "qr_svg": totp.qr_svg(uri),
+        "digits": totp.DIGITS,
+        "period_seconds": totp.PERIOD_SECONDS,
+    }
+
+
+@router.post("/mfa/totp/enable", dependencies=[Depends(mfa_rate_limit)])
+def mfa_totp_enable(
+    payload: MfaCodeRequest,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Confirm the pending setup with a code from the app and switch it on.
+
+    The response carries the recovery codes. They are shown this once and
+    cannot be read back afterwards.
+    """
+
+    account = _locked_account(db, user)
+    if mfa_repository.pending_totp_secret(account) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Start authenticator setup first.",
+        )
+    recovery_codes = mfa_repository.enable_totp(db, account, payload.code)
+    if recovery_codes is None:
+        record_audit(
+            db, request, action="auth.mfa.enroll", actor=account, outcome="FAILURE",
+            detail={"reason": "invalid_code"},
+        )
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_MFA_CODE_MESSAGE)
+
+    record_audit(db, request, action="auth.mfa.enroll", actor=account, detail={"method": "totp"})
+    db.commit()
+    return {
+        "success": True,
+        "recovery_codes": recovery_codes,
+        **mfa_repository.mfa_status(db, account),
+    }
+
+
+@router.post("/mfa/totp/disable", dependencies=[Depends(mfa_rate_limit)])
+def mfa_totp_disable(
+    payload: MfaDisableRequest,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Turn the authenticator app off; sign-in returns to emailed codes.
+
+    Needs the account password and a current code (or a recovery code), so a
+    borrowed, unlocked session is not enough to weaken the account.
+    """
+
+    account = _locked_account(db, user)
+    if mfa_repository.active_totp_secret(account) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No authenticator app is set up on this account.",
+        )
+    password_ok = verify_password(payload.password, account.password_hash)
+    factor = mfa_repository.verify_second_factor(db, account, payload.code) if password_ok else None
+    if factor is None:
+        record_audit(
+            db, request, action="auth.mfa.disable", actor=account, outcome="FAILURE",
+            detail={"reason": "invalid_code" if password_ok else "invalid_password"},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password or the code is not correct.",
+        )
+
+    mfa_repository.clear_totp(db, account)
+    record_audit(db, request, action="auth.mfa.disable", actor=account, detail={"confirmed_with": factor})
+    db.commit()
+    return {"success": True, **mfa_repository.mfa_status(db, account)}
+
+
+@router.post("/mfa/recovery-codes", dependencies=[Depends(mfa_rate_limit)])
+def mfa_regenerate_recovery_codes(
+    payload: MfaCodeRequest,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Replace every recovery code with a new set. Needs a current code."""
+
+    account = _locked_account(db, user)
+    if mfa_repository.active_totp_secret(account) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No authenticator app is set up on this account.",
+        )
+    if mfa_repository.verify_second_factor(db, account, payload.code) != "totp":
+        db.rollback()
+        record_audit(
+            db, request, action="auth.mfa.recovery_codes", actor=account, outcome="FAILURE",
+            detail={"reason": "invalid_code"},
+        )
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_MFA_CODE_MESSAGE)
+
+    recovery_codes = mfa_repository.issue_recovery_codes(db, account)
+    record_audit(db, request, action="auth.mfa.recovery_codes", actor=account)
+    db.commit()
+    return {
+        "success": True,
+        "recovery_codes": recovery_codes,
+        **mfa_repository.mfa_status(db, account),
+    }
+
+
 GENERIC_RECOVERY_MESSAGE = "If an account matches that email, recovery instructions will be sent."
 
 
-@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+@router.post(
+    "/forgot-password",
+    response_model=ForgotPasswordResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
 def forgot_password(
     payload: ForgotPasswordRequest,
     request: Request,
@@ -345,12 +595,26 @@ def forgot_password(
         else:
             db.commit()
 
+    record_audit(
+        db,
+        request,
+        action="auth.password_reset.request",
+        detail={"account_known": user is not None},
+        **(user_target(user) if user is not None else {}),
+    )
+    db.commit()
+
     return {"success": True, "message": GENERIC_RECOVERY_MESSAGE}
 
 
-@router.post("/reset-password", response_model=ResetPasswordResponse)
+@router.post(
+    "/reset-password",
+    response_model=ResetPasswordResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
 def reset_password(
     payload: ResetPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Complete a password reset: consume the token, replace the password,
@@ -359,6 +623,13 @@ def reset_password(
     try:
         user = consume_reset_token(db, payload.token)
     except PasswordResetTokenInvalidError as exc:
+        record_audit(
+            db,
+            request,
+            action="auth.password_reset.complete",
+            outcome="FAILURE",
+            detail={"reason": "invalid_or_expired_token"},
+        )
         db.commit()  # persist the used=True marked on an expired/stale token
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -382,7 +653,14 @@ def reset_password(
         )
 
     user.password_hash = hash_password(payload.new_password)
-    revoke_user_sessions(db, user.id)
+    sessions_revoked = revoke_user_sessions(db, user.id)
+    record_audit(
+        db,
+        request,
+        action="auth.password_reset.complete",
+        actor=find_user_by_id(db, user.id),
+        detail={"sessions_revoked": sessions_revoked},
+    )
     db.commit()
 
     return {"success": True, "message": "Your password has been reset. Sign in with your new password."}
@@ -405,9 +683,14 @@ def invite_details(token: str, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/accept-invite", response_model=AcceptInviteResponse)
+@router.post(
+    "/accept-invite",
+    response_model=AcceptInviteResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
 def accept_invite(
     payload: AcceptInviteRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Complete an invite: consume the token and create the account it
@@ -416,6 +699,13 @@ def accept_invite(
     try:
         invite = consume_invite(db, payload.token)
     except InviteTokenInvalidError as exc:
+        record_audit(
+            db,
+            request,
+            action="auth.invite.accept",
+            outcome="FAILURE",
+            detail={"reason": "invalid_or_expired_token"},
+        )
         db.commit()  # persist the used=True marked on an expired/stale token
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -447,6 +737,14 @@ def accept_invite(
     )
     db.add(new_user)
     try:
+        db.flush()
+        record_audit(
+            db,
+            request,
+            action="auth.invite.accept",
+            actor=find_user_by_id(db, new_user.id),
+            detail={"invited_role": invite.role.name if invite.role else None},
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()

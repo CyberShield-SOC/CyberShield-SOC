@@ -34,7 +34,20 @@ class CustomRule(Base):
             "status IN ('DRAFT', 'ENABLED', 'DISABLED')",
             name="ck_custom_rules_status",
         ),
+        CheckConstraint(
+            "source IN ('builder', 'sigma')",
+            name="ck_custom_rules_source",
+        ),
+        CheckConstraint("min_count >= 1", name="ck_custom_rules_min_count"),
         Index("ix_custom_rules_rule_id", "rule_id", unique=True),
+        # A Sigma rule (by its own id) is imported once.
+        Index(
+            "uq_custom_rules_source_external_id",
+            "source",
+            "external_id",
+            unique=True,
+            postgresql_where=text("external_id IS NOT NULL"),
+        ),
         Index("ix_custom_rules_status", "status"),
         Index("ix_custom_rules_category", "category"),
     )
@@ -88,6 +101,32 @@ class CustomRule(Base):
         nullable=False,
         default=600,
         server_default=text("600"),
+    )
+
+    min_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
+
+    mitre_technique: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    # Where the rule came from: authored in the Rule Builder, or imported
+    # from a Sigma rule whose own id is kept in external_id.
+    source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="builder",
+        server_default=text("'builder'"),
+    )
+
+    external_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
     )
 
     actions: Mapped[dict] = mapped_column(

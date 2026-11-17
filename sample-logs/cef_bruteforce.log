@@ -1,0 +1,9 @@
+# CEF over syslog: six failed SSH logins from one address inside a minute.
+<134>Jan 10 08:00:01 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51000 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:01 msg=Failed password for root
+<134>Jan 10 08:00:06 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51001 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:06 msg=Failed password for root
+<134>Jan 10 08:00:11 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51002 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:11 msg=Failed password for root
+<134>Jan 10 08:00:16 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51003 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:16 msg=Failed password for root
+<134>Jan 10 08:00:21 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51004 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:21 msg=Failed password for root
+<134>Jan 10 08:00:26 fw01 CEF:0|Acme|GateKeeper|4.2|100|SSH login failed|6|src=203.0.113.50 spt=51005 dst=10.0.0.5 dpt=22 proto=TCP duser=root outcome=failure rt=Jan 10 2026 08:00:26 msg=Failed password for root
+<134>Jan 10 08:01:10 fw01 CEF:0|Acme|GateKeeper|4.2|101|SSH login succeeded|3|src=198.51.100.7 spt=40222 dst=10.0.0.5 dpt=22 proto=TCP duser=alice outcome=success rt=Jan 10 2026 08:01:10 msg=Accepted password for alice
+<132>Jan 10 08:02:00 fw01 CEF:0|Acme|GateKeeper|4.2|200|Outbound connection blocked|8|src=10.0.0.9 dst=203.0.113.200 dpt=4444 proto=TCP act=blocked in=120 out=98000 cs1Label=Policy cs1=egress-default-deny rt=Jan 10 2026 08:02:00 msg=Blocked by policy \= default deny

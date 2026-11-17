@@ -41,6 +41,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [mfaPending, setMfaPending] = useState(false);
+  const [mfaMethod, setMfaMethod] = useState("email");
   const [intendedRoute, setIntendedRoute] = useState(() => (
     isSocRoute(route) ? route : SOC_ROUTES.dashboard
   ));
@@ -96,8 +97,9 @@ export default function App() {
     );
   }
 
-  function showMfa(nextEmail) {
+  function showMfa(nextEmail, method = "email") {
     setEmail(nextEmail);
+    setMfaMethod(method);
     setMfaPending(true);
     navigate(AUTH_ROUTES.mfa);
   }
@@ -105,11 +107,12 @@ export default function App() {
   async function submitCredentials(credentials) {
     setAuthNotice("");
     if (sessionMode === "api") {
-      // signIn() only verifies credentials and starts the email OTP step —
-      // no session exists yet. The account's own (masked) email comes back
+      // signIn() only verifies credentials and starts the second-factor
+      // step (an emailed code, or the account's authenticator app) — no
+      // session exists yet. The account's own (masked) email comes back
       // from the server rather than trusting whatever the user typed.
       const pending = await signIn(credentials);
-      showMfa(pending?.email || credentials.email);
+      showMfa(pending?.email || credentials.email, pending?.method);
       return;
     }
     showMfa(credentials.email);
@@ -146,6 +149,7 @@ export default function App() {
         return (
           <MfaCard
             email={email}
+            method={mfaMethod}
             onBack={returnFromMfa}
             onVerified={verifyMfaCode}
             onResend={resendMfaCode}

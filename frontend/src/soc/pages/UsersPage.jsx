@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Ban, KeyRound, LogOut, Mail, Plus, RefreshCw, Save, Search, Send, ShieldCheck, UserRoundCog, X } from "lucide-react";
+import { Ban, KeyRound, LogOut, Mail, Plus, RefreshCw, Save, Search, Send, ShieldCheck, ShieldOff, UserRoundCog, X } from "lucide-react";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
 import { PasswordFieldGroup, PasswordInput, PasswordMatchStatus } from "../components/PasswordField";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
@@ -58,6 +58,7 @@ export default function UsersPage() {
   const [passwordDraft, setPasswordDraft] = useState(EMPTY_PASSWORD);
   const [passwordErrors, setPasswordErrors] = useState({});
   const [revokeTarget, setRevokeTarget] = useState(null);
+  const [mfaResetTarget, setMfaResetTarget] = useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteDraft, setInviteDraft] = useState(EMPTY_INVITE);
@@ -227,6 +228,28 @@ export default function UsersPage() {
     }
   }
 
+  async function resetMfa() {
+    if (!mfaResetTarget || !canAdminister || saving) return;
+    const target = mfaResetTarget;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await socRepository.resetUserMfa(target.id);
+      setMfaResetTarget(null);
+      if (Number(target.id) === Number(currentUser?.id) && repositoryMode === "api") {
+        notifySessionInvalidated();
+        return;
+      }
+      setUsers((current) => current.map((item) => (item.id === result.user.id ? result.user : item)));
+      setMessage(`Authenticator app removed for ${target.fullName || target.username}. They will receive an emailed code at their next sign-in.`);
+    } catch (resetError) {
+      setError(resetError.message || "The authenticator app could not be reset.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function openCreateUser() {
     setNewUser(EMPTY_NEW_USER);
     setNewUserErrors({});
@@ -363,6 +386,7 @@ export default function UsersPage() {
               <dl>
                 <div><dt>User ID</dt><dd className="mono">{selected.id}</dd></div>
                 <div><dt>Current access</dt><dd><StatusBadge status={selected.isActive ? "enabled" : "disabled"} /></dd></div>
+                <div><dt>Sign-in verification</dt><dd>{selected.mfaMethod === "totp" ? "Authenticator app" : "Emailed code"}</dd></div>
               </dl>
               <div className="workspace-user-fields">
                 <label>Full name<input value={draft.fullName} maxLength="100" autoComplete="off" disabled={!canAdminister || saving} aria-invalid={Boolean(draftErrors.fullName)} onChange={(event) => setDraft((current) => ({ ...current, fullName: event.target.value }))} /><span className="soc-field-error">{draftErrors.fullName}</span></label>
@@ -376,6 +400,7 @@ export default function UsersPage() {
               <div className="workspace-security-actions" aria-label="Account security actions">
                 <button className="soc-button secondary" type="button" disabled={!canAdminister || saving} onClick={openPasswordReset}><KeyRound size={15} />Reset password</button>
                 <button className="soc-button danger" type="button" disabled={!canAdminister || saving} onClick={() => setRevokeTarget(selected)}><LogOut size={15} />Revoke sessions</button>
+                {selected.mfaMethod === "totp" && <button className="soc-button danger" type="button" disabled={!canAdminister || saving} onClick={() => setMfaResetTarget(selected)}><ShieldOff size={15} />Reset authenticator</button>}
               </div>
               <InlineNotice tone="info" title={repositoryMode === "api" ? "Protected account controls" : "Sample workspace controls"}>{repositoryMode === "api" ? "Identity, access, password, and session changes use CSRF-protected Admin-only endpoints. Passwords are hashed by the backend and never returned." : "Identity changes persist only for this browser session. Sample mode never stores the password you enter."}</InlineNotice>
               <button className="soc-button primary full" type="submit" disabled={!canAdminister || !hasChanges || saving}>{saving ? <span className="soc-spinner small" /> : <Save size={15} />}{saving ? "Saving…" : "Save access changes"}</button>
@@ -493,6 +518,19 @@ export default function UsersPage() {
               </label>
               <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setPasswordOpen(false)}>Cancel</button><button className="soc-button primary" type="submit" disabled={saving || !isResetPasswordReady} title={!isResetPasswordReady ? "Complete every password requirement before resetting this password" : undefined}>{saving ? <span className="soc-spinner small" /> : <KeyRound size={15} />}{saving ? "Resetting…" : "Reset password"}</button></div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {mfaResetTarget && (
+        <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setMfaResetTarget(null); }}>
+          <section className="soc-modal confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="reset-mfa-title" aria-describedby="reset-mfa-description">
+            <header>
+              <div><h2 id="reset-mfa-title">Reset authenticator app?</h2><p id="reset-mfa-description">Use this when {mfaResetTarget.fullName || mfaResetTarget.username} has lost their device. Their authenticator app and recovery codes stop working, every active session is signed out, and their next sign-in uses an emailed code until they enrol again.</p></div>
+              <button type="button" disabled={saving} onClick={() => setMfaResetTarget(null)} aria-label="Close"><X size={18} /></button>
+            </header>
+            {Number(mfaResetTarget.id) === Number(currentUser?.id) && <InlineNotice tone="warning" title="This is your own account">You will return to the sign-in page after the reset.</InlineNotice>}
+            <div className="soc-modal-actions"><button className="soc-button secondary" type="button" disabled={saving} onClick={() => setMfaResetTarget(null)}>Cancel</button><button className="soc-button danger" type="button" disabled={saving} onClick={resetMfa}><ShieldOff size={15} />{saving ? "Resetting…" : "Reset authenticator"}</button></div>
           </section>
         </div>
       )}

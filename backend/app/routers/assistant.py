@@ -13,6 +13,7 @@ from app.assistant.service import (
     run_chat,
 )
 from app.assistant.tools import MAX_HOURS
+from app.core.rate_limit import limit_by_user
 from app.db.session import get_db
 from app.models.assistant_message import AssistantMessage
 from app.models.user import User
@@ -54,7 +55,10 @@ def get_assistant_client() -> anthropic.Anthropic:
         raise HTTPException(status_code=503, detail="The AI assistant is not configured.") from exc
 
 
-@router.post("/assistant/chat")
+chat_rate_limit = limit_by_user("assistant", "rate_limit_assistant_per_minute")
+
+
+@router.post("/assistant/chat", dependencies=[Depends(chat_rate_limit)])
 def assistant_chat(
     payload: ChatRequest,
     user: User = Depends(require_roles("Admin", "Analyst", "Viewer")),

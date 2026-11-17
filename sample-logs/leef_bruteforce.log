@@ -1,0 +1,8 @@
+# LEEF 1.0 (tab-separated) and LEEF 2.0 (caret-delimited) over syslog.
+<134>Jan 10 09:00:01 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52000	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:01	outcome=failure
+<134>Jan 10 09:00:06 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52001	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:06	outcome=failure
+<134>Jan 10 09:00:11 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52002	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:11	outcome=failure
+<134>Jan 10 09:00:16 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52003	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:16	outcome=failure
+<134>Jan 10 09:00:21 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52004	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:21	outcome=failure
+<134>Jan 10 09:00:26 qradar01 LEEF:1.0|Acme|AuthGateway|2.1|LOGIN_FAILED|src=203.0.113.51	dst=10.0.0.6	srcPort=52005	dstPort=22	proto=TCP	usrName=root	sev=6	cat=Authentication	devTime=Jan 10 2026 09:00:26	outcome=failure
+<134>Jan 10 09:01:30 qradar01 LEEF:2.0|Acme|AuthGateway|2.1|LOGIN_OK|^|src=198.51.100.8^dst=10.0.0.6^dstPort=22^usrName=bob^sev=2^cat=Authentication^devTime=Jan 10 2026 09:01:30^outcome=success

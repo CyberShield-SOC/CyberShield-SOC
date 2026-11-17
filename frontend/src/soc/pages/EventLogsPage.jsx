@@ -12,6 +12,7 @@ import {
   MAX_UPLOAD_BYTES,
   validateLogFile,
 } from "../utils/eventUtils";
+import { ecsExportSummary, exportEcs } from "../utils/ecsExport";
 import { nextIncidentId } from "../utils/recordIds";
 import { paginateRecords } from "../utils/pagination";
 import { getIncidentActionLabel } from "../utils/alertRecommendations";
@@ -67,6 +68,7 @@ export default function EventLogsPage({ navigate }) {
   const [dataSyncError, setDataSyncError] = useState("");
   const [dataSyncMessage, setDataSyncMessage] = useState("");
   const [isCsvDragActive, setIsCsvDragActive] = useState(false);
+  const [ecsExporting, setEcsExporting] = useState(false);
   const historyRequestId = useRef(0);
 
   const syncGlobalSearch = useCallback((query) => setFilters((current) => ({ ...current, query })), []);
@@ -99,6 +101,29 @@ export default function EventLogsPage({ navigate }) {
       || incident.eventIds.includes(selectedEvent.id)
     ))
     : null;
+
+  // The server exports a whole stored upload, so the button follows the
+  // upload on screen rather than the filters applied to it.
+  const exportUploadId = selectedUploadBatch?.uploadId || allEvents.find((event) => event.uploadId)?.uploadId || "";
+  const ecsExportBlocked = repositoryMode !== "api"
+    ? "ECS export runs on the server, so it is unavailable with sample data."
+    : !canWrite
+      ? "Viewer access cannot export records."
+      : !exportUploadId
+        ? "Upload a log file first."
+        : "";
+
+  async function handleEcsExport() {
+    setDataSyncError("");
+    setEcsExporting(true);
+    try {
+      setDataSyncMessage(ecsExportSummary(await exportEcs("events", { uploadId: exportUploadId })));
+    } catch (exportError) {
+      setDataSyncError(exportError?.message || "The ECS export could not be downloaded.");
+    } finally {
+      setEcsExporting(false);
+    }
+  }
 
   function updateFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -328,7 +353,7 @@ export default function EventLogsPage({ navigate }) {
       {dataSyncError && (
         <InlineNotice
           tone="error"
-          title="Data sync failed"
+          title="Request failed"
           onDismiss={() => setDataSyncError("")}
         >
           {dataSyncError}
@@ -339,7 +364,7 @@ export default function EventLogsPage({ navigate }) {
         <InlineNotice
           className="event-sync-toast"
           tone="success"
-          title="Event data updated"
+          title="Done"
           onDismiss={() => setDataSyncMessage("")}
         >
           {dataSyncMessage}
@@ -414,6 +439,15 @@ export default function EventLogsPage({ navigate }) {
         <label><span className="sr-only">Status</span><select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value="">All statuses</option><option value="failed">Failed</option><option value="blocked">Blocked</option><option value="review">Review</option><option value="contained">Contained</option><option value="success">Success</option></select></label>
         <label><span className="sr-only">Source</span><select value={filters.source} onChange={(event) => updateFilter("source", event.target.value)}><option value="">All sources</option>{sources.map((source) => <option key={source}>{source}</option>)}</select></label>
         <button className="soc-button secondary" type="button" onClick={() => downloadEventsCsv(filteredEvents)} disabled={!filteredEvents.length}><Download size={15} />Export CSV</button>
+        <button
+          className="soc-button secondary"
+          type="button"
+          onClick={handleEcsExport}
+          disabled={Boolean(ecsExportBlocked) || ecsExporting}
+          title={ecsExportBlocked || "Every stored event in this upload, in Elastic Common Schema (NDJSON), for import into another SIEM."}
+        >
+          <Download size={15} />{ecsExporting ? "Exporting…" : "Export ECS"}
+        </button>
       </section>
 
       <div className="event-workspace">

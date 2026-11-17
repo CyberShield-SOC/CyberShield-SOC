@@ -4,7 +4,8 @@ Threat-intelligence indicator storage and matching.
 Feeds are plain text — one IP, CIDR range, or domain per line; `#` starts a
 comment; CSV-style lines use the first column. That covers the common
 blocklist exports (abuse.ch, Spamhaus DROP, FireHOL, internal IOC lists)
-without tying the platform to any one provider.
+without tying the platform to any one provider. A feed may instead be a
+STIX 2.1 bundle (JSON), recognised from its content; see app/services/stix.py.
 """
 
 from __future__ import annotations
@@ -76,6 +77,25 @@ def parse_feed(content: str) -> tuple[list[tuple[str, str]], int]:
     return list(indicators.items()), rejected
 
 
+def parse_stix_feed(content: str) -> tuple[list[tuple[str, str]], int]:
+    """parse_feed for a STIX 2.1 bundle: same return shape, same validation."""
+
+    from app.services.stix import StixError, parse_stix_bundle
+
+    try:
+        values, rejected = parse_stix_bundle(content)
+    except StixError as exc:
+        raise ThreatFeedError(str(exc)) from exc
+    indicators: dict[str, str] = {}
+    for value in values:
+        classified = classify_indicator(value)
+        if classified is None:
+            rejected += 1
+            continue
+        indicators[classified[0]] = classified[1]
+    return list(indicators.items()), rejected
+
+
 def validate_source_name(source: str) -> str:
     source = (source or "").strip()
     if not _SOURCE_RE.match(source):
@@ -92,10 +112,17 @@ def import_feed(
     description: str | None,
     created_by: int | None,
 ) -> dict:
+    from app.services.stix import looks_like_json
+
     source = validate_source_name(source)
-    indicators, rejected = parse_feed(content)
+    feed_format = "stix" if looks_like_json(content) else "text"
+    indicators, rejected = parse_stix_feed(content) if feed_format == "stix" else parse_feed(content)
     if not indicators:
-        raise ThreatFeedError("The feed contained no valid IP, CIDR, or domain indicators.")
+        raise ThreatFeedError(
+            "The STIX bundle contained no IP, CIDR, or domain indicators this platform can match."
+            if feed_format == "stix"
+            else "The feed contained no valid IP, CIDR, or domain indicators."
+        )
     if len(indicators) > MAX_INDICATORS_PER_IMPORT:
         raise ThreatFeedError(f"A single import is limited to {MAX_INDICATORS_PER_IMPORT} indicators.")
 
@@ -120,7 +147,13 @@ def import_feed(
             .on_conflict_do_nothing(index_elements=["source", "indicator"])
         )
     db.flush()
-    return {"source": source, "imported": len(indicators), "rejected_lines": rejected, "replaced": removed}
+    return {
+        "source": source,
+        "format": feed_format,
+        "imported": len(indicators),
+        "rejected_lines": rejected,
+        "replaced": removed,
+    }
 
 
 def list_feeds(db: Session) -> list[dict]:

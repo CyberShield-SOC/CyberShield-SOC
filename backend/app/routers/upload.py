@@ -6,6 +6,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi.responses import JSONResponse
@@ -16,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.rate_limit import limit_by_user
 from app.db.session import get_db
 from app.detection.engine import DetectionEngine
 from app.detection.alert_store import serialize_alert
@@ -47,6 +49,7 @@ from app.repositories.upload_batch_repository import (
 )
 from app.security import require_roles
 from app.schemas.ingestion import IngestionRequest
+from app.services.audit import AuditOrigin, origin_of, record_audit
 
 
 router = APIRouter(tags=["Upload"])
@@ -130,6 +133,8 @@ def _run_upload_pipeline(
     source_type: str | None = None,
     source_host: str | None = None,
     ingested_by: int | None = None,
+    actor: User | None = None,
+    origin: AuditOrigin | None = None,
 ) -> dict:
     """Parse, detect, correlate, and persist one upload in a single transaction."""
     try:
@@ -173,13 +178,15 @@ def _run_upload_pipeline(
                 continue
             runner = CustomConditionRule(rule_id=custom_rule.rule_id, display_name=custom_rule.name,
                                          severity=custom_rule.severity, conditions=custom_rule.conditions,
-                                         group_by=custom_rule.group_by, window_seconds=custom_rule.window_seconds)
+                                         group_by=custom_rule.group_by, window_seconds=custom_rule.window_seconds,
+                                         min_count=custom_rule.min_count, mitre_technique=custom_rule.mitre_technique)
             custom_rule_titles[custom_rule.rule_id] = custom_rule.name
             alerts.extend(runner.analyze(records))
             rule_contexts[custom_rule.rule_id] = {
                 "kind": "custom", "name": custom_rule.name, "rule_id": custom_rule.rule_id,
                 "conditions": custom_rule.conditions, "group_by": custom_rule.group_by,
                 "window_seconds": custom_rule.window_seconds, "severity": custom_rule.severity,
+                "min_count": custom_rule.min_count, "mitre_technique": custom_rule.mitre_technique,
                 "correlation_entity": {"ip_address": "source_ip", "username": "account"}.get(custom_rule.group_by, "upload_batch"),
                 "correlation_window_seconds": max(60, custom_rule.window_seconds),
             }
@@ -194,6 +201,23 @@ def _run_upload_pipeline(
         custom_rule_action_summary = apply_custom_rule_actions(db, alerts=saved_alerts, custom_rules=enabled_custom_rules, slack_webhook_url=settings.slack_webhook_url)
         batch.stored_entries = len(saved_logs)
         batch.stored_alerts = len(saved_alerts)
+        if actor is not None:
+            record_audit(
+                db,
+                origin,
+                action="log.ingest" if source_type != "file" else "log.upload",
+                actor=actor,
+                target_type="upload",
+                target_id=upload_id,
+                target_label=source_filename,
+                detail={
+                    "format": str(parsed["format"]),
+                    "events": len(saved_logs),
+                    "alerts": len(saved_alerts),
+                    "source_type": source_type,
+                    "source_host": source_host,
+                },
+            )
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
@@ -213,9 +237,13 @@ def _run_upload_pipeline(
     }
 
 
-@router.post("/ingest")
+ingest_rate_limit = limit_by_user("ingest", "rate_limit_ingest_per_minute")
+
+
+@router.post("/ingest", dependencies=[Depends(ingest_rate_limit)])
 async def ingest_logs(
     payload: IngestionRequest,
+    request: Request,
     user: User = Depends(require_roles("Admin", "Analyst")),
     db: Session = Depends(get_db),
 ):
@@ -228,11 +256,13 @@ async def ingest_logs(
         source_filename=filename, mime_type="application/json",
         source_name=payload.source_name, source_type=payload.source_type,
         source_host=payload.source_host, ingested_by=user.id,
+        actor=user, origin=origin_of(request),
     )
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(ingest_rate_limit)])
 async def upload_log(
+    request: Request,
     logfile: UploadFile = File(
         ...,
         description="Security log file (.log, .csv, .txt, .json, .jsonl)",
@@ -262,6 +292,8 @@ async def upload_log(
         source_name=source_filename,
         source_type="file",
         ingested_by=user.id,
+        actor=user,
+        origin=origin_of(request),
     )
 
     return JSONResponse(status_code=200, content=payload)
@@ -387,7 +419,8 @@ def get_accepted_formats(
             {
                 "extension": ".log",
                 "description": (
-                    "Generic, syslog, Apache, or Nginx-style log files"
+                    "Syslog (RFC 3164 and RFC 5424), CEF, LEEF, auditd, "
+                    "Apache/Nginx access logs, or free-form log lines"
                 ),
                 "example": "/var/log/auth.log",
             },
@@ -421,6 +454,16 @@ def get_accepted_formats(
                 ),
                 "example": "events.jsonl",
             },
+        ],
+        # The extension only gates acceptance; these are recognised from the
+        # content itself, in any accepted text file.
+        "content_formats": [
+            {"format": "syslog", "standard": "RFC 3164, with or without a <PRI> prefix"},
+            {"format": "syslog_rfc5424", "standard": "RFC 5424, including structured data"},
+            {"format": "cef", "standard": "ArcSight Common Event Format, bare or inside syslog"},
+            {"format": "leef", "standard": "IBM LEEF 1.0 and 2.0, bare or inside syslog"},
+            {"format": "auditd", "standard": "Linux audit records"},
+            {"format": "apache_combined", "standard": "Apache/Nginx combined log format"},
         ],
         "note": (
             "Detection rules run over parsed entries "

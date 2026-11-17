@@ -34,6 +34,7 @@ postgres-data/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+CLAUDE.md
 
 Dataset for anamoly detection/
 ml_experiments/models/

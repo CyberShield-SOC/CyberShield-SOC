@@ -15,6 +15,7 @@ from app.dispatch.invite_email import get_invite_email_sender
 from app.models.invite_token import InviteToken
 from app.models.role import Role
 from app.models.user import User
+from app.repositories import mfa_repository
 from app.repositories.invite_repository import (
     create_invite_challenge,
     get_pending_invite_or_none,
@@ -31,6 +32,7 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.security import hash_password, require_roles, revoke_user_sessions
+from app.services.audit import record_audit, user_target
 from app.validation import password_context_errors
 
 
@@ -62,6 +64,7 @@ def serialize_user(user: User) -> dict:
         "full_name": user.full_name,
         "is_active": user.is_active,
         "role": user.role.name if user.role else None,
+        "mfa_method": "totp" if user.totp_enabled_at is not None else "email",
     }
 
 
@@ -230,6 +233,15 @@ def create_invite(
             detail=INVITE_EMAIL_SEND_FAILURE_MESSAGE,
         ) from exc
 
+    record_audit(
+        db,
+        request,
+        action="user.invite.create",
+        actor=user,
+        target_type="invite",
+        target_label=payload.email,
+        detail={"role": role.name},
+    )
     db.commit()
 
     invite = db.scalar(
@@ -276,6 +288,16 @@ def resend_pending_invite(
             detail=INVITE_EMAIL_SEND_FAILURE_MESSAGE,
         ) from exc
 
+    record_audit(
+        db,
+        request,
+        action="user.invite.resend",
+        actor=user,
+        target_type="invite",
+        target_id=invite_id,
+        target_label=invite.email,
+        detail={"role": invite.role.name},
+    )
     db.commit()
 
     refreshed = db.scalar(
@@ -292,11 +314,21 @@ def resend_pending_invite(
 @router.delete("/invites/{invite_id}")
 def revoke_pending_invite(
     invite_id: int,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
     invite = get_pending_invite_or_404(db, invite_id)
     revoke_invite(db, invite)
+    record_audit(
+        db,
+        request,
+        action="user.invite.revoke",
+        actor=user,
+        target_type="invite",
+        target_id=invite_id,
+        target_label=invite.email,
+    )
     db.commit()
     return {"success": True}
 
@@ -304,6 +336,7 @@ def revoke_pending_invite(
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: UserCreate,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -322,6 +355,15 @@ def create_user(
 
     db.refresh(new_user)
     new_user.role = role
+    record_audit(
+        db,
+        request,
+        action="user.create",
+        actor=user,
+        detail={"role": role.name},
+        **user_target(new_user),
+    )
+    db.commit()
     return {
         "success": True,
         "user": serialize_user(new_user),
@@ -332,6 +374,7 @@ def create_user(
 def update_user(
     user_id: int,
     payload: UserUpdate,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -340,6 +383,7 @@ def update_user(
     target_user = get_user_or_404(db, user_id)
     changed_fields = payload.model_fields_set
     next_role = target_user.role
+    before = serialize_user(target_user)
 
     if "role" in changed_fields:
         next_role = get_role_or_400(db, payload.role)
@@ -368,6 +412,23 @@ def update_user(
         if not payload.is_active:
             revoke_user_sessions(db, target_user.id)
 
+    after = serialize_user(target_user)
+    record_audit(
+        db,
+        request,
+        action="user.update",
+        actor=user,
+        target_type="user",
+        target_id=target_user.id,
+        target_label=before["username"],
+        detail={
+            "changes": {
+                field: {"from": before[field], "to": after[field]}
+                for field in before
+                if field != "id" and before[field] != after[field]
+            }
+        },
+    )
     commit_user_change(db)
     db.refresh(target_user)
     if next_role is not None:
@@ -383,6 +444,7 @@ def update_user(
 def reset_user_password(
     user_id: int,
     payload: UserPasswordReset,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -412,6 +474,14 @@ def reset_user_password(
 
     target_user.password_hash = hash_password(payload.new_password)
     sessions_revoked = revoke_user_sessions(db, target_user.id)
+    record_audit(
+        db,
+        request,
+        action="user.password.reset",
+        actor=user,
+        detail={"sessions_revoked": sessions_revoked},
+        **user_target(target_user),
+    )
     db.commit()
 
     return {
@@ -424,6 +494,7 @@ def reset_user_password(
 @router.post("/{user_id}/sessions/revoke")
 def revoke_managed_user_sessions(
     user_id: int,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -431,6 +502,48 @@ def revoke_managed_user_sessions(
 
     target_user = get_user_or_404(db, user_id)
     sessions_revoked = revoke_user_sessions(db, target_user.id)
+    record_audit(
+        db,
+        request,
+        action="user.sessions.revoke",
+        actor=user,
+        detail={"sessions_revoked": sessions_revoked},
+        **user_target(target_user),
+    )
+    db.commit()
+
+    return {
+        "success": True,
+        "user": serialize_user(target_user),
+        "sessions_revoked": sessions_revoked,
+    }
+
+
+@router.post("/{user_id}/mfa/reset")
+def reset_managed_user_mfa(
+    user_id: int,
+    request: Request,
+    user: User = Depends(require_roles("Admin")),
+    db: Session = Depends(get_db),
+):
+    """Remove a locked-out user's authenticator app and recovery codes.
+
+    Their next sign-in uses an emailed code again. Existing sessions are
+    revoked as well: a reset is asked for when a device is lost or suspect.
+    """
+
+    target_user = get_user_or_404(db, user_id)
+    had_totp = target_user.totp_enabled_at is not None
+    mfa_repository.clear_totp(db, target_user)
+    sessions_revoked = revoke_user_sessions(db, target_user.id)
+    record_audit(
+        db,
+        request,
+        action="user.mfa.reset",
+        actor=user,
+        detail={"had_authenticator": had_totp, "sessions_revoked": sessions_revoked},
+        **user_target(target_user),
+    )
     db.commit()
 
     return {
@@ -444,6 +557,7 @@ def revoke_managed_user_sessions(
 def update_user_role(
     user_id: int,
     payload: UserRoleUpdate,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -453,7 +567,16 @@ def update_user_role(
     if target_user.role and target_user.role.name != payload.role:
         ensure_not_final_active_admin(db, target_user)
 
+    previous_role = target_user.role.name if target_user.role else None
     target_user.role_id = role.id
+    record_audit(
+        db,
+        request,
+        action="user.role.change",
+        actor=user,
+        detail={"from": previous_role, "to": role.name},
+        **user_target(target_user),
+    )
     db.commit()
     db.refresh(target_user)
     target_user.role = role
@@ -468,6 +591,7 @@ def update_user_role(
 def update_user_active(
     user_id: int,
     payload: UserActiveUpdate,
+    request: Request,
     user: User = Depends(require_roles("Admin")),
     db: Session = Depends(get_db),
 ):
@@ -476,9 +600,18 @@ def update_user_active(
     if target_user.is_active and not payload.is_active:
         ensure_not_final_active_admin(db, target_user)
 
+    was_active = target_user.is_active
     target_user.is_active = payload.is_active
     if not payload.is_active:
         revoke_user_sessions(db, target_user.id)
+    record_audit(
+        db,
+        request,
+        action="user.active.change",
+        actor=user,
+        detail={"from": was_active, "to": payload.is_active},
+        **user_target(target_user),
+    )
     db.commit()
     db.refresh(target_user)
 

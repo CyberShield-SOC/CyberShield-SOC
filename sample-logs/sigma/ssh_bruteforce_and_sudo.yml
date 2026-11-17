@@ -1,0 +1,63 @@
+title: Repeated SSH Password Failures From One Source
+id: 7c1f4d2e-5b3a-4e61-9a2c-1d8e6f0b3a71
+status: experimental
+description: More than four failed SSH password attempts from one address in a minute.
+author: CyberShield SOC fixtures
+logsource:
+    product: linux
+    service: sshd
+detection:
+    selection:
+        process: sshd
+        message|contains: 'Failed password'
+    filter_scanner:
+        SourceIp: '198.51.100.250'
+    timeframe: 1m
+    condition: selection and not filter_scanner | count() by SourceIp > 4
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+---
+title: Sudo To Root Running A Shell
+id: 0e9b6c55-3d24-4a8f-b1e7-6f2a9c4d8e10
+status: test
+logsource:
+    product: linux
+    category: process_creation
+detection:
+    selection_sudo:
+        process: sudo
+    selection_shell:
+        CommandLine|endswith:
+            - '/bin/bash'
+            - '/bin/sh'
+    condition: all of selection_*
+level: medium
+tags:
+    - attack.privilege_escalation
+    - attack.t1548.003
+---
+title: Encoded PowerShell Or Certutil Download
+id: 4b8f0c2a-9d1e-4c37-8e55-2a7b6d1f9c03
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection_ps:
+        Image|endswith: '\powershell.exe'
+        CommandLine|contains: ' -enc '
+    selection_certutil:
+        Image|endswith: '\certutil.exe'
+    condition: selection_ps or selection_certutil
+level: high
+---
+title: Suspicious Regex Command
+id: 9f3a1e7b-2c6d-4f80-a5b9-3e1d7c2f8a46
+logsource:
+    product: linux
+detection:
+    selection:
+        CommandLine|re: 'curl .* \| sh'
+    condition: selection
+level: high

@@ -152,9 +152,19 @@ def lock_auth_user(db: Session, user_id: int) -> User | None:
     )
 
 
-def authenticate_user(db: Session, username: str, password: str) -> User | None:
-    identifier = username.strip()
-    user = db.scalar(
+def find_user_by_id(db: Session, user_id: int) -> User | None:
+    """Load an account with its role, for attribution in the audit trail."""
+
+    return db.scalar(
+        select(User).options(joinedload(User.role)).where(User.id == user_id)
+    )
+
+
+def find_user_by_identifier(db: Session, identifier: str) -> User | None:
+    """Look an account up by the username or email typed at sign-in."""
+
+    identifier = identifier.strip()
+    return db.scalar(
         select(User)
         .options(joinedload(User.role))
         .where(
@@ -164,6 +174,10 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
             )
         )
     )
+
+
+def authenticate_user(db: Session, username: str, password: str) -> User | None:
+    user = find_user_by_identifier(db, username)
 
     if user is None or not user.is_active:
         return None
@@ -259,7 +273,9 @@ def rotate_refresh_token(
     return user, new_token, ttl_minutes, remembered
 
 
-def revoke_refresh_token(db: Session, raw_token: str) -> None:
+def revoke_refresh_token(db: Session, raw_token: str) -> int:
+    """Revoke one session and return the id of the account it belonged to."""
+
     session = db.scalar(
         select(AuthSession)
         .where(AuthSession.token_hash == token_digest(raw_token))
@@ -274,6 +290,7 @@ def revoke_refresh_token(db: Session, raw_token: str) -> None:
 
     session.revoked_at = datetime.now(timezone.utc)
     db.commit()
+    return session.user_id
 
 
 def revoke_user_sessions(db: Session, user_id: int) -> int:

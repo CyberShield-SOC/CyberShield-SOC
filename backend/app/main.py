@@ -12,13 +12,16 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
+from app.core.rate_limit import client_ip, limiter
 from app.routers import (
     alerts,
     assistant,
+    audit,
     auth,
     correlation,
     custom_rules,
     detection,
+    export,
     incident_history,
     incidents,
     investigations,
@@ -35,6 +38,37 @@ app = FastAPI(
     description="Log Upload & Parsing API",
     version="1.0.0",
 )
+
+# Static assets and the platform health probe are not API work, so they do not
+# spend a caller's budget.
+_RATE_LIMIT_EXEMPT_PATHS = ("/assets/", "/health", "/api/health")
+
+
+# Registered before CORS so CORS wraps it: a cross-origin frontend must be
+# able to read the 429 instead of seeing an opaque network error.
+@app.middleware("http")
+async def enforce_global_rate_limit(request: Request, call_next):
+    """Cap total requests per client address across the whole API."""
+
+    if (
+        settings.rate_limit_enabled
+        and limiter.enabled
+        and not request.url.path.startswith(_RATE_LIMIT_EXEMPT_PATHS)
+    ):
+        wait = limiter.hit(
+            f"global:ip:{client_ip(request)}",
+            settings.rate_limit_global_per_minute,
+            60,
+        )
+        if wait:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"Too many requests. Try again in {wait} seconds."},
+                headers={"Retry-After": str(wait)},
+            )
+
+    return await call_next(request)
+
 
 _EXTRA_CORS_ORIGINS = [
     origin.strip()
@@ -97,11 +131,40 @@ async def verify_browser_csrf(request: Request, call_next):
     return await call_next(request)
 
 
+# Scripts are same-origin only, with no inline or eval. Styles additionally
+# allow the Google Fonts stylesheet index.html links to, and inline style
+# *attributes* (not <style> blocks) because React sets them for chart
+# geometry. blob: covers the CSV/PDF downloads, which use object URLs.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' https://fonts.googleapis.com",
+        "style-src-attr 'unsafe-inline'",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+    )
+)
+
+# FastAPI's interactive docs load Swagger UI / ReDoc from a CDN with an inline
+# bootstrap script, so the application policy would blank them.
+_CSP_EXEMPT_PATHS = ("/docs", "/redoc", "/openapi.json")
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Apply conservative browser protections to API and hosted UI responses."""
 
     response = await call_next(request)
+    if not request.url.path.startswith(_CSP_EXEMPT_PATHS):
+        response.headers.setdefault(
+            "Content-Security-Policy", CONTENT_SECURITY_POLICY
+        )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -123,7 +186,9 @@ for prefix in ("", "/api"):
     for module in (
         auth,
         users,
+        audit,
         upload,
+        export,
         alerts,
         detection,
         incidents,

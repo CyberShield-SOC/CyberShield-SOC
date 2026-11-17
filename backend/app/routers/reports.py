@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.alert import AlertSeverity
 from app.security import require_roles
+from app.services.audit import record_audit
 from app.services.reports import REPORT_BUILDERS, REPORT_BY_ID, REPORT_CATALOG
 from app.services.reports.context import ReportContext
 from app.services.reports.params import ReportRangePreset, resolve_report_range
@@ -28,6 +29,7 @@ def list_reports(
 @router.get("/reports/{report_id}/pdf")
 def get_report_pdf(
     report_id: str,
+    request: Request,
     range: ReportRangePreset | None = Query(
         default=None,
         description="Preset lookback window. Mutually exclusive with from/to.",
@@ -68,6 +70,18 @@ def get_report_pdf(
 
     builder = REPORT_BUILDERS[report_id]
     pdf_bytes = builder(db, ctx, max_rows=settings.report_max_rows_per_table)
+
+    record_audit(
+        db,
+        request,
+        action="export.report",
+        actor=user,
+        target_type="report",
+        target_id=report_id,
+        target_label=report_id,
+        detail={"format": "pdf", "severity": severity},
+    )
+    db.commit()
 
     filename = f"cybershield-{report_id}-{ctx.local(ctx.generated_at).date().isoformat()}.pdf"
     return Response(

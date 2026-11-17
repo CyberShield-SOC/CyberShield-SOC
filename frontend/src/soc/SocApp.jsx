@@ -19,6 +19,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const HelpPage = lazy(() => import("./pages/HelpPage"));
 const ReportsPage = lazy(() => import("./pages/SecondaryPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
+const AuditLogPage = lazy(() => import("./pages/AuditLogPage"));
 const ManagementPage = lazy(() => import("./pages/ManagementPage"));
 
 function RouteView({ navigate, route, theme, toggleTheme }) {
@@ -55,6 +56,8 @@ function RouteView({ navigate, route, theme, toggleTheme }) {
       return <ReportsPage />;
     case SOC_ROUTES.users:
       return <UsersPage />;
+    case SOC_ROUTES.auditLog:
+      return <AuditLogPage />;
     case SOC_ROUTES.manage:
     case SOC_ROUTES.integrations:
       return <ManagementPage navigate={navigate} route={route} />;

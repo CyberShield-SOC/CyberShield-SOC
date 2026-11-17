@@ -16,6 +16,7 @@ import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { validateWorkspaceSettings } from "../utils/formValidation";
 import { MAX_UPLOAD_BYTES } from "../utils/eventUtils";
 import { ErrorState, InlineNotice, LoadingState, PageHeader, Panel, ValidationMessage } from "../components/Ui";
+import { MfaSettingsPanel } from "../components/MfaSettingsPanel";
 
 const SECTIONS = [
   ["workspace", "Workspace", Building2],
@@ -50,7 +51,7 @@ function CapabilityList({ items }) {
 }
 
 export default function SettingsPage({ navigate, theme, toggleTheme }) {
-  const { canAdminister, repositoryMode, settings: data, resources, refresh, saveWorkspaceSettings } = useSocWorkspace();
+  const { canAdminister, currentActor, repositoryMode, settings: data, resources, refresh, saveWorkspaceSettings } = useSocWorkspace();
   const error = resources.settings.error;
   const loading = resources.settings.loading;
   const [draft, setDraft] = useState(null);
@@ -195,15 +196,19 @@ export default function SettingsPage({ navigate, theme, toggleTheme }) {
           )}
 
           {activeSection === "security" && (
-            <Panel title="Session and access policy" subtitle="Identity policy is enforced by the API, so this page reports status without creating unsafe browser-only controls.">
-              <InlineNotice tone="info" title="Managed by the authentication service">Session lifetime, MFA requirements, and privileged reauthentication must be configured on the backend.</InlineNotice>
-              <CapabilityList items={[
-                ["Authenticated session", "Secure server-managed cookie"],
-                ["Role enforcement", "Viewer, Analyst, and Admin"],
-                ["MFA enrollment and enforcement", "Backend endpoint required", "pending"],
-                ["Privileged-action reauthentication", "Backend policy required", "pending"],
-              ]} />
-            </Panel>
+            <>
+              <MfaSettingsPanel account={currentActor} repositoryMode={repositoryMode} />
+              <Panel title="Session and access policy" subtitle="Identity policy is enforced by the API, so this page reports status without creating unsafe browser-only controls.">
+                <InlineNotice tone="info" title="Managed by the authentication service">Session lifetime and privileged reauthentication are configured on the backend.</InlineNotice>
+                <CapabilityList items={[
+                  ["Authenticated session", "Secure server-managed cookie"],
+                  ["Role enforcement", "Viewer, Analyst, and Admin"],
+                  ["Second factor at every sign-in", "Emailed code or authenticator app"],
+                  ["Sign-in rate limiting", "Per address and per account"],
+                  ["Privileged-action reauthentication", "Backend policy required", "pending"],
+                ]} />
+              </Panel>
+            </>
           )}
 
           {activeSection === "notifications" && (

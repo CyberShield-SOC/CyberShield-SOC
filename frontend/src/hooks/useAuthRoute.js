@@ -27,10 +27,14 @@ export const SOC_ROUTES = Object.freeze({
   reports: "reports",
   manage: "manage",
   users: "users",
+  auditLog: "audit-log",
   integrations: "integrations",
   settings: "settings",
   help: "help",
 });
+
+// Pages whose data the backend serves to Admins only.
+const ADMIN_ONLY_SOC_ROUTES = new Set([SOC_ROUTES.users, SOC_ROUTES.auditLog]);
 
 const VALID_APP_ROUTES = new Set([
   ...Object.values(AUTH_ROUTES),
@@ -62,8 +66,8 @@ export function isSocRoute(route) {
 export function canAccessSocRoute(route, user) {
   if (!isSocRoute(route) || !canReadWorkspace(user)) return false;
   if (route === SOC_ROUTES.ruleBuilder) return canManageRules(user);
-  if (route !== SOC_ROUTES.users) return true;
-  return canOpenUserManagement(user);
+  if (ADMIN_ONLY_SOC_ROUTES.has(route)) return canOpenUserManagement(user);
+  return true;
 }
 
 export function shouldRedirectAuthenticatedLogin(route, sessionStatus) {
