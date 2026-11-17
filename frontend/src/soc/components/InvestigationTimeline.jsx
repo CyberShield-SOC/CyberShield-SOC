@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock3 } from "lucide-react";
+import { Clock3 } from "../../icons";
 import { formatTimestamp } from "../utils/eventUtils";
 import { paginateRecords } from "../utils/pagination";
 import { TablePagination } from "./Ui";

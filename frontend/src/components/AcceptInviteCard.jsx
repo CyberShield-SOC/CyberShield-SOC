@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, CircleCheck, KeyRound, ShieldAlert, ShieldCheck, UserPlus } from "lucide-react";
+import { ArrowRight, CircleCheck, KeyRound, ShieldAlert, ShieldCheck, UserPlus } from "../icons";
 import { authClient, isBackendConfigured } from "../services/authClient";
 import {
   PasswordMatchStatus,

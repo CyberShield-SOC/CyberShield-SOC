@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Save,
   ShieldCheck,
-} from "lucide-react";
+} from "../../icons";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { validateWorkspaceSettings } from "../utils/formValidation";

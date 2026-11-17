@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Database, FileClock, Network, RefreshCw, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, Database, FileClock, Network, RefreshCw, Search, Settings, ShieldCheck, Users } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";

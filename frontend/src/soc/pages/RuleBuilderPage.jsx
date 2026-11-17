@@ -9,7 +9,7 @@ import {
   Play,
   Plus,
   X,
-} from "lucide-react";
+} from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { InlineNotice, LoadingState, Panel } from "../components/Ui";

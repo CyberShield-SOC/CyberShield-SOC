@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { CircleAlert, CircleCheck, Eye, EyeOff } from "lucide-react";
+import { CircleAlert, CircleCheck, Eye, EyeOff } from "../../icons";
 import { getPasswordRequirements, getPasswordStrength, PASSWORD_STRENGTH_LABELS } from "../utils/passwordPolicy";
 
 /** Password `<input>` with a show/hide toggle, styled to match soc-modal fields. */

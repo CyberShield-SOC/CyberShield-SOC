@@ -275,9 +275,9 @@ For syslog the severity comes from the `<PRI>` value, raised when the message it
 - Network rules need columns such as `dest_ip`, `dest_port` and `bytes_out`. DNS rules need a `dns_query` column.
 - Geo rules need `country`, `asn`, `latitude` and `longitude` columns, or a local MaxMind-format database set with `GEOIP_CITY_DB_PATH` and `GEOIP_ASN_DB_PATH`. No network geolocation lookups are ever made.
 
-**Reviewing events.** Event Logs supports filters, search, pagination and export, and shows the normalized evidence for each event. CSV exports neutralize spreadsheet-formula prefixes so they are safe to open in Excel.
+**Reviewing events.** Event Logs supports filters, search, pagination and ECS export, and shows the normalized evidence for each event.
 
-**Export to another SIEM (ECS).** Export ECS on Event Logs downloads every stored event of the upload on screen as Elastic Common Schema documents, one JSON object per line (NDJSON), ready for Elasticsearch, OpenSearch or any tool that reads ECS. Unlike Export CSV it ignores the on-screen filters: it exports the whole stored upload. Analysts and Admins can export; Viewers cannot. Alerts export the same way through `GET /alerts/export?format=ecs`. An export stops at 50,000 records; the response header `X-Export-Truncated: true` says when, so narrow it with `upload_id`, `from` and `to`. Every export is recorded in the audit log.
+**Export to another SIEM (ECS).** Export ECS on Event Logs downloads every stored event of the upload on screen as Elastic Common Schema documents, one JSON object per line (NDJSON), ready for Elasticsearch, OpenSearch or any tool that reads ECS. It ignores the on-screen filters: it exports the whole stored upload. Analysts and Admins can export; Viewers cannot. Alerts export the same way through `GET /alerts/export?format=ecs`. An export stops at 50,000 records; the response header `X-Export-Truncated: true` says when, so narrow it with `upload_id`, `from` and `to`. Every export is recorded in the audit log.
 
 **Upload history.** `GET /upload/history` and `GET /upload/batches/{id}` list past batches with their source name, type, host and uploader.
 
@@ -589,7 +589,7 @@ Collection is by polling, so new lines arrive within one poll interval.
 
 Open Reports to export any of four built-in reports as a server-rendered vector PDF. The reporting subsystem is powered by `reportlab` and `pypdf`, generating parameterized documents on demand via `GET /reports/{report_id}/pdf`. PDF export requires a connected backend and is unavailable in demo mode.
 
-![Reports page with four report choices, a CSV export button, and a disabled PDF export button in demo mode](user-guide-images/reports.jpg)
+![Reports page with four report choices and a disabled PDF export button in demo mode](user-guide-images/reports.jpg)
 
 *Select a report to see its export controls. In a connected workspace, choose the PDF time range and select **Export PDF**.*
 

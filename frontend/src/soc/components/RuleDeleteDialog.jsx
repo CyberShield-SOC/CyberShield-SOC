@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2 } from "../../icons";
 
 export default function RuleDeleteDialog({ rule, busy, error, onCancel, onConfirm }) {
   const dialog = useRef(null);

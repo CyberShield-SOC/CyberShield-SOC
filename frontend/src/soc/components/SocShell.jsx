@@ -32,7 +32,7 @@ import {
   Users,
   X,
   Zap,
-} from "lucide-react";
+} from "../../icons";
 import { canAccessSocRoute, SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { BrandLogo } from "../../components/BrandLogo";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";

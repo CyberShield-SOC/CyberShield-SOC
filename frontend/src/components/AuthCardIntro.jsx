@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "../icons";
 
 export function AuthBackButton({ children = "Back to sign in", onClick, disabled = false }) {
   return (

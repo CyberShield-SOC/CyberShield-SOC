@@ -1,4 +1,4 @@
-import { Activity, Radio, ShieldCheck } from "lucide-react";
+import { Activity, Radio, ShieldCheck } from "../icons";
 import { SECURITY_FEATURES } from "../data/securityContent";
 import { BrandLogo } from "./BrandLogo";
 

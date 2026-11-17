@@ -6,9 +6,9 @@ import {
   ShieldAlert,
   UsersRound,
   Zap,
-} from "lucide-react";
+} from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
-import { CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, Sparkline, StackedBarChart } from "../components/Charts";
+import { ColumnChart, CoverageBars, DonutChart, HeatmapChart, HorizontalBarChart, LineAreaChart, Sparkline, StackedBarChart } from "../components/Charts";
 import { AnomalyDetectionPanel } from "../components/AnomalyDetectionPanel";
 import {
   ErrorState,
@@ -46,11 +46,13 @@ import {
   TIME_RANGE_LABELS,
 } from "../utils/timeRange";
 
+// Chart fills use the chart palette (softer than the badge colours, which
+// carry text) so stacked and donut slices read clearly side by side.
 const SEVERITY_COLORS = {
-  critical: "var(--severity-critical)",
-  high: "var(--severity-high)",
-  medium: "var(--severity-medium)",
-  low: "var(--severity-low)",
+  critical: "var(--chart-critical)",
+  high: "var(--chart-high)",
+  medium: "var(--chart-medium)",
+  low: "var(--chart-low)",
 };
 
 const STACKED_SEVERITY_SERIES = Object.freeze([
@@ -59,6 +61,10 @@ const STACKED_SEVERITY_SERIES = Object.freeze([
   { key: "high", label: "High", color: SEVERITY_COLORS.high },
   { key: "critical", label: "Critical", color: SEVERITY_COLORS.critical },
 ]);
+
+// Stacks put the most severe at the bottom, on the shared baseline, so the
+// critical share can be compared bar to bar. The legend reads in that order.
+const STACK_ORDER = Object.freeze(STACKED_SEVERITY_SERIES.slice().reverse());
 
 // Same control as the time-range select, so the panel header stays consistent.
 function ChartTypeSelect({ panelKey, label, value, onChange }) {
@@ -78,11 +84,11 @@ function SeverityPanelChart({ type, buckets, segments, title }) {
   if (type === "donut") return <DonutChart segments={segments} totalLabel="alerts" />;
   if (type === "line") {
     const perBucket = totalPerBucket(buckets, STACKED_SEVERITY_SERIES);
-    return <LineAreaChart values={perBucket.map((bucket) => bucket.value)} labels={perBucket.map((bucket) => bucket.label)} title={title} />;
+    return <LineAreaChart values={perBucket.map((bucket) => bucket.value)} labels={perBucket.map((bucket) => bucket.label)} title={title} unit="alert" />;
   }
-  if (type === "stacked") return <StackedBarChart buckets={buckets} series={STACKED_SEVERITY_SERIES} title={title} />;
+  if (type === "stacked") return <StackedBarChart buckets={buckets} series={STACK_ORDER} title={title} />;
   if (type === "horizontal") {
-    return <HorizontalBarChart items={sortByValueDesc(severityTotals(buckets, STACKED_SEVERITY_SERIES))} title={`${title}, largest first`} />;
+    return <HorizontalBarChart items={sortByValueDesc(severityTotals(buckets, STACKED_SEVERITY_SERIES))} title={`${title}, largest first`} xLabel="Alerts" />;
   }
   return <HeatmapChart {...severityHeatmap(buckets, STACKED_SEVERITY_SERIES)} title={title} />;
 }
@@ -172,8 +178,6 @@ export default function DashboardPage({ navigate }) {
     .slice(0, 5);
   const sourceActivity = summarizeSourceActivity(events);
   const portActivity = derivePortActivity(events);
-  const maxPortCount = Math.max(1, ...portActivity.map((p) => p.count));
-  const maxSourceCount = Math.max(1, ...sourceActivity.map((source) => source.count));
   const threatAnalysis = deriveThreatAnalysis(alerts, events);
   // Real learned-model alerts from the behavioral_anomaly_* rules. These run
   // in shadow mode by default (see DEFAULT_PARAMS in the rule files): every
@@ -322,6 +326,13 @@ export default function DashboardPage({ navigate }) {
             <HorizontalBarChart
               items={sortByValueDesc(timeTotalItems(ingestion))}
               title={`Events ingested during ${rangeLabel.toLowerCase()}, largest first`}
+              xLabel="Events"
+            />
+          ) : eventsChart === "bar" ? (
+            <ColumnChart
+              values={ingestion.values}
+              labels={ingestion.labels}
+              title={`Events ingested during ${rangeLabel.toLowerCase()}`}
             />
           ) : (
             <LineAreaChart
@@ -346,23 +357,16 @@ export default function DashboardPage({ navigate }) {
         </Panel>
         <Panel className="dashboard-top-sources-panel" title="Top sources" subtitle={`By event count · ${rangeLabel.toLowerCase()}`}>
           {sourceActivity.length ? (
-            <ol className="dashboard-source-list">
-              {sourceActivity.map((source) => (
-                <li key={source.sourceIp}>
-                  <div>
-                    <span className="dashboard-source-identity">
-                      <span className="source-location-flag" role="img" aria-label={source.location.label} title={source.location.label}>{source.location.flag}</span>
-                      <strong className="mono">{source.sourceIp}</strong>
-                    </span>
-                    <span>{source.count.toLocaleString()}</span>
-                  </div>
-                  <div className="dashboard-source-track" aria-label={`${source.sourceIp}: ${source.count} events`}>
-                    <span style={{ width: `${(source.count / maxSourceCount) * 100}%` }} />
-                  </div>
-                  <small>{source.source} · {source.location.label}</small>
-                </li>
-              ))}
-            </ol>
+            <HorizontalBarChart
+              items={sourceActivity.map((source) => ({
+                label: source.sourceIp,
+                value: source.count,
+                color: "var(--chart-series-2)",
+                detail: `${source.source} · ${source.location.label}`,
+              }))}
+              title={`Top source addresses by event count during ${rangeLabel.toLowerCase()}`}
+              xLabel="Events"
+            />
           ) : (
             <p className="empty-inline">No source addresses are available in this time range.</p>
           )}
@@ -373,21 +377,11 @@ export default function DashboardPage({ navigate }) {
 
         <Panel className="dashboard-port-panel" title="Port Monitoring" subtitle={`Most active destination ports · ${rangeLabel.toLowerCase()}`}>
           {portActivity.length ? (
-            <ol className="dashboard-source-list">
-              {portActivity.map((port) => (
-                <li key={port.port}>
-                  <div>
-                    <span className="dashboard-source-identity">
-                      <strong>Port {port.port}</strong>
-                    </span>
-                    <span>{port.count.toLocaleString()}</span>
-                  </div>
-                  <div className="dashboard-source-track" aria-label={`Port ${port.port}: ${port.count} events`}>
-                    <span style={{ width: `${(port.count / maxPortCount) * 100}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <HorizontalBarChart
+              items={portActivity.map((port) => ({ label: `Port ${port.port}`, value: port.count }))}
+              title={`Most active destination ports during ${rangeLabel.toLowerCase()}`}
+              xLabel="Events"
+            />
           ) : (
             <p className="empty-inline">No port data available in this time range.</p>
           )}
@@ -397,16 +391,7 @@ export default function DashboardPage({ navigate }) {
           className="dashboard-severity-volume-panel"
           title="Alert volume by severity"
           subtitle={`${rangeLabel} · ${alerts.length.toLocaleString()} detections`}
-          actions={(
-            <>
-              <div className="severity-chart-legend" aria-label="Severity series">
-                {STACKED_SEVERITY_SERIES.slice().reverse().map((item) => (
-                  <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>
-                ))}
-              </div>
-              <ChartTypeSelect panelKey="volume" label="Alert volume by severity" value={volumeChart} onChange={chooseVolumeChart} />
-            </>
-          )}
+          actions={<ChartTypeSelect panelKey="volume" label="Alert volume by severity" value={volumeChart} onChange={chooseVolumeChart} />}
         >
           <SeverityPanelChart
             type={volumeChart}

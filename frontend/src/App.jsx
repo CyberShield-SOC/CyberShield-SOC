@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "./icons";
 import { AcceptInviteCard } from "./components/AcceptInviteCard";
 import { BrandMark, BrandPanel } from "./components/BrandPanel";
 import { LoginCard } from "./components/LoginCard";

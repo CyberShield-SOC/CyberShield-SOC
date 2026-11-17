@@ -13,7 +13,7 @@ import {
   Sparkles,
   Workflow,
   Zap,
-} from "lucide-react";
+} from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";

@@ -222,8 +222,8 @@ test("deviation bars use |z| for length and colour the direction", () => {
   ]));
   assert.deepEqual(bars.map((b) => b.label), ["hour_cos (0.97)", "is_new_geo (1.00)", "no_value"]);
   assert.deepEqual(bars.map((b) => b.value), [2.14, 1.3, 0.5]);
-  assert.equal(bars[0].color, "var(--severity-medium)");
-  assert.equal(bars[1].color, "var(--severity-high)");
+  assert.equal(bars[0].color, "var(--chart-anomaly-above)");
+  assert.equal(bars[1].color, "var(--chart-anomaly-below)");
   assert.deepEqual(deviationBars(undefined), []);
 });
 

@@ -11,7 +11,7 @@ import {
   ShieldAlert,
   Upload,
   Users,
-} from "lucide-react";
+} from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { InlineNotice, PageHeader, Panel } from "../components/Ui";

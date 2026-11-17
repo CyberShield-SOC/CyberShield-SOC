@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileUp, Upload, X } from "lucide-react";
+import { FileUp, Upload, X } from "../../icons";
 import { socRepository } from "../services/socRepository";
 import {
   SIGMA_FILE_ACCEPT,

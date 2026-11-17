@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, X } from "../../icons";
 import { incidentTerminalAction } from "../utils/incidentWorkflow";
 
 /**

@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "../icons";
 import { AuthCardIntro } from "./AuthCardIntro";
 
 export function LogoutSuccessCard({ onReturn }) {

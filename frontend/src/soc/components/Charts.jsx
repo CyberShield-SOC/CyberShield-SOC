@@ -1,14 +1,18 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 import {
-  buildLineChartModel,
+  buildDonutModel,
   buildStackedBarModel,
+  buildValueAxis,
   buildVisibleTickIndexes,
   formatChartPercentage,
 } from "../utils/chartUtils";
 
 const CHART_FALLBACK_WIDTH = 700;
-const CHART_HEIGHT = 220;
-const CHART_PLOT = Object.freeze({ bottom: 40, left: 52, right: 18, top: 16 });
+const CHART_HEIGHT = 236;
+// Left leaves room for tick values and the rotated axis title; bottom for
+// tick labels plus the x-axis title.
+const CHART_PLOT = Object.freeze({ bottom: 46, left: 58, right: 14, top: 12 });
+const TWO_LINE_BOTTOM = 58;
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -21,6 +25,106 @@ function ChartEmpty({ label = "No chart data is available for this time range." 
 
 function formatChartNumber(value) {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+// Tracks the rendered width so the SVG is drawn 1:1 and its text never scales.
+function useChartWidth(active, minimum = 240) {
+  const [width, setWidth] = useState(CHART_FALLBACK_WIDTH);
+  const observer = useRef(null);
+  const ref = useCallback((node) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!node) return;
+    const update = (next) => {
+      if (Number.isFinite(next) && next > 0) setWidth(Math.max(minimum, Math.round(next)));
+    };
+    update(node.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    observer.current = new ResizeObserver((entries) => update(entries[0]?.contentRect.width));
+    observer.current.observe(node);
+  }, [minimum]);
+  useLayoutEffect(() => () => observer.current?.disconnect(), []);
+  return [active ? ref : undefined, width];
+}
+
+function ChartLegend({ items }) {
+  return (
+    <ul className="chart-key" aria-hidden="true">
+      {items.map((item) => <li key={item.key}><i style={{ background: item.color }} />{item.label}</li>)}
+    </ul>
+  );
+}
+
+// Horizontal gridlines, y tick values, x tick labels and both axis titles,
+// drawn the same way for every vertical chart.
+function CartesianFrame({ width, height, plot, ticks, scaleY, xTicks, xLabel, yLabel }) {
+  const baseline = height - plot.bottom;
+  return (
+    <g className="chart-frame" aria-hidden="true">
+      {ticks.map((value) => (
+        <g key={value}>
+          <line x1={plot.left} x2={width - plot.right} y1={scaleY(value)} y2={scaleY(value)} className={value === 0 ? "chart-baseline" : "chart-grid-line"} />
+          <text x={plot.left - 8} y={scaleY(value)} className="chart-axis-value">{formatChartNumber(value)}</text>
+        </g>
+      ))}
+      {xTicks.map((tick) => (
+        <text key={tick.key} x={tick.x} y={baseline + 16} textAnchor="middle" className="chart-axis-label">
+          {tick.lines.map((line, index) => <tspan key={`${line}-${index}`} x={tick.x} dy={index === 0 ? 0 : 13}>{line}</tspan>)}
+        </text>
+      ))}
+      {yLabel && (
+        <text className="chart-axis-title" transform={`translate(13 ${plot.top + (baseline - plot.top) / 2}) rotate(-90)`} textAnchor="middle">{yLabel}</text>
+      )}
+      {xLabel && (
+        <text className="chart-axis-title" x={plot.left + (width - plot.left - plot.right) / 2} y={height - 6} textAnchor="middle">{xLabel}</text>
+      )}
+    </g>
+  );
+}
+
+function intervalKeyHandler(count, setActiveIndex) {
+  return (event) => {
+    const move = (offset) => setActiveIndex((current) => Math.max(0, Math.min(count - 1, (current ?? count - 1) + offset)));
+    if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); }
+    else if (event.key === "ArrowRight") { event.preventDefault(); move(1); }
+    else if (event.key === "Home") { event.preventDefault(); setActiveIndex(0); }
+    else if (event.key === "End") { event.preventDefault(); setActiveIndex(count - 1); }
+    else if (event.key === "Escape") setActiveIndex(null);
+  };
+}
+
+// A tooltip box kept inside the chart: it drops below the point when there
+// is no room above it.
+function ChartTooltip({ x, y, width, chartWidth, lines }) {
+  const height = 14 + lines.length * 17;
+  const left = Math.max(4, Math.min(chartWidth - width - 4, x - width / 2));
+  const top = y - height - 10 >= 2 ? y - height - 10 : y + 12;
+  return (
+    <g className="chart-tooltip" transform={`translate(${left} ${top})`} aria-hidden="true">
+      <rect width={width} height={height} rx="4" />
+      {lines.map((line, index) => (
+        <g key={`${line.text}-${index}`}>
+          {line.swatch && <circle cx="14" cy={19 + index * 17 - 4} r="4" fill={line.swatch} />}
+          <text x={line.swatch ? 24 : 10} y={19 + index * 17} className={line.className}>{line.text}</text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+// Labels at a fixed stride counted back from the newest interval, so the gaps
+// between them are equal and the most recent interval is always labelled.
+function xAxisTicks(labels, centers, plotWidth) {
+  const maxLabels = Math.max(2, Math.min(8, Math.floor(plotWidth / 92) + 1));
+  const stride = Math.max(1, Math.ceil(labels.length / maxLabels));
+  const indexes = labels.length <= maxLabels
+    ? buildVisibleTickIndexes(labels.length, maxLabels)
+    : labels.map((_, index) => index).filter((index) => (labels.length - 1 - index) % stride === 0);
+  return indexes.map((index) => ({
+    key: `${labels[index]}-${index}`,
+    x: centers[index],
+    lines: String(labels[index]).split("\n"),
+  }));
 }
 
 const SPARKLINE_WIDTH = 72;
@@ -88,409 +192,305 @@ export function ScoreGauge({ score, threshold, belowThreshold }) {
   );
 }
 
-export function LineAreaChart({ values = [], labels = [], title }) {
-  const chartRef = useRef(null);
+/**
+ * One count per time interval, drawn as a line with point markers or as
+ * columns. Both share the axes, tooltip and keyboard model.
+ */
+export function TimeSeriesChart({
+  values = [],
+  labels = [],
+  title,
+  variant = "line",
+  color = "var(--chart-series-1)",
+  unit = "event",
+  xLabel = "Time",
+  yLabel,
+}) {
   const hintId = `soc-chart-hint-${useId().replace(/:/g, "")}`;
-  const [chartWidth, setChartWidth] = useState(CHART_FALLBACK_WIDTH);
+  const series = (Array.isArray(values) ? values : []).map((value) => Math.max(0, finiteNumber(value)));
+  const [ref, chartWidth] = useChartWidth(series.length > 0);
   const [activeIndex, setActiveIndex] = useState(null);
+  if (!series.length) return <ChartEmpty />;
 
-  useLayoutEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return undefined;
-
-    function updateWidth(width) {
-      if (!Number.isFinite(width) || width <= 0) return;
-      setChartWidth(Math.max(320, Math.round(width)));
-    }
-
-    updateWidth(chart.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return undefined;
-
-    const observer = new ResizeObserver((entries) => {
-      updateWidth(entries[0]?.contentRect.width);
-    });
-    observer.observe(chart);
-    return () => observer.disconnect();
-  }, [values]);
-
-  const { baseline, points, ticks } = buildLineChartModel(values, {
-    height: CHART_HEIGHT,
-    plot: CHART_PLOT,
-    width: chartWidth,
-  });
-  if (!points.length) return <ChartEmpty />;
   const safeLabels = Array.isArray(labels) ? labels : [];
-  const displayLabels = points.map((_, index) => String(safeLabels[index] || `Interval ${index + 1}`));
-  const plotWidth = chartWidth - CHART_PLOT.left - CHART_PLOT.right;
-  const maxXAxisLabels = Math.max(2, Math.min(6, Math.floor(plotWidth / 125) + 1));
-  const visibleLabelIndexes = new Set(buildVisibleTickIndexes(points.length, maxXAxisLabels));
-  const slotWidth = plotWidth / points.length;
-  const barWidth = Math.max(2, Math.min(26, slotWidth * 0.6));
-  const activePoint = activeIndex === null ? null : points[activeIndex];
-  const tooltipLabel = activeIndex === null ? "" : displayLabels[activeIndex].replace(/\s*\n\s*/g, " · ");
-  const tooltipWidth = 172;
-  const tooltipHeight = 54;
-  const tooltipX = activePoint
-    ? Math.max(4, Math.min(chartWidth - tooltipWidth - 4, activePoint.x - tooltipWidth / 2))
-    : 0;
-  const tooltipY = activePoint ? Math.max(4, activePoint.y - tooltipHeight - 10) : 0;
-
-  function moveSelection(offset) {
-    setActiveIndex((current) => {
-      const startingIndex = current === null ? points.length - 1 : current;
-      return Math.max(0, Math.min(points.length - 1, startingIndex + offset));
-    });
-  }
-
-  function handleKeyDown(event) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      moveSelection(-1);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      moveSelection(1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setActiveIndex(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setActiveIndex(points.length - 1);
-    } else if (event.key === "Escape") {
-      setActiveIndex(null);
-    }
-  }
+  const displayLabels = series.map((_, index) => String(safeLabels[index] || `Interval ${index + 1}`));
+  const twoLine = displayLabels.some((label) => label.includes("\n"));
+  const plot = { ...CHART_PLOT, bottom: twoLine ? TWO_LINE_BOTTOM : CHART_PLOT.bottom };
+  const baseline = CHART_HEIGHT - plot.bottom;
+  const plotWidth = chartWidth - plot.left - plot.right;
+  const plotHeight = baseline - plot.top;
+  const axis = buildValueAxis(Math.max(...series));
+  const scaleY = (value) => baseline - (value / axis.axisMax) * plotHeight;
+  const slot = plotWidth / series.length;
+  const centers = series.map((_, index) => plot.left + slot * (index + 0.5));
+  const barWidth = Math.max(2, Math.min(44, slot * 0.62));
+  const showMarkers = variant === "line" && series.length <= 60;
+  const showValues = variant === "bar" && series.length <= 14 && barWidth >= 18;
+  const unitLabel = (count) => `${count.toLocaleString()} ${count === 1 ? unit : `${unit}s`}`;
+  const activeLabel = activeIndex === null ? "" : displayLabels[activeIndex].replace(/\s*\n\s*/g, " · ");
+  const path = centers.map((x, index) => `${index ? "L" : "M"}${x.toFixed(1)} ${scaleY(series[index]).toFixed(1)}`).join(" ");
 
   return (
-    <div className="line-chart" ref={chartRef}>
+    <div className="line-chart" ref={ref}>
       <svg
         viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
+        width={chartWidth}
+        height={CHART_HEIGHT}
         role="group"
         aria-label={title || "Events over time"}
         aria-describedby={hintId}
         tabIndex="0"
         onBlur={() => setActiveIndex(null)}
-        onFocus={() => setActiveIndex((current) => current ?? points.length - 1)}
-        onKeyDown={handleKeyDown}
-        onPointerLeave={(event) => {
-          // Keep a tapped interval selected on touch devices; mouse tooltips may dismiss on exit.
-          if (event.pointerType === "mouse") setActiveIndex(null);
-        }}
+        onFocus={() => setActiveIndex((current) => current ?? series.length - 1)}
+        onKeyDown={intervalKeyHandler(series.length, setActiveIndex)}
+        onPointerLeave={(event) => { if (event.pointerType === "mouse") setActiveIndex(null); }}
       >
-        {ticks.map((tick) => (
-          <g key={tick.value}>
-            {tick.value !== 0 && <line x1={CHART_PLOT.left} y1={tick.y} x2={chartWidth - CHART_PLOT.right} y2={tick.y} className="chart-grid-line" />}
-            <text x={CHART_PLOT.left - 8} y={tick.y} className="chart-axis-value">{formatChartNumber(tick.value)}</text>
-          </g>
-        ))}
-        <line x1={CHART_PLOT.left} y1={CHART_PLOT.top} x2={CHART_PLOT.left} y2={baseline} className="chart-axis-line" />
-        <line x1={CHART_PLOT.left} y1={baseline} x2={chartWidth - CHART_PLOT.right} y2={baseline} className="chart-axis-line" />
-        {points.map((point, index) => (
+        <CartesianFrame
+          width={chartWidth}
+          height={CHART_HEIGHT}
+          plot={plot}
+          ticks={axis.ticks}
+          scaleY={scaleY}
+          xTicks={xAxisTicks(displayLabels, centers, plotWidth)}
+          xLabel={xLabel}
+          yLabel={yLabel || `${unit[0].toUpperCase()}${unit.slice(1)}s`}
+        />
+        {activeIndex !== null && (
+          <rect className="chart-active-band" x={plot.left + slot * activeIndex} y={plot.top} width={slot} height={plotHeight} />
+        )}
+        {variant === "bar" ? series.map((value, index) => (
           <g key={`${displayLabels[index]}-${index}`}>
-            <rect
-              className="chart-hit-area"
-              x={index === 0 ? CHART_PLOT.left : (points[index - 1].x + point.x) / 2}
-              y={CHART_PLOT.top}
-              width={(index === points.length - 1 ? chartWidth - CHART_PLOT.right : (point.x + points[index + 1].x) / 2) - (index === 0 ? CHART_PLOT.left : (points[index - 1].x + point.x) / 2)}
-              height={baseline - CHART_PLOT.top}
-              onClick={() => setActiveIndex(index)}
-              onPointerEnter={() => setActiveIndex(index)}
-              onPointerMove={() => setActiveIndex(index)}
-            />
             <rect
               className="chart-bar-segment"
               data-active={activeIndex === index || undefined}
-              fill="var(--soc-accent)"
-              x={point.x - barWidth / 2}
-              y={point.y}
+              fill={color}
+              x={centers[index] - barWidth / 2}
+              y={scaleY(value)}
               width={barWidth}
-              height={Math.max(0, baseline - point.y)}
-              rx={barWidth >= 4 ? 2 : 0}
+              height={Math.max(0, baseline - scaleY(value))}
             />
+            {showValues && value > 0 && (
+              <text className="chart-value-label" x={centers[index]} y={scaleY(value) - 6} textAnchor="middle">{formatChartNumber(value)}</text>
+            )}
           </g>
-        ))}
-        {activePoint && (
-          <g className="chart-active-layer" aria-hidden="true">
-            <line x1={activePoint.x} y1={CHART_PLOT.top} x2={activePoint.x} y2={baseline} className="chart-active-guide" />
-            <g className="chart-tooltip" transform={`translate(${tooltipX} ${tooltipY})`}>
-              <rect width={tooltipWidth} height={tooltipHeight} rx="4" />
-              <text x="12" y="20">{tooltipLabel}</text>
-              <text x="12" y="41" className="chart-tooltip-value">{activePoint.value.toLocaleString()} {activePoint.value === 1 ? "event" : "events"}</text>
-            </g>
+        )) : (
+          <g>
+            <path d={path} className="chart-line" stroke={color} />
+            {centers.map((x, index) => ((showMarkers || activeIndex === index) && (
+              <circle
+                key={`${displayLabels[index]}-${index}`}
+                className="chart-point"
+                data-active={activeIndex === index || undefined}
+                cx={x}
+                cy={scaleY(series[index])}
+                r={activeIndex === index ? 4.5 : 3}
+                stroke={color}
+              />
+            )))}
           </g>
         )}
-        <g className="chart-x-axis" aria-hidden="true">
-          {points.map((point, index) => {
-            if (!visibleLabelIndexes.has(index)) return null;
-            const lines = displayLabels[index].split("\n");
-            const textAnchor = index === 0 ? "start" : index === points.length - 1 ? "end" : "middle";
-            return (
-              <g key={`${displayLabels[index]}-axis-${index}`}>
-                <line x1={point.x} y1={baseline} x2={point.x} y2={baseline + 5} className="chart-axis-tick" />
-                <text x={point.x} y={baseline + 20} textAnchor={textAnchor} className="chart-axis-label">
-                  {lines.map((labelLine, lineIndex) => (
-                    <tspan key={`${labelLine}-${lineIndex}`} x={point.x} dy={lineIndex === 0 ? 0 : 13}>{labelLine}</tspan>
-                  ))}
-                </text>
-              </g>
-            );
-          })}
-        </g>
+        {series.map((_, index) => (
+          <rect
+            key={`hit-${index}`}
+            className="chart-hit-area"
+            x={plot.left + slot * index}
+            y={plot.top}
+            width={slot}
+            height={plotHeight}
+            onClick={() => setActiveIndex(index)}
+            onPointerEnter={() => setActiveIndex(index)}
+          />
+        ))}
+        {activeIndex !== null && (
+          <ChartTooltip
+            x={centers[activeIndex]}
+            y={scaleY(series[activeIndex])}
+            width={Math.min(180, chartWidth - 8)}
+            chartWidth={chartWidth}
+            lines={[
+              { text: activeLabel, className: "chart-tooltip-label" },
+              { text: unitLabel(series[activeIndex]), className: "chart-tooltip-value", swatch: color },
+            ]}
+          />
+        )}
       </svg>
       <span className="sr-only" id={hintId}>Use Left and Right arrow keys to inspect intervals when the chart is focused.</span>
-      <span className="chart-live-value" aria-live="polite">
-        {activePoint ? `${tooltipLabel}: ${activePoint.value} ${activePoint.value === 1 ? "event" : "events"}` : ""}
-      </span>
+      <span className="chart-live-value" aria-live="polite">{activeIndex === null ? "" : `${activeLabel}: ${unitLabel(series[activeIndex])}`}</span>
     </div>
   );
 }
 
-export function StackedBarChart({ buckets = [], series = [], title }) {
-  const chartRef = useRef(null);
+export function LineAreaChart(props) {
+  return <TimeSeriesChart {...props} variant="line" />;
+}
+
+export function ColumnChart(props) {
+  return <TimeSeriesChart {...props} variant="bar" />;
+}
+
+/** Counts per interval split by series, stacked in the order given (first at the bottom). */
+export function StackedBarChart({ buckets = [], series = [], title, xLabel = "Time", yLabel = "Alerts" }) {
   const hintId = `soc-stacked-chart-hint-${useId().replace(/:/g, "")}`;
-  const [chartWidth, setChartWidth] = useState(CHART_FALLBACK_WIDTH);
-  const [activeIndex, setActiveIndex] = useState(null);
-
-  useLayoutEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return undefined;
-
-    function updateWidth(width) {
-      if (!Number.isFinite(width) || width <= 0) return;
-      setChartWidth(Math.max(320, Math.round(width)));
-    }
-
-    updateWidth(chart.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return undefined;
-
-    const observer = new ResizeObserver((entries) => updateWidth(entries[0]?.contentRect.width));
-    observer.observe(chart);
-    return () => observer.disconnect();
-  }, [buckets, series]);
-
   const normalizedSeries = (Array.isArray(series) ? series : [])
     .filter((item) => item && String(item.key || "").trim())
-    .map((item) => ({
-      color: item.color || "var(--soc-accent)",
-      key: String(item.key).trim(),
-      label: String(item.label || item.key),
-    }));
-  const model = buildStackedBarModel(buckets, normalizedSeries.map((item) => item.key), {
-    height: CHART_HEIGHT,
-    plot: CHART_PLOT,
-    width: chartWidth,
-  });
-  if (!model.bars.length || model.total <= 0) {
-    return <ChartEmpty label="No alerts are available for this time range." />;
-  }
+    .map((item) => ({ color: item.color || "var(--chart-series-1)", key: String(item.key).trim(), label: String(item.label || item.key) }));
+  const hasBuckets = Array.isArray(buckets) && buckets.length > 0;
+  const [ref, chartWidth] = useChartWidth(hasBuckets);
+  const [activeIndex, setActiveIndex] = useState(null);
+  const twoLine = hasBuckets && buckets.some((bucket) => String(bucket?.label || "").includes("\n"));
+  const plot = { ...CHART_PLOT, bottom: twoLine ? TWO_LINE_BOTTOM : CHART_PLOT.bottom };
+  const model = buildStackedBarModel(buckets, normalizedSeries.map((item) => item.key), { height: CHART_HEIGHT, plot, width: chartWidth });
+  if (!model.bars.length || model.total <= 0) return <ChartEmpty label="No alerts are available for this time range." />;
 
-  const plotWidth = chartWidth - CHART_PLOT.left - CHART_PLOT.right;
-  const slotWidth = plotWidth / model.bars.length;
-  const maxXAxisLabels = Math.max(2, Math.min(6, Math.floor(plotWidth / 120) + 1));
-  const visibleLabelIndexes = new Set(buildVisibleTickIndexes(model.bars.length, maxXAxisLabels));
+  const plotWidth = chartWidth - plot.left - plot.right;
+  const plotHeight = model.baseline - plot.top;
+  const axisMax = model.axisMax || 1;
+  const scaleY = (value) => model.baseline - (value / axisMax) * plotHeight;
+  const slot = plotWidth / model.bars.length;
+  const centers = model.bars.map((bar) => bar.x + bar.width / 2);
   const activeBar = activeIndex === null ? null : model.bars[activeIndex];
-  const tooltipWidth = Math.min(220, chartWidth - 8);
-  const tooltipHeight = 98;
-  const activeCenter = activeBar ? activeBar.x + activeBar.width / 2 : 0;
-  const activeTop = activeBar ? Math.min(...activeBar.segments.map((segment) => segment.y)) : 0;
-  const tooltipX = activeBar
-    ? Math.max(4, Math.min(chartWidth - tooltipWidth - 4, activeCenter - tooltipWidth / 2))
-    : 0;
-  const tooltipY = activeBar ? Math.max(4, activeTop - tooltipHeight - 9) : 0;
-  const tooltipLabel = activeBar?.label.replace(/\s*\n\s*/g, " · ") || "";
-  const tooltipBreakdown = activeBar
-    ? normalizedSeries.map((item) => `${item.label} ${activeBar.values[item.key]}`).join(" · ")
-    : "";
-  const tooltipBreakdownRows = activeBar
-    ? [normalizedSeries.slice(0, 2), normalizedSeries.slice(2, 4)]
-      .filter((row) => row.length)
-      .map((row) => row.map((item) => `${item.label} ${activeBar.values[item.key]}`).join(" · "))
-    : [];
-
-  function moveSelection(offset) {
-    setActiveIndex((current) => {
-      const startingIndex = current === null ? model.bars.length - 1 : current;
-      return Math.max(0, Math.min(model.bars.length - 1, startingIndex + offset));
-    });
-  }
-
-  function handleKeyDown(event) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      moveSelection(-1);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      moveSelection(1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setActiveIndex(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setActiveIndex(model.bars.length - 1);
-    } else if (event.key === "Escape") {
-      setActiveIndex(null);
-    }
-  }
+  const activeLabel = activeBar?.label.replace(/\s*\n\s*/g, " · ") || "";
+  const breakdown = activeBar ? normalizedSeries.map((item) => `${item.label} ${activeBar.values[item.key]}`).join(", ") : "";
+  const ticks = model.ticks.map((tick) => tick.value);
 
   return (
-    <div className="stacked-bar-chart" ref={chartRef}>
+    <div className="stacked-bar-chart" ref={ref}>
+      <ChartLegend items={normalizedSeries} />
       <svg
         viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
+        width={chartWidth}
+        height={CHART_HEIGHT}
         role="group"
         aria-label={title || "Alert volume by severity"}
         aria-describedby={hintId}
         tabIndex="0"
         onBlur={() => setActiveIndex(null)}
         onFocus={() => setActiveIndex((current) => current ?? model.bars.length - 1)}
-        onKeyDown={handleKeyDown}
-        onPointerLeave={(event) => {
-          if (event.pointerType === "mouse") setActiveIndex(null);
-        }}
+        onKeyDown={intervalKeyHandler(model.bars.length, setActiveIndex)}
+        onPointerLeave={(event) => { if (event.pointerType === "mouse") setActiveIndex(null); }}
       >
-        {model.ticks.map((tick) => (
-          <g key={tick.value}>
-            {tick.value !== 0 && <line x1={CHART_PLOT.left} y1={tick.y} x2={chartWidth - CHART_PLOT.right} y2={tick.y} className="chart-grid-line" />}
-            <text x={CHART_PLOT.left - 8} y={tick.y} className="chart-axis-value">{formatChartNumber(tick.value)}</text>
-          </g>
-        ))}
-        <line x1={CHART_PLOT.left} y1={CHART_PLOT.top} x2={CHART_PLOT.left} y2={model.baseline} className="chart-axis-line" />
-        <line x1={CHART_PLOT.left} y1={model.baseline} x2={chartWidth - CHART_PLOT.right} y2={model.baseline} className="chart-axis-line" />
+        <CartesianFrame
+          width={chartWidth}
+          height={CHART_HEIGHT}
+          plot={plot}
+          ticks={ticks}
+          scaleY={scaleY}
+          xTicks={xAxisTicks(model.bars.map((bar) => bar.label), centers, plotWidth)}
+          xLabel={xLabel}
+          yLabel={yLabel}
+        />
+        {activeBar && <rect className="chart-active-band" x={plot.left + slot * activeIndex} y={plot.top} width={slot} height={plotHeight} />}
         {model.bars.map((bar, index) => (
           <g className="chart-bar-group" data-active={activeIndex === index || undefined} key={`${bar.label}-${index}`}>
-            {bar.segments.map((segment) => (
-              segment.height > 0 && (
-                <rect
-                  className="chart-bar-segment"
-                  fill={normalizedSeries.find((item) => item.key === segment.key)?.color}
-                  height={segment.height}
-                  key={segment.key}
-                  rx={segment.height >= 4 ? 2 : 0}
-                  width={bar.width}
-                  x={bar.x}
-                  y={segment.y}
-                />
-              )
-            ))}
-            {activeIndex === index && (
+            {bar.segments.map((segment) => segment.height > 0 && (
               <rect
-                className="chart-bar-outline"
-                height={model.baseline - Math.min(...bar.segments.map((segment) => segment.y))}
-                rx="3"
-                width={bar.width + 4}
-                x={bar.x - 2}
-                y={Math.min(...bar.segments.map((segment) => segment.y))}
+                className="chart-bar-segment"
+                fill={normalizedSeries.find((item) => item.key === segment.key)?.color}
+                height={segment.height}
+                key={segment.key}
+                width={bar.width}
+                x={bar.x}
+                y={segment.y}
               />
-            )}
+            ))}
             <rect
               className="chart-hit-area"
-              height={model.baseline - CHART_PLOT.top}
+              height={plotHeight}
               onClick={() => setActiveIndex(index)}
               onPointerEnter={() => setActiveIndex(index)}
-              onPointerMove={() => setActiveIndex(index)}
-              width={slotWidth}
-              x={CHART_PLOT.left + index * slotWidth}
-              y={CHART_PLOT.top}
+              width={slot}
+              x={plot.left + index * slot}
+              y={plot.top}
             />
           </g>
         ))}
-        <g className="chart-x-axis" aria-hidden="true">
-          {model.bars.map((bar, index) => {
-            if (!visibleLabelIndexes.has(index)) return null;
-            const x = bar.x + bar.width / 2;
-            const lines = bar.label.split("\n");
-            const textAnchor = index === 0 ? "start" : index === model.bars.length - 1 ? "end" : "middle";
-            return (
-              <g key={`${bar.label}-axis-${index}`}>
-                <line x1={x} y1={model.baseline} x2={x} y2={model.baseline + 5} className="chart-axis-tick" />
-                <text x={x} y={model.baseline + 20} textAnchor={textAnchor} className="chart-axis-label">
-                  {lines.map((line, lineIndex) => (
-                    <tspan key={`${line}-${lineIndex}`} x={x} dy={lineIndex === 0 ? 0 : 13}>{line}</tspan>
-                  ))}
-                </text>
-              </g>
-            );
-          })}
-        </g>
         {activeBar && (
-          <g className="chart-active-layer chart-tooltip" aria-hidden="true" transform={`translate(${tooltipX} ${tooltipY})`}>
-            <rect width={tooltipWidth} height={tooltipHeight} rx="4" />
-            <text x="12" y="20">{tooltipLabel}</text>
-            <text x="12" y="42" className="chart-tooltip-value">{activeBar.total.toLocaleString()} {activeBar.total === 1 ? "alert" : "alerts"}</text>
-            {tooltipBreakdownRows.map((row, rowIndex) => (
-              <text x="12" y={66 + rowIndex * 16} className="chart-tooltip-breakdown" key={row}>{row}</text>
-            ))}
-          </g>
+          <ChartTooltip
+            x={centers[activeIndex]}
+            y={scaleY(activeBar.total)}
+            width={Math.min(170, chartWidth - 8)}
+            chartWidth={chartWidth}
+            lines={[
+              { text: activeLabel, className: "chart-tooltip-label" },
+              { text: `${activeBar.total.toLocaleString()} ${activeBar.total === 1 ? "alert" : "alerts"}`, className: "chart-tooltip-value" },
+              ...normalizedSeries.map((item) => ({
+                text: `${item.label}: ${activeBar.values[item.key].toLocaleString()}`,
+                className: "chart-tooltip-breakdown",
+                swatch: item.color,
+              })),
+            ]}
+          />
         )}
       </svg>
       <span className="sr-only" id={hintId}>Use Left and Right arrow keys to inspect alert intervals when the chart is focused.</span>
-      <span className="chart-live-value" aria-live="polite">
-        {activeBar ? `${tooltipLabel}: ${activeBar.total} alerts. ${tooltipBreakdown}` : ""}
-      </span>
+      <span className="chart-live-value" aria-live="polite">{activeBar ? `${activeLabel}: ${activeBar.total} alerts. ${breakdown}` : ""}</span>
     </div>
   );
 }
 
+const DONUT_HEIGHT = 224;
+
+/** Share of a total, with each slice labelled outside the ring on a leader line. */
 export function DonutChart({ segments = [], totalLabel = "alerts" }) {
   const normalized = (Array.isArray(segments) ? segments : []).map((segment, index) => ({
     ...segment,
-    color: segment?.color || "var(--soc-accent)",
+    color: segment?.color || "var(--chart-series-1)",
     label: String(segment?.label || `Series ${index + 1}`),
     value: Math.max(0, finiteNumber(segment?.value)),
   }));
   const total = normalized.reduce((sum, segment) => sum + segment.value, 0);
+  const [ref, width] = useChartWidth(total > 0, 220);
+  const [active, setActive] = useState(null);
   if (!normalized.length || total <= 0) return <ChartEmpty />;
-  const visibleSegments = normalized.filter((segment) => segment.value > 0);
-  let cursor = 0;
-  const stops = visibleSegments.flatMap((segment) => {
-    const start = (cursor / total) * 360;
-    cursor += segment.value;
-    const end = (cursor / total) * 360;
-    const segmentSpan = end - start;
-    // A bounded separator preserves tiny non-zero slices while still giving
-    // every visible severity a clear visual boundary.
-    const halfGap = visibleSegments.length > 1
-      ? Math.min(1.2, segmentSpan * 0.2)
-      : 0;
-    return [
-      `var(--soc-surface) ${start}deg ${start + halfGap}deg`,
-      `${segment.color} ${start + halfGap}deg ${end - halfGap}deg`,
-      `var(--soc-surface) ${end - halfGap}deg ${end}deg`,
-    ];
-  });
+  const model = buildDonutModel(normalized, { width, height: DONUT_HEIGHT });
+  const summary = normalized.map((segment) => `${segment.label} ${segment.value.toLocaleString()} (${formatChartPercentage(segment.value, total)})`).join(", ");
+  const dimmed = (label) => (active !== null && active !== label ? "true" : undefined);
 
   return (
-    <div className="donut-layout">
-      <div className="donut-chart" style={{ background: `conic-gradient(${stops.join(",")})` }} role="img" aria-label={`${total.toLocaleString()} ${totalLabel}`}>
-        <span><strong>{total.toLocaleString()}</strong><small>{totalLabel}</small></span>
-      </div>
-      <ul className="chart-legend">
-        {normalized.map((segment, index) => (
-          <li key={`${segment.label}-${index}`} aria-label={`${segment.label}: ${segment.value.toLocaleString()} (${formatChartPercentage(segment.value, total)})`}>
-            <i style={{ background: segment.color }} />
-            <span>{segment.label}</span>
-            <strong>
-              <span>{segment.value.toLocaleString()}</span>
-              <small>({formatChartPercentage(segment.value, total)})</small>
-            </strong>
-          </li>
+    <div className="donut-svg" ref={ref}>
+      <svg viewBox={`0 0 ${width} ${DONUT_HEIGHT}`} width={width} height={DONUT_HEIGHT} role="img" aria-label={`${total.toLocaleString()} ${totalLabel}: ${summary}`}>
+        {model.slices.map((slice) => (
+          <path
+            key={slice.label}
+            d={slice.path}
+            fill={slice.color}
+            className="chart-donut-slice"
+            data-dim={dimmed(slice.label)}
+            onPointerEnter={() => setActive(slice.label)}
+            onPointerLeave={() => setActive(null)}
+          >
+            <title>{`${slice.label}: ${slice.value.toLocaleString()} (${formatChartPercentage(slice.value, total)})`}</title>
+          </path>
         ))}
-      </ul>
+        <text x={model.cx} y={model.cy + 2} textAnchor="middle" className="chart-donut-total">{total.toLocaleString()}</text>
+        <text x={model.cx} y={model.cy + 18} textAnchor="middle" className="chart-donut-caption">{totalLabel}</text>
+        {model.slices.map((slice) => {
+          const right = slice.side === "right";
+          const lineEnd = slice.labelX + (right ? -4 : 4);
+          return (
+            <g key={`label-${slice.label}`} className="chart-donut-label" data-dim={dimmed(slice.label)} aria-hidden="true">
+              <polyline
+                points={`${slice.anchor.x.toFixed(1)},${slice.anchor.y.toFixed(1)} ${slice.elbow.x.toFixed(1)},${slice.labelY.toFixed(1)} ${lineEnd.toFixed(1)},${slice.labelY.toFixed(1)}`}
+                className="chart-leader"
+              />
+              <text x={slice.labelX} y={slice.labelY - 3} textAnchor={right ? "start" : "end"} className="chart-donut-name">{slice.label}</text>
+              <text x={slice.labelX} y={slice.labelY + 11} textAnchor={right ? "start" : "end"} className="chart-donut-share">
+                {slice.value.toLocaleString()} ({formatChartPercentage(slice.value, total)})
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
 
-// Items are drawn in the order given, so callers sort them (see sortByValueDesc).
-export function HorizontalBarChart({ items = [], title }) {
-  const normalized = (Array.isArray(items) ? items : []).map((item, index) => ({
-    key: `${item?.label ?? ""}-${index}`,
-    label: String(item?.label ?? `Item ${index + 1}`),
-    color: item?.color || "var(--soc-accent)",
-    value: Math.max(0, finiteNumber(item?.value)),
-  }));
-  const max = normalized.reduce((top, item) => Math.max(top, item.value), 0);
-  if (!normalized.length || max <= 0) return <ChartEmpty />;
+// Compact factor bars for small cards: no axis, value at the bar end.
+function CompactBars({ items, title }) {
+  const max = items.reduce((top, item) => Math.max(top, item.value), 0);
   return (
     <ul className="chart-hbar" aria-label={title}>
-      {normalized.map((item) => (
+      {items.map((item) => (
         <li key={item.key} aria-label={`${item.label}: ${item.value.toLocaleString()}`}>
           <span className="chart-hbar-label" title={item.label}>{item.label}</span>
           <span className="chart-hbar-track" aria-hidden="true">
@@ -500,6 +500,65 @@ export function HorizontalBarChart({ items = [], title }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+const HBAR_ROW = 28;
+const HBAR_THICKNESS = 17;
+const HBAR_CHAR = 6.4;
+
+// Items are drawn in the order given, so callers sort them (see sortByValueDesc).
+export function HorizontalBarChart({ items = [], title, xLabel, compact = false, labelShare = 0.38, formatValue }) {
+  const normalized = (Array.isArray(items) ? items : []).map((item, index) => ({
+    key: `${item?.label ?? ""}-${index}`,
+    label: String(item?.label ?? `Item ${index + 1}`),
+    detail: item?.detail ? String(item.detail) : "",
+    color: item?.color || "var(--chart-series-1)",
+    value: Math.max(0, finiteNumber(item?.value)),
+  }));
+  const valueText = (value) => (formatValue ? formatValue(value) : value.toLocaleString());
+  const max = normalized.reduce((top, item) => Math.max(top, item.value), 0);
+  const [ref, width] = useChartWidth(!compact && max > 0, 220);
+  if (!normalized.length || max <= 0) return <ChartEmpty />;
+  if (compact) return <CompactBars items={normalized} title={title} />;
+
+  const longest = normalized.reduce((top, item) => Math.max(top, item.label.length), 0);
+  const labelWidth = Math.min(width * labelShare, Math.max(48, longest * HBAR_CHAR + 10));
+  const plot = { top: 4, right: 40, bottom: xLabel ? 42 : 24, left: labelWidth + 10 };
+  const height = plot.top + normalized.length * HBAR_ROW + plot.bottom;
+  const plotWidth = width - plot.left - plot.right;
+  const axis = buildValueAxis(max);
+  const scaleX = (value) => plot.left + (value / axis.axisMax) * plotWidth;
+  const baseline = height - plot.bottom;
+  const room = Math.floor((labelWidth - 4) / HBAR_CHAR);
+  const truncate = (label) => (label.length > room ? `${label.slice(0, Math.max(1, room - 1))}…` : label);
+
+  return (
+    <div className="hbar-chart" ref={ref}>
+      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="list" aria-label={title}>
+        <g aria-hidden="true">
+          {axis.ticks.map((value) => (
+            <g key={value}>
+              <line x1={scaleX(value)} x2={scaleX(value)} y1={plot.top} y2={baseline} className={value === 0 ? "chart-baseline" : "chart-grid-line"} />
+              <text x={scaleX(value)} y={baseline + 15} textAnchor="middle" className="chart-axis-label">{formatChartNumber(value)}</text>
+            </g>
+          ))}
+          {xLabel && <text x={plot.left + plotWidth / 2} y={height - 6} textAnchor="middle" className="chart-axis-title">{xLabel}</text>}
+        </g>
+        {normalized.map((item, index) => {
+          const y = plot.top + index * HBAR_ROW + (HBAR_ROW - HBAR_THICKNESS) / 2;
+          const end = scaleX(item.value);
+          return (
+            <g key={item.key} role="listitem" aria-label={`${item.label}: ${valueText(item.value)}${item.detail ? `, ${item.detail}` : ""}`}>
+              <title>{`${item.label}: ${valueText(item.value)}${item.detail ? `\n${item.detail}` : ""}`}</title>
+              <text x={plot.left - 10} y={y + HBAR_THICKNESS / 2} textAnchor="end" className="chart-category-label">{truncate(item.label)}</text>
+              <rect className="chart-bar-segment" x={plot.left} y={y} width={Math.max(item.value > 0 ? 1.5 : 0, end - plot.left)} height={HBAR_THICKNESS} fill={item.color} />
+              <text x={end + 6} y={y + HBAR_THICKNESS / 2} className="chart-value-label chart-value-label-end">{valueText(item.value)}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -524,16 +583,17 @@ export function HeatmapChart({ columns = [], rows = [], max = 0, title }) {
                 <th scope="row">{row.label}</th>
                 {row.cells.map((value, index) => {
                   const description = `${row.label}, ${columns[index]}: ${value.toLocaleString()}`;
-                  const strength = value > 0 ? Math.max(12, (value / max) * 100) : 0;
+                  const strength = value > 0 ? Math.max(18, (value / max) * 100) : 0;
                   return (
                     <td
                       key={`${row.key}-${index}`}
                       className="chart-heatmap-cell"
+                      data-strong={strength >= 60 || undefined}
                       style={value > 0 ? { background: `color-mix(in srgb, ${row.color} ${strength}%, var(--soc-surface-subtle))` } : undefined}
                       title={description}
                       aria-label={description}
                     >
-                      {value.toLocaleString()}
+                      {value > 0 ? value.toLocaleString() : ""}
                     </td>
                   );
                 })}
@@ -546,7 +606,7 @@ export function HeatmapChart({ columns = [], rows = [], max = 0, title }) {
         <span>0</span>
         <i />
         <span>{max.toLocaleString()}</span>
-        <small>Darker cells mean more alerts. Colour follows severity.</small>
+        <small>Stronger colour means more alerts. Empty cells had none.</small>
       </div>
     </div>
   );

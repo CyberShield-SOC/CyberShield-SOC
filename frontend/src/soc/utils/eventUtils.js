@@ -1,4 +1,3 @@
-const SPREADSHEET_FORMULA_PREFIX = /^[\s\u0000-\u001f]*[=+\-@]/;
 
 // Mirrors backend/app/middleware/file_validation.py's MAX_FILE_SIZE_BYTES —
 // keep both in sync so a large file fails fast client-side instead of only
@@ -43,24 +42,6 @@ export function formatTimestamp(value) {
   }).format(date);
 }
 
-export function escapeCsvCell(value) {
-  let safeValue = String(value ?? "").replace(/\r?\n/g, " ");
-  if (SPREADSHEET_FORMULA_PREFIX.test(safeValue)) safeValue = `'${safeValue}`;
-  return `"${safeValue.replace(/"/g, '""')}"`;
-}
-
-export function eventsToCsv(events) {
-  const columns = ["id", "timestamp", "source", "sourceIp", "user", "event", "severity", "status", "risk", "rule"];
-  return [
-    columns.map(escapeCsvCell).join(","),
-    ...events.map((event) => columns.map((key) => escapeCsvCell(event[key])).join(",")),
-  ].join("\n");
-}
-
-export function downloadEventsCsv(events) {
-  return downloadCsvFile(eventsToCsv(events), `cybershield-events-${new Date().toISOString().slice(0, 10)}.csv`);
-}
-
 export function downloadBlobFile(blob, filename) {
   const url = URL.createObjectURL(blob);
   let link;
@@ -77,45 +58,6 @@ export function downloadBlobFile(blob, filename) {
   }
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return filename;
-}
-
-export function downloadCsvFile(csv, filename) {
-  return downloadBlobFile(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }), filename);
-}
-
-export function incidentsToCsv(incidents) {
-  const columns = ["id", "title", "owner", "priority", "status", "updated", "completedAt", "completedBy", "summary", "resolutionReason", "resolutionNote"];
-  return [
-    columns.map(escapeCsvCell).join(","),
-    ...incidents.map((incident) => columns.map((key) => escapeCsvCell(incident[key])).join(",")),
-  ].join("\n");
-}
-
-export function downloadIncidentsCsv(incidents) {
-  return downloadCsvFile(incidentsToCsv(incidents), `cybershield-incident-history-${new Date().toISOString().slice(0, 10)}.csv`);
-}
-
-export function alertsToCsv(alerts) {
-  const columns = ["id", "ruleId", "ruleName", "severity", "status", "sourceIp", "user", "firstSeen", "lastSeen", "summary"];
-  return [
-    columns.map(escapeCsvCell).join(","),
-    ...alerts.map((alert) => columns.map((key) => escapeCsvCell(alert[key])).join(",")),
-  ].join("\n");
-}
-
-export function downloadAlertsCsv(alerts, filenamePrefix = "alerts") {
-  return downloadCsvFile(alertsToCsv(alerts), `cybershield-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`);
-}
-
-// One row per detection rule (see reportExport.js's summarizeRuleCoverage),
-// not one row per alert — a coverage report is about which rules are
-// firing, not a raw alert dump.
-export function detectionCoverageToCsv(rows) {
-  const columns = ["ruleId", "ruleName", "mitreTechnique", "count", "critical", "high", "medium", "low", "firstSeen", "lastSeen"];
-  return [
-    columns.map(escapeCsvCell).join(","),
-    ...rows.map((row) => columns.map((key) => escapeCsvCell(row[key])).join(",")),
-  ].join("\n");
 }
 
 export function validateLogFile(

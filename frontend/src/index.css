@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Flat icon palette (src/icons). One set of hues for both themes: every tone
+   holds at least 3:1 against both the light panels and the dark shell. */
+:root {
+  --ico-teal: #1aae9c;
+  --ico-teal-d: #12857a;
+  --ico-blue: #3b8bea;
+  --ico-blue-d: #2766c0;
+  --ico-coral: #f0645a;
+  --ico-coral-d: #c94a41;
+  --ico-amber: #f5b335;
+  --ico-amber-d: #d48f12;
+  --ico-green: #2db86c;
+  --ico-green-d: #1e9152;
+  --ico-slate: #71849a;
+  --ico-slate-d: #5a6c80;
+  --ico-navy: #1f3347;
+  --ico-paper: #e6edf5;
+  --ico-paper-d: #b6c7da;
+  --ico-cut: transparent;
+}
+
+.flat-icon { flex-shrink: 0; overflow: visible; }
+
 /* Base document defaults */
 :root {
   --font-display: "Space Grotesk", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;

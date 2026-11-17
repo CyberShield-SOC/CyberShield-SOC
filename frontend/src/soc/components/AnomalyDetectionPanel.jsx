@@ -1,4 +1,5 @@
-import { ArrowRight, BrainCircuit } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ArrowRight, BrainCircuit } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { HorizontalBarChart, ScoreGauge } from "./Charts";
 import { InlineNotice, LoadingState, Panel, StatusBadge } from "./Ui";
@@ -31,7 +32,13 @@ function AnomalyCard({ title, entity, score, threshold, belowThreshold, bars, wh
       <ScoreGauge score={score} threshold={threshold} belowThreshold={belowThreshold} />
       {Boolean(bars.length) && (
         <div className="dashboard-anomaly-bars">
-          <HorizontalBarChart items={bars} title={`${title}: contributing factors, standard deviations from the learned baseline`} />
+          <HorizontalBarChart
+            items={bars}
+            title={`${title}: contributing factors, standard deviations from the learned baseline`}
+            xLabel="Std. deviations from baseline"
+            labelShare={0.5}
+            formatValue={(value) => value.toFixed(1)}
+          />
         </div>
       )}
       <small>
@@ -76,6 +83,50 @@ function PilotStatus({ pilot }) {
   );
 }
 
+const VISIBLE_ROWS = 2;
+
+/**
+ * Caps the findings area at two rows of cards and scrolls the rest. Rows are
+ * measured, not assumed: the grid wraps differently at every width and cards
+ * differ in height, so a fixed max-height would cut a row in half.
+ */
+function useRowLimit(rows, contentKey) {
+  const ref = useRef(null);
+  const [limit, setLimit] = useState({ maxHeight: null, hidden: 0 });
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    function measure() {
+      const origin = node.getBoundingClientRect().top - node.scrollTop;
+      const cards = [...node.querySelectorAll(".dashboard-anomaly-card")].map((card) => {
+        const box = card.getBoundingClientRect();
+        return { top: Math.round(box.top - origin), bottom: box.bottom - origin };
+      });
+      const rowTops = [];
+      for (const card of cards.slice().sort((a, b) => a.top - b.top)) {
+        if (!rowTops.length || card.top - rowTops.at(-1) > 2) rowTops.push(card.top);
+      }
+      if (rowTops.length <= rows) {
+        setLimit((current) => (current.maxHeight === null ? current : { maxHeight: null, hidden: 0 }));
+        return;
+      }
+      const lastTop = rowTops[rows - 1];
+      const shown = cards.filter((card) => card.top <= lastTop + 2);
+      const maxHeight = Math.ceil(Math.max(...shown.map((card) => card.bottom)) + 4);
+      const hidden = cards.length - shown.length;
+      setLimit((current) => (current.maxHeight === maxHeight && current.hidden === hidden ? current : { maxHeight, hidden }));
+    }
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [rows, contentKey]);
+
+  return [ref, limit];
+}
+
 /**
  * Dashboard panel for the behavioral_anomaly_* rules. Those rules default to
  * shadow mode, so alert rows alone left this panel empty even on a workspace
@@ -91,6 +142,8 @@ export function AnomalyDetectionPanel({ alerts, modelStatus, navigate, pilots, l
   const flaggedCount = shadowFindings.filter(({ row }) => row.belowThreshold).length;
   const anyLive = pilots.some((pilot) => pilot.activeModel && !pilot.shadowMode);
   const subtitle = modelStatus || (anyLive ? "IsolationForest · alerting" : "IsolationForest · shadow mode");
+  const [scrollRef, { maxHeight, hidden }] = useRowLimit(VISIBLE_ROWS, `${anomalyAlerts.length}:${shadowFindings.length}:${loading}`);
+  const scrolls = maxHeight !== null;
 
   return (
     <Panel
@@ -105,60 +158,75 @@ export function AnomalyDetectionPanel({ alerts, modelStatus, navigate, pilots, l
     >
       {error && <InlineNotice tone="error" title="Findings unavailable">{error}</InlineNotice>}
 
-      {Boolean(anomalyAlerts.length) && (
-        <div className="dashboard-anomaly-section">
-          <h3>Raised alerts<small>{anomalyAlerts.length} in this time range</small></h3>
-          <ol className="dashboard-anomaly-cards">
-            {anomalyAlerts.map((alert) => {
-              const insight = alert.mlInsight;
-              const bars = deviationBars(insight?.deviations);
-              return (
+      <div
+        className="dashboard-anomaly-scroll"
+        ref={scrollRef}
+        data-scrolls={scrolls || undefined}
+        style={scrolls ? { maxHeight } : undefined}
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls ? "Anomaly findings, scroll for more" : undefined}
+        tabIndex={scrolls ? 0 : undefined}
+      >
+        {Boolean(anomalyAlerts.length) && (
+          <div className="dashboard-anomaly-section">
+            <h3>Raised alerts<small>{anomalyAlerts.length} in this time range</small></h3>
+            <ol className="dashboard-anomaly-cards">
+              {anomalyAlerts.map((alert) => {
+                const insight = alert.mlInsight;
+                const bars = deviationBars(insight?.deviations);
+                return (
+                  <AnomalyCard
+                    key={alert.id}
+                    title={alert.title}
+                    score={insight?.score}
+                    threshold={insight?.threshold}
+                    belowThreshold={insight?.belowThreshold === true}
+                    bars={bars}
+                    when={alert.createdAt}
+                    who={alert.user && alert.user !== "system" ? alert.user : ""}
+                  />
+                );
+              })}
+            </ol>
+          </div>
+        )}
+
+        {!loading && Boolean(shadowFindings.length) && (
+          <div className="dashboard-anomaly-section">
+            <h3>
+              {anomalyAlerts.length ? "Shadow-mode findings" : "Most unusual recent activity"}
+              <small>{flaggedCount ? `${flaggedCount} below the alert threshold` : "none below the alert threshold"}</small>
+            </h3>
+            <ol className="dashboard-anomaly-cards">
+              {shadowFindings.map(({ pilot, row }) => (
                 <AnomalyCard
-                  key={alert.id}
-                  title={alert.title}
-                  score={insight?.score}
-                  threshold={insight?.threshold}
-                  belowThreshold={insight?.belowThreshold === true}
-                  bars={bars}
-                  when={alert.createdAt}
-                  who={alert.user && alert.user !== "system" ? alert.user : ""}
+                  key={`${pilot.featureSet}-${row.id ?? `${row.entityId}-${row.capturedAt}`}`}
+                  title={pilotLabel(pilot.featureSet)}
+                  entity={{ label: ENTITY_LABELS[pilot.entityType] || pilot.entityType, id: row.entityId }}
+                  score={row.score}
+                  threshold={pilot.scoreThreshold}
+                  belowThreshold={row.belowThreshold}
+                  bars={deviationBars(row.deviations)}
+                  when={row.capturedAt}
                 />
-              );
-            })}
-          </ol>
-        </div>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+      {scrolls && (
+        <p className="dashboard-anomaly-more" aria-hidden="true">
+          Showing {VISIBLE_ROWS} rows · scroll for {hidden} more {hidden === 1 ? "finding" : "findings"}
+        </p>
       )}
 
       {loading ? (
         <LoadingState label="Loading anomaly findings…" />
       ) : (
         <>
-          {Boolean(shadowFindings.length) && (
-            <div className="dashboard-anomaly-section">
-              <h3>
-                {anomalyAlerts.length ? "Shadow-mode findings" : "Most unusual recent activity"}
-                <small>{flaggedCount ? `${flaggedCount} below the alert threshold` : "none below the alert threshold"}</small>
-              </h3>
-              <ol className="dashboard-anomaly-cards">
-                {shadowFindings.map(({ pilot, row }) => (
-                  <AnomalyCard
-                    key={`${pilot.featureSet}-${row.id ?? `${row.entityId}-${row.capturedAt}`}`}
-                    title={pilotLabel(pilot.featureSet)}
-                    entity={{ label: ENTITY_LABELS[pilot.entityType] || pilot.entityType, id: row.entityId }}
-                    score={row.score}
-                    threshold={pilot.scoreThreshold}
-                    belowThreshold={row.belowThreshold}
-                    bars={deviationBars(row.deviations)}
-                    when={row.capturedAt}
-                  />
-                ))}
-              </ol>
-            </div>
-          )}
-
           {Boolean(pilots.length) && (
             <div className="dashboard-anomaly-section">
-              <h3>Model status<small>{pilots.length} learned-behaviour pilots</small></h3>
+              <h3>Model status<small>{pilots.length} learned-behavior pilots</small></h3>
               <ul className="dashboard-anomaly-pilots">
                 {pilots.map((pilot) => <PilotStatus key={pilot.featureSet} pilot={pilot} />)}
               </ul>
@@ -172,7 +240,13 @@ export function AnomalyDetectionPanel({ alerts, modelStatus, navigate, pilots, l
       )}
 
       <div className="dashboard-anomaly-footer">
-        <small className="ai-sample-note">{DECISION_SCORE_HELP}</small>
+        <div className="dashboard-anomaly-help">
+          <small className="ai-sample-note">{DECISION_SCORE_HELP}</small>
+          <ul className="chart-key" aria-label="Factor bar colours">
+            <li><i style={{ background: "var(--chart-anomaly-above)" }} />Above the learned baseline</li>
+            <li><i style={{ background: "var(--chart-anomaly-below)" }} />Below the learned baseline</li>
+          </ul>
+        </div>
         <button className="soc-text-button" type="button" onClick={() => navigate(anomalyAlerts.length ? SOC_ROUTES.alerts : SOC_ROUTES.threatDetection)}>
           {anomalyAlerts.length ? "Review in Alerts" : "Model training and shadow mode"} <ArrowRight size={13} aria-hidden="true" />
         </button>

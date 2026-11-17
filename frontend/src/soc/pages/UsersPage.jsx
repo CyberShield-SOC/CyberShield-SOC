@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Ban, KeyRound, LogOut, Mail, Plus, RefreshCw, Save, Search, Send, ShieldCheck, ShieldOff, UserRoundCog, X } from "lucide-react";
+import { Ban, KeyRound, LogOut, Mail, Plus, RefreshCw, Save, Search, Send, ShieldCheck, ShieldOff, UserRoundCog, X } from "../../icons";
 import { InlineNotice, PageHeader, Panel, StatCard, StatusBadge } from "../components/Ui";
 import { PasswordFieldGroup, PasswordInput, PasswordMatchStatus } from "../components/PasswordField";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";

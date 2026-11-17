@@ -42,7 +42,7 @@ test("every panel offers its default chart type", () => {
 });
 
 test("events panel only offers types that can show a plain total", () => {
-  assert.deepEqual([...PANEL_CHART_TYPES.events], ["line", "horizontal"]);
+  assert.deepEqual([...PANEL_CHART_TYPES.events], ["line", "bar", "horizontal"]);
 });
 
 test("flatLabel joins a two-line bucket label with a space", () => {

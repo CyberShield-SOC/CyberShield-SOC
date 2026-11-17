@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, FileUp, Trash2, Upload, X } from "lucide-react";
+import { Download, FileUp, Trash2, Upload, X } from "../../icons";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
 import { InlineNotice, LoadingState, Panel } from "./Ui";

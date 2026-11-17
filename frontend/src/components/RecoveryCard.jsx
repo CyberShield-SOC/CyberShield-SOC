@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowRight, Mail, MailCheck } from "lucide-react";
+import { ArrowRight, Mail, MailCheck } from "../icons";
 import { authClient, isBackendConfigured } from "../services/authClient";
 import { normalizeEmail, validateEmail } from "../utils/authValidation";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
