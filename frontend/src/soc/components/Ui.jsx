@@ -8,7 +8,7 @@ import {
   Info,
   RefreshCw,
   X,
-} from "lucide-react";
+} from "../../icons";
 
 const NOTICE_ICONS = {
   error: CircleAlert,

@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Target,
   Trash2,
-} from "lucide-react";
+} from "../../icons";
 import {
   CURRENT_DETECTION_RULE_IDS,
   CURRENT_DETECTION_RULES,

@@ -1,4 +1,3 @@
-import { alertsToCsv, detectionCoverageToCsv, eventsToCsv, incidentsToCsv } from "./eventUtils.js";
 import { isTerminalIncidentStatus } from "./incidentWorkflow.js";
 import { filterRecordsByTimeRange } from "./timeRange.js";
 
@@ -57,60 +56,49 @@ function selectOpenHighRiskIncidents(incidents) {
     .sort((a, b) => (PRIORITY_RANK[b.priority] || 0) - (PRIORITY_RANK[a.priority] || 0) || (timeOf(b.updated) || 0) - (timeOf(a.updated) || 0));
 }
 
+// What each report covers. The PDF itself is built server-side
+// (reportPdfExport.js); these definitions drive the details panel.
 export const REPORT_EXPORTERS = Object.freeze({
   "Daily SOC operations": {
     key: "events",
     unit: "events",
-    filename: "daily-soc-operations",
     scope: "Events from the last 24 hours",
     description: "Normalized events from the last 24 hours of the latest loaded upload.",
     select: (events, nowMs) => filterRecordsByTimeRange(events, "24h", "timestamp", latestTimestamp(events, "timestamp", nowMs)),
-    csv: eventsToCsv,
   },
   "Weekly incident summary": {
     key: "incidents",
     unit: "incidents",
-    filename: "incident-summary",
     scope: "Incidents updated in the last 7 days",
     description: "Incidents updated in the last 7 days, with assignment, status and resolution details.",
     select: (incidents, nowMs) => filterRecordsByTimeRange(incidents, "7d", "updated", latestTimestamp(incidents, "updated", nowMs)),
-    csv: incidentsToCsv,
   },
   "Detection coverage": {
     key: "alerts",
     unit: "rules",
-    filename: "detection-coverage",
-    scope: "One row per detection rule, aggregated from loaded alerts",
+    scope: "Per-rule hit counts aggregated from loaded alerts",
     description: "Per-rule alert coverage: hit counts by severity, MITRE technique, and first/last seen.",
     select: (alerts) => summarizeRuleCoverage(alerts),
-    csv: detectionCoverageToCsv,
   },
   "Executive risk overview": {
     key: "incidents",
     unit: "incidents",
-    filename: "executive-risk-overview",
     scope: "Open High/Critical incidents only",
     description: "Open High and Critical incidents, highest priority and most recently updated first.",
     select: (incidents) => selectOpenHighRiskIncidents(incidents),
-    csv: incidentsToCsv,
   },
 });
 
-/** Record count a report would export right now, without throwing — safe to call from render. */
-export function previewReportRecordCount(name, data, now = new Date()) {
+/** Loaded records within a report's scope; empty for unknown reports or missing data. */
+export function selectReportRecords(name, data, now = new Date()) {
   const definition = REPORT_EXPORTERS[name];
-  if (!definition) return 0;
-  const source = data[definition.key];
-  if (!Array.isArray(source) || !source.length) return 0;
-  return definition.select(source, now.getTime()).length;
+  if (!definition) return [];
+  const source = data?.[definition.key];
+  if (!Array.isArray(source) || !source.length) return [];
+  return definition.select(source, now.getTime());
 }
 
-export function createReportExport(name, data, now = new Date()) {
-  const definition = REPORT_EXPORTERS[name];
-  if (!definition) throw new Error("Choose a supported report.");
-  const source = data[definition.key];
-  if (!Array.isArray(source) || !source.length) throw new Error(`No ${definition.key} are available to export.`);
-  const records = definition.select(source, now.getTime());
-  if (!records.length) throw new Error(`No ${definition.key} fall within this report's scope.`);
-  return { csv: definition.csv(records), filename: `cybershield-${definition.filename}-${now.toISOString().slice(0, 10)}.csv`, recordCount: records.length };
+/** Record count for the details panel, without throwing — safe to call from render. */
+export function previewReportRecordCount(name, data, now = new Date()) {
+  return selectReportRecords(name, data, now).length;
 }

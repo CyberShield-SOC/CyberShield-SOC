@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, ChevronLeft, ChevronRight, Database, Download, Files, FileUp, RefreshCw, Search, X } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Database, Download, Files, FileUp, RefreshCw, Search, X } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { socRepository } from "../services/socRepository";
 import {
-  downloadEventsCsv,
   filterEvents,
   formatTimestamp,
   inspectLogFile,
@@ -438,7 +437,6 @@ export default function EventLogsPage({ navigate }) {
         <label><span className="sr-only">Severity</span><select value={filters.severity} onChange={(event) => updateFilter("severity", event.target.value)}><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select></label>
         <label><span className="sr-only">Status</span><select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value="">All statuses</option><option value="failed">Failed</option><option value="blocked">Blocked</option><option value="review">Review</option><option value="contained">Contained</option><option value="success">Success</option></select></label>
         <label><span className="sr-only">Source</span><select value={filters.source} onChange={(event) => updateFilter("source", event.target.value)}><option value="">All sources</option>{sources.map((source) => <option key={source}>{source}</option>)}</select></label>
-        <button className="soc-button secondary" type="button" onClick={() => downloadEventsCsv(filteredEvents)} disabled={!filteredEvents.length}><Download size={15} />Export CSV</button>
         <button
           className="soc-button secondary"
           type="button"

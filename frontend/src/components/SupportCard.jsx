@@ -1,4 +1,4 @@
-import { CircleAlert, Headphones, KeyRound, Mail, ShieldAlert } from "lucide-react";
+import { CircleAlert, Headphones, KeyRound, Mail, ShieldAlert } from "../icons";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 
 const SUPPORT_EMAIL = "ugallimbu9@gmail.com";

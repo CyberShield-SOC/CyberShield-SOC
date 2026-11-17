@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "../../icons";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";
 import { InlineNotice, LoadingState, Panel, StatusBadge } from "./Ui";

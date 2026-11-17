@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowRight, KeyRound, Mail } from "lucide-react";
+import { ArrowRight, KeyRound, Mail } from "../icons";
 import { normalizeEmail, validateCredentials } from "../utils/authValidation";
 import { AuthCardIntro } from "./AuthCardIntro";
 import { FormField } from "./FormField";

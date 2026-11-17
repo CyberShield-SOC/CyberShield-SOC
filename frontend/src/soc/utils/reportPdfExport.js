@@ -1,8 +1,7 @@
 import { apiRequestBlob } from "../../services/apiClient.js";
 import { downloadBlobFile } from "./eventUtils.js";
 
-// Server-side PDF export (GET /reports/{report_id}/pdf) uses its own slugs,
-// distinct from the CSV export filenames in reportExport.js.
+// Server-side PDF export (GET /reports/{report_id}/pdf) slugs.
 export const REPORT_PDF_SLUGS = Object.freeze({
   "Daily SOC operations": "daily-soc-operations",
   "Weekly incident summary": "weekly-incident-summary",

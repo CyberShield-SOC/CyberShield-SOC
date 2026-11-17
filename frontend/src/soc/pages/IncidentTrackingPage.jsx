@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ListFilter, ShieldCheck, Workflow } from "lucide-react";
+import { Check, ListFilter, ShieldCheck, Workflow } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { InvestigationTimeline, ResolutionDetails } from "../components/InvestigationTimeline";

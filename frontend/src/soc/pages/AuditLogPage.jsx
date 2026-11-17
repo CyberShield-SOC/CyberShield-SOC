@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw, ScrollText, Search } from "lucide-react";
+import { RefreshCw, ScrollText, Search } from "../../icons";
 import { InlineNotice, PageHeader, Panel, StatusBadge } from "../components/Ui";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { socRepository } from "../services/socRepository";

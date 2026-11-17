@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CircleAlert, Eye, EyeOff } from "lucide-react";
+import { CircleAlert, Eye, EyeOff } from "../icons";
 
 export function FormField({
   label,

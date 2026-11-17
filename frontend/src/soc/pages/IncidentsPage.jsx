@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, BookOpenCheck, CheckCircle2, Download, History, Plus, RefreshCw, RotateCcw, Search, X } from "lucide-react";
+import { ArrowUpRight, BookOpenCheck, CheckCircle2, History, Plus, RefreshCw, RotateCcw, Search, X } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import IncidentStatusConfirmDialog from "../components/IncidentStatusConfirmDialog";
 import { InvestigationTimeline } from "../components/InvestigationTimeline";
@@ -7,7 +7,7 @@ import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";
 import { socRepository } from "../services/socRepository";
 import { usePersistedInvestigation } from "../hooks/usePersistedInvestigation";
-import { downloadIncidentsCsv, formatTimestamp } from "../utils/eventUtils";
+import { formatTimestamp } from "../utils/eventUtils";
 import { validateIncidentDraft } from "../utils/formValidation";
 import { nextIncidentId } from "../utils/recordIds";
 import { paginateRecords } from "../utils/pagination";
@@ -450,10 +450,9 @@ export default function IncidentsPage({ navigate }) {
       {historyOpen && (
         <div className="soc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeHistory(); }}>
           <section className="soc-modal incident-history-modal" role="dialog" aria-modal="true" aria-labelledby="incident-history-title">
-            <header><div><h2 id="incident-history-title">Incident history</h2><p>Search completed investigations and export the current result set.</p></div><button type="button" onClick={closeHistory} aria-label="Close incident history"><X size={18} /></button></header>
+            <header><div><h2 id="incident-history-title">Incident history</h2><p>Search completed investigations.</p></div><button type="button" onClick={closeHistory} aria-label="Close incident history"><X size={18} /></button></header>
             <div className="incident-history-toolbar">
               <label className="filter-search"><Search size={16} /><span className="sr-only">Search incident history</span><input type="search" maxLength="200" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search IDs, titles, assignees…" /></label>
-              <button className="soc-button secondary" type="button" disabled={!historyRecords.length} onClick={() => downloadIncidentsCsv(historyRecords)}><Download size={15} />Export report</button>
             </div>
             <div className="incident-history-list" role="region" aria-label="Scrollable incident history" tabIndex="0">
               {historyRecords.map((incident) => (

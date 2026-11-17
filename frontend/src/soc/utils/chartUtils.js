@@ -29,8 +29,9 @@ export function buildLineChartModel(values, {
   }
 
   const dataMax = Math.max(...normalized);
-  let step = dataMax > 0 ? Math.max(1, niceCeiling(dataMax / Math.max(1, targetIntervals))) : 0;
-  let axisMax = step > 0 ? step * Math.ceil(dataMax / step) : 0;
+  const axis = dataMax > 0 ? buildValueAxis(dataMax, targetIntervals) : null;
+  let step = axis ? axis.ticks[1] - axis.ticks[0] : 0;
+  let axisMax = axis ? axis.axisMax : 0;
 
   // Extremely large but finite inputs can overflow while rounding the scale.
   if (!Number.isFinite(axisMax)) {
@@ -91,7 +92,7 @@ export function buildStackedBarModel(buckets, seriesKeys, {
   const plotWidth = Math.max(0, width - plot.left - plot.right);
   const plotHeight = Math.max(0, height - plot.top - plot.bottom);
   const slotWidth = normalized.length ? plotWidth / normalized.length : 0;
-  const barWidth = normalized.length ? Math.max(4, Math.min(32, slotWidth * 0.58)) : 0;
+  const barWidth = normalized.length ? Math.max(3, Math.min(44, slotWidth * 0.62)) : 0;
   const scaleMax = countScale.axisMax || 1;
   const bars = normalized.map((bucket, index) => {
     let cursor = baseline;
@@ -143,4 +144,118 @@ export function formatChartPercentage(value, total) {
   if (percentage < 0.1) return "<0.1%";
   if (percentage >= 99.95) return "100%";
   return `${percentage.toFixed(1)}%`;
+}
+
+/**
+ * A rounded value axis for a count measure: 0 to a "nice" maximum in even
+ * steps (1, 2 or 5 times a power of ten), so tick labels read like a real
+ * chart's (0, 50, 100, 150) instead of raw data values.
+ */
+export function buildValueAxis(maxValue, targetIntervals = 4) {
+  const max = safeCount(maxValue);
+  if (max <= 0) return { axisMax: 1, ticks: [0, 1] };
+  // The smallest whole 1/2/5 step that fits in at most targetIntervals + 1
+  // intervals keeps the axis close to the data (428 gets 0-500, not 0-600).
+  const limit = Math.max(1, targetIntervals) + 1;
+  let step = 1;
+  for (let magnitude = 1; ; magnitude *= 10) {
+    const found = [1, 2, 5].map((factor) => factor * magnitude).find((candidate) => Math.ceil(max / candidate) <= limit);
+    if (found) { step = found; break; }
+    if (!Number.isFinite(magnitude * 10)) { step = max / limit; break; }
+  }
+  const axisMax = step * Math.ceil(max / step);
+  const ticks = [];
+  for (let value = 0; value <= axisMax + step / 2; value += step) ticks.push(value);
+  return { axisMax, ticks };
+}
+
+const DONUT_START = -Math.PI / 2;
+
+function polar(cx, cy, radius, angle) {
+  return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+}
+
+/** SVG path for one ring segment between two angles (radians, clockwise). */
+export function donutArcPath(cx, cy, outer, inner, start, end) {
+  // A full circle cannot be drawn as one arc: stop just short of it.
+  const sweep = Math.min(end - start, Math.PI * 2 - 1e-4);
+  const finish = start + sweep;
+  const large = sweep > Math.PI ? 1 : 0;
+  const a = polar(cx, cy, outer, start);
+  const b = polar(cx, cy, outer, finish);
+  const c = polar(cx, cy, inner, finish);
+  const d = polar(cx, cy, inner, start);
+  const f = (n) => n.toFixed(2);
+  return [
+    `M${f(a.x)} ${f(a.y)}`,
+    `A${f(outer)} ${f(outer)} 0 ${large} 1 ${f(b.x)} ${f(b.y)}`,
+    `L${f(c.x)} ${f(c.y)}`,
+    `A${f(inner)} ${f(inner)} 0 ${large} 0 ${f(d.x)} ${f(d.y)}`,
+    "Z",
+  ].join(" ");
+}
+
+/**
+ * Geometry for a donut with outside labels joined by leader lines. Labels sit
+ * on the side their slice faces and are pushed apart vertically so they never
+ * overlap, however small the slices are. Zero slices are left out.
+ */
+export function buildDonutModel(segments, {
+  height = 220,
+  labelGap = 30,
+  labelSpace = 74,
+  maxRadius = 92,
+  minRadius = 36,
+  width = 320,
+} = {}) {
+  const items = (Array.isArray(segments) ? segments : [])
+    .map((segment) => ({ ...segment, value: safeCount(segment?.value) }))
+    .filter((segment) => segment.value > 0);
+  const total = items.reduce((sum, segment) => sum + segment.value, 0);
+  if (!items.length || total <= 0) return { cx: 0, cy: 0, inner: 0, outer: 0, slices: [], total: 0 };
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const outer = Math.max(minRadius, Math.min(maxRadius, height / 2 - 16, (width - labelSpace * 2) / 2 - 18));
+  const inner = outer * 0.7;
+  let cursor = DONUT_START;
+  const slices = items.map((segment) => {
+    const start = cursor;
+    const end = cursor + (segment.value / total) * Math.PI * 2;
+    cursor = end;
+    const mid = (start + end) / 2;
+    const side = Math.cos(mid) >= 0 ? "right" : "left";
+    const anchor = polar(cx, cy, outer + 3, mid);
+    const elbow = polar(cx, cy, outer + 12, mid);
+    return {
+      ...segment,
+      anchor,
+      elbow,
+      end,
+      labelY: elbow.y,
+      path: donutArcPath(cx, cy, outer, inner, start, end),
+      side,
+      start,
+    };
+  });
+
+  // Spread each side's labels so neighbours keep at least labelGap between them.
+  const top = 12;
+  const bottom = height - labelGap + 6;
+  for (const side of ["left", "right"]) {
+    const column = slices.filter((slice) => slice.side === side).sort((a, b) => a.labelY - b.labelY);
+    for (let index = 0; index < column.length; index += 1) {
+      const floor = index === 0 ? top : column[index - 1].labelY + labelGap;
+      column[index].labelY = Math.max(column[index].labelY, floor);
+    }
+    for (let index = column.length - 1; index >= 0; index -= 1) {
+      const ceiling = index === column.length - 1 ? bottom : column[index + 1].labelY - labelGap;
+      column[index].labelY = Math.min(column[index].labelY, ceiling);
+    }
+  }
+  for (const slice of slices) {
+    const direction = slice.side === "right" ? 1 : -1;
+    slice.labelX = cx + direction * (outer + 24);
+  }
+  return { cx, cy, inner, outer, slices, total };
 }

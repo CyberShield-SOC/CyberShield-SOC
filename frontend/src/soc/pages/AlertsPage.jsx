@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BookOpenCheck, CheckCircle2, GitBranch, MessageSquareText, RefreshCw, Save, Search, Send, ShieldPlus, X } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { readHashQuery, useHashQuery } from "../hooks/useHashQuery";

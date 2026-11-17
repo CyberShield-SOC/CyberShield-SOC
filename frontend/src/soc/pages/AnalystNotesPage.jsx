@@ -13,7 +13,7 @@ import {
   Search,
   Trash2,
   X,
-} from "lucide-react";
+} from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { formatTimestamp } from "../utils/eventUtils";

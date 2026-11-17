@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Download, KeyRound, RefreshCw, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
+import { Copy, Download, KeyRound, RefreshCw, ShieldCheck, ShieldOff, Smartphone } from "../../icons";
 import { authClient } from "../../services/authClient";
 import { SAMPLE_RECOVERY_CODES, SAMPLE_TOTP_SETUP } from "../data/sampleMfa";
 import { downloadBlobFile, formatTimestamp } from "../utils/eventUtils";

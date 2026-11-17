@@ -5,17 +5,18 @@ import { useCallback, useState } from "react";
 
 export const CHART_TYPE_LABELS = Object.freeze({
   line: "Line graph",
+  bar: "Bar chart",
   stacked: "Stacked bar chart",
   horizontal: "Horizontal bar chart",
   heatmap: "Heatmap matrix",
   donut: "Donut chart",
 });
 
-// "Events Over Time" has no per-severity breakdown, so only the two types that
+// "Events Over Time" has no per-severity breakdown, so only the types that
 // show its total are offered. Offering stacked or heatmap there would mean
 // inventing data.
 export const PANEL_CHART_TYPES = Object.freeze({
-  events: Object.freeze(["line", "horizontal"]),
+  events: Object.freeze(["line", "bar", "horizontal"]),
   severity: Object.freeze(["donut", "line", "stacked", "horizontal", "heatmap"]),
   volume: Object.freeze(["stacked", "line", "horizontal", "heatmap", "donut"]),
 });

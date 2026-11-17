@@ -75,3 +75,47 @@ test("formats donut percentages without divide-by-zero or invisible tiny slices"
   assert.equal(formatChartPercentage(4, 4), "100%");
   assert.equal(formatChartPercentage(8, 4), "100%");
 });
+
+import { buildDonutModel, buildValueAxis, donutArcPath } from "../src/soc/utils/chartUtils.js";
+
+test("value axes round up to even, readable steps", () => {
+  assert.deepEqual(buildValueAxis(428), { axisMax: 500, ticks: [0, 100, 200, 300, 400, 500] });
+  assert.deepEqual(buildValueAxis(7).ticks, [0, 2, 4, 6, 8]);
+  assert.deepEqual(buildValueAxis(1).ticks, [0, 1]);
+  assert.deepEqual(buildValueAxis(0), { axisMax: 1, ticks: [0, 1] });
+  assert.deepEqual(buildValueAxis(Number.NaN), { axisMax: 1, ticks: [0, 1] });
+});
+
+test("donut slices cover the circle in order and drop zero slices", () => {
+  const model = buildDonutModel([
+    { label: "Critical", value: 2 },
+    { label: "High", value: 4 },
+    { label: "Medium", value: 0 },
+    { label: "Low", value: 2 },
+  ], { width: 320, height: 220 });
+  assert.equal(model.total, 8);
+  assert.deepEqual(model.slices.map((slice) => slice.label), ["Critical", "High", "Low"]);
+  assert.ok(Math.abs(model.slices[0].start + Math.PI / 2) < 1e-9);
+  assert.ok(Math.abs(model.slices.at(-1).end - (Math.PI * 1.5)) < 1e-9);
+  // The first quarter faces right, the last quarter faces left.
+  assert.equal(model.slices[0].side, "right");
+  assert.equal(model.slices.at(-1).side, "left");
+  assert.ok(model.inner < model.outer);
+});
+
+test("donut labels on one side never overlap, even for tiny slices", () => {
+  const model = buildDonutModel([
+    { label: "A", value: 1 }, { label: "B", value: 1 }, { label: "C", value: 1 }, { label: "D", value: 200 },
+  ], { width: 360, height: 220, labelGap: 30 });
+  for (const side of ["left", "right"]) {
+    const ys = model.slices.filter((slice) => slice.side === side).map((slice) => slice.labelY).sort((a, b) => a - b);
+    for (let index = 1; index < ys.length; index += 1) assert.ok(ys[index] - ys[index - 1] >= 30 - 1e-9);
+  }
+  assert.deepEqual(buildDonutModel([{ label: "x", value: 0 }]).slices, []);
+});
+
+test("a single full slice still draws as a closed ring", () => {
+  const path = donutArcPath(100, 100, 80, 56, -Math.PI / 2, Math.PI * 1.5);
+  assert.match(path, /^M[\d.]+ [\d.]+ A80\.00 80\.00 0 1 1 /);
+  assert.ok(path.endsWith("Z"));
+});

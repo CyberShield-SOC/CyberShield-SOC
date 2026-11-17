@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, CircleAlert, Fingerprint } from "lucide-react";
+import { ArrowRight, CircleAlert, Fingerprint } from "../icons";
 import { isCompleteOtp, sanitizeOtp } from "../utils/authValidation";
 import { normalizeRecoveryCode } from "../soc/utils/mfa";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";

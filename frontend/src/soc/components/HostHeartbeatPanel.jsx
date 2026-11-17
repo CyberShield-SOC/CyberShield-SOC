@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "../../icons";
 import { socRepository } from "../services/socRepository";
 import { InlineNotice, LoadingState, Panel, StatusBadge } from "./Ui";
 import { formatTimestamp } from "../utils/eventUtils";

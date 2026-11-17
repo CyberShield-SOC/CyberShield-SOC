@@ -98,8 +98,19 @@ export function describeModelStatus(models) {
   const active = models.filter((model) => model?.is_active);
   if (!active.length) return "No model trained yet: rules are collecting data";
   const parts = active.map((model) => `${model.feature_set} v${model.version} (${model.sample_count} samples)`);
-  const latest = active.map((model) => String(model.trained_at || "")).filter(Boolean).sort().at(-1);
-  return `${parts.join(", ")}${latest ? ` · latest trained ${latest.slice(0, 10)}` : ""}`;
+  const latest = active
+    .map((model) => new Date(model.trained_at || ""))
+    .filter((date) => Number.isFinite(date.getTime()))
+    .sort((a, b) => a - b)
+    .at(-1);
+  return `${parts.join(", ")}${latest ? ` · latest trained ${localDateStamp(latest)}` : ""}`;
+}
+
+// trained_at is UTC; slicing the string showed tomorrow's date to anyone west
+// of UTC in the evening. Show the viewer's calendar day instead.
+function localDateStamp(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 /** Dashboard card: real count of learned-model alerts plus real model status. */
@@ -177,6 +188,8 @@ export function deviationBars(deviations) {
   return (Array.isArray(deviations) ? deviations : []).map((d) => ({
     label: d.value === null ? d.feature : `${d.feature} (${d.value.toFixed(2)})`,
     value: Math.abs(d.zScore),
-    color: d.zScore < 0 ? "var(--severity-high)" : "var(--severity-medium)",
+    // Above the learned baseline vs below it: two hues of their own, so the
+    // factor chart is not read as a severity.
+    color: d.zScore < 0 ? "var(--chart-anomaly-below)" : "var(--chart-anomaly-above)",
   }));
 }
