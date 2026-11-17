@@ -2,12 +2,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, BrainCircuit } from "../../icons";
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { HorizontalBarChart, ScoreGauge } from "./Charts";
-import { InlineNotice, LoadingState, Panel, StatusBadge } from "./Ui";
+import { InlineNotice, LoadingState, Panel } from "./Ui";
 import { formatTimestamp } from "../utils/eventUtils";
 import { ENTITY_LABELS } from "../utils/ruleConfig";
 import {
-  DECISION_SCORE_HELP,
-  describePilotStage,
   deviationBars,
   formatDecisionScore,
   pilotLabel,
@@ -44,40 +42,6 @@ function AnomalyCard({ title, entity, score, threshold, belowThreshold, bars, wh
       <small>
         {who ? `${who} · ` : ""}
         {formatTimestamp(when)}
-      </small>
-    </li>
-  );
-}
-
-function PilotStatus({ pilot }) {
-  const stage = describePilotStage(pilot);
-  const progress = pilot.minSamples ? Math.min(100, Math.round((pilot.sampleCount / pilot.minSamples) * 100)) : 100;
-  const label = pilotLabel(pilot.featureSet);
-  return (
-    <li className="dashboard-anomaly-pilot">
-      <header>
-        <strong>{label}</strong>
-        <StatusBadge status={stage.status} />
-      </header>
-      <p>
-        <span className="sr-only">Stage: </span>{stage.label}. {stage.detail}
-      </p>
-      {!pilot.activeModel && (
-        <div
-          className="dashboard-anomaly-progress"
-          role="progressbar"
-          aria-label={`${label} training samples`}
-          aria-valuemin={0}
-          aria-valuemax={pilot.minSamples}
-          aria-valuenow={Math.min(pilot.sampleCount, pilot.minSamples)}
-          data-complete={String(pilot.sampleCount >= pilot.minSamples)}
-        >
-          <span style={{ width: `${progress}%` }} />
-        </div>
-      )}
-      <small>
-        Scores one {ENTITY_LABELS[pilot.entityType]?.toLowerCase() || pilot.entityType} at a time
-        {pilot.scoreThreshold !== null ? ` · alert threshold ${formatDecisionScore(pilot.scoreThreshold)}` : ""}
       </small>
     </li>
   );
@@ -224,24 +188,17 @@ export function AnomalyDetectionPanel({ alerts, modelStatus, navigate, pilots, l
         <LoadingState label="Loading anomaly findings…" />
       ) : (
         <>
-          {Boolean(pilots.length) && (
-            <div className="dashboard-anomaly-section">
-              <h3>Model status<small>{pilots.length} learned-behavior pilots</small></h3>
-              <ul className="dashboard-anomaly-pilots">
-                {pilots.map((pilot) => <PilotStatus key={pilot.featureSet} pilot={pilot} />)}
-              </ul>
-            </div>
-          )}
-
           {!pilots.length && !anomalyAlerts.length && !error && (
             <p className="empty-inline">No behavioral-anomaly pilots are registered on this backend.</p>
+          )}
+          {Boolean(pilots.length) && !anomalyAlerts.length && !shadowFindings.length && !error && (
+            <p className="empty-inline">No activity has been scored yet. Training progress is on Threat Detection.</p>
           )}
         </>
       )}
 
       <div className="dashboard-anomaly-footer">
         <div className="dashboard-anomaly-help">
-          <small className="ai-sample-note">{DECISION_SCORE_HELP}</small>
           <ul className="chart-key" aria-label="Factor bar colours">
             <li><i style={{ background: "var(--chart-anomaly-above)" }} />Above the learned baseline</li>
             <li><i style={{ background: "var(--chart-anomaly-below)" }} />Below the learned baseline</li>

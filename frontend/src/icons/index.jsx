@@ -153,13 +153,15 @@ function Envelope({ color = C.blue }) {
 }
 
 const BELL = "M12 2.5a6 6 0 0 1 6 6v4.2l1.8 3.1a1 1 0 0 1-.9 1.5H5.1a1 1 0 0 1-.9-1.5L6 12.7V8.5a6 6 0 0 1 6-6z";
-const EYE = "M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z";
 
 /* ---- arrows and controls ----------------------------------------------- */
 
-export const ArrowRight = makeIcon("ArrowRight", () => <><Disc color={C.blue} /><path d="M7 12h10M13 8l4 4-4 4" {...W} /></>);
-export const ArrowLeft = makeIcon("ArrowLeft", () => <><Disc color={C.blue} /><path d="M17 12H7M11 8l-4 4 4 4" {...W} /></>);
-export const ArrowUpRight = makeIcon("ArrowUpRight", () => <><Disc color={C.blue} /><path d="M8 16 16 8M9.5 8H16v6.5" {...W} /></>);
+// Solid block arrows in the surrounding text colour, so they read on teal
+// links, filled buttons and both themes alike.
+const BLOCK_ARROW = "M1 10h11V5l11 7-11 7v-5H1z";
+export const ArrowRight = makeIcon("ArrowRight", () => <path d={BLOCK_ARROW} fill="currentColor" />);
+export const ArrowLeft = makeIcon("ArrowLeft", () => <path d={BLOCK_ARROW} fill="currentColor" transform="rotate(180 12 12)" />);
+export const ArrowUpRight = makeIcon("ArrowUpRight", () => <path d={BLOCK_ARROW} fill="currentColor" transform="rotate(-45 12 12) scale(.92) translate(1 1)" />);
 export const ExternalLink = makeIcon("ExternalLink", () => <><Disc color={C.blue} /><path d="M13 7h4v4M17 7l-6 6M15 13.5V17H7V9h3.5" {...W} strokeWidth="2" /></>);
 export const ChevronRight = makeIcon("ChevronRight", () => <><Disc color={C.slate} /><path d="M10 7l5 5-5 5" {...W} /></>);
 export const ChevronLeft = makeIcon("ChevronLeft", () => <><Disc color={C.slate} /><path d="M14 7l-5 5 5 5" {...W} /></>);
@@ -410,14 +412,19 @@ export const Sun = makeIcon("Sun", () => (
   </>
 ));
 export const Moon = makeIcon("Moon", () => <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" fill={C.amber} />);
-export const Eye = makeIcon("Eye", () => <><path d={EYE} fill={C.blue} /><circle cx="12" cy="12" r="4.2" fill={C.paper} /><circle cx="12" cy="12" r="2.1" fill={C.navy} /></>);
+// Password show/hide toggles: plain outlines in the text colour, no fill.
+const EYE_OUTLINE = "M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z";
+export const Eye = makeIcon("Eye", () => (
+  <>
+    <path d={EYE_OUTLINE} {...line("currentColor", 1.8)} />
+    <circle cx="12" cy="12" r="3" {...line("currentColor", 1.8)} />
+  </>
+));
 export const EyeOff = makeIcon("EyeOff", () => (
   <>
-    <path d={EYE} fill={C.slate} />
-    <circle cx="12" cy="12" r="4.2" fill={C.paper} />
-    <circle cx="12" cy="12" r="2.1" fill={C.navy} />
-    <path d="M3.5 3.5l17 17" {...line(C.cut, 4.4)} />
-    <path d="M3.5 3.5l17 17" {...line(C.coral, 2.2)} />
+    <path d={EYE_OUTLINE} {...line("currentColor", 1.8)} />
+    <circle cx="12" cy="12" r="3" {...line("currentColor", 1.8)} />
+    <path d="M4 4l16 16" {...line("currentColor", 1.8)} />
   </>
 ));
 

@@ -96,7 +96,6 @@ const NAV_SEARCH_TARGETS = NAV_GROUPS.flatMap((group) => group.items).map(([rout
 export function SocShell({ children, expiresAt, navigate, onSignOut, route, theme, toggleTheme, user }) {
   const {
     activeAlertCount,
-    apiHealth,
     autoRefresh,
     setAutoRefresh,
     dashboard,
@@ -112,9 +111,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     markNotificationUnread,
     clearAllNotifications,
     clearNotification,
-    refresh,
     refreshAll,
-    repositoryMode,
     settings,
     setGlobalTimeRange,
     setSelectedAlertId,
@@ -136,14 +133,6 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
     : navigator.userAgentData?.platform || navigator.platform;
   const shortcutLabel = searchShortcutLabel(platform);
   const isRefreshing = Object.values(resources).some((resource) => resource.loading);
-  const apiStatus = resources.health.error ? "offline" : resources.health.loading ? "checking" : "online";
-  const apiStatusCopy = apiStatus === "offline"
-    ? { label: "Offline", detail: "Service is unreachable" }
-    : apiStatus === "checking"
-      ? { label: "Refreshing", detail: "Checking service health" }
-      : apiHealth?.status === "demo"
-        ? { label: "Demo mode", detail: "Using local sample data" }
-        : { label: "Operational", detail: "Service responding normally" };
   const visibleNotifications = notificationFilter === "unread"
     ? notifications.filter((notification) => !notification.read)
     : notifications;
@@ -289,14 +278,6 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
         </nav>
 
         <div className="soc-sidebar-footer">
-          <div className="api-health-status" data-status={apiStatus} role="status" aria-live="polite" aria-label={`API status: ${apiStatusCopy.label}. ${apiStatusCopy.detail}.`}>
-            <i aria-hidden="true" />
-            <span>
-              <strong>{repositoryMode === "api" ? "API status" : "Data service"}</strong>
-              <small><b>{apiStatusCopy.label}</b><em>{apiStatusCopy.detail}</em></small>
-            </span>
-            <button type="button" onClick={() => refresh("health")} disabled={resources.health.loading} aria-label="Refresh API status" title="Refresh API status"><RefreshCw size={13} className={resources.health.loading ? "spinning" : ""} /></button>
-          </div>
           <button className="soc-profile-trigger" type="button" onClick={() => setProfileOpen((current) => !current)} aria-expanded={profileOpen} aria-controls="soc-profile-menu">
             <span className="soc-avatar">{avatarLabel}</span>
             <span><strong>{displayName}</strong><small>{user?.role || "Administrator"}</small></span>
