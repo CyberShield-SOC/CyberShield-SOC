@@ -2,6 +2,8 @@
 
 Nov 13, 2026 · @Yoyo
 
+Screenshots use the app’s built-in demo workspace and sample data. Available controls can vary by role and backend connection.
+
 ## Contents
 
 1. [Overview](#1-overview)
@@ -25,7 +27,7 @@ CyberShield SOC turns raw security logs into alerts, investigations and incident
 **What it does**
 
 - Ingests logs in `.log`, `.csv`, `.txt`, `.json` and `.jsonl`, by manual upload or through a watched-directory collector.
-- Detects threats with 30 built-in rules plus your own custom rules. Every alert has a severity, a separate 0–100 confidence score, a MITRE ATT&CK technique, and the entity it pivots on (source IP, account or host).
+- Detects threats with 31 built-in rules plus your own custom rules. Every alert has a severity, a separate 0–100 confidence score, a MITRE ATT&CK technique, and the entity it pivots on (source IP, account or host).
 - Correlates and preserves evidence, so each alert links back to the exact log events that triggered it.
 - Tracks investigations and incidents with states, assignment, notes, resolution and reopening, all with an audit history.
 - Answers questions through a read-only AI assistant, and exports reports as PDFs.
@@ -118,11 +120,44 @@ Log in as the Admin from your `.env` (username `admin` unless you changed `CYBER
 
 ## 3. Sign in, sessions and roles
 
-Every sign-in needs your password and a second factor: a one-time code sent to your email, or, if you have set one up, the code from an authenticator app.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Client HTTP Request / Session               │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Authentication & RBAC Barrier               │
+│ - JWT Bearer Verification (10-minute validity)              │
+│ - Argon2id Password + HMAC-SHA256 Two-Factor OTP            │
+│ - Role Hierarchy Enforcement (Admin > Analyst > Viewer)     │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+        Allowed Action                 Denied Action
+               │                              │
+               ▼                              ▼
+┌──────────────────────────────┐       ┌──────────────────────┐
+│ Route Execution & Logic      │       │ HTTP 401 / 403 Error │
+│ - Audit Trail Generation     │       └──────────────────────┘
+│ - Atomic DB Transactions     │
+└──────────────────────────────┘
+```
 
-1. Enter your username and password. Tick remember me if you want a longer session.
-2. Enter the six-digit code. An emailed code expires after 5 minutes and can be resent after a 60-second wait. With an authenticator app, nothing is emailed: type the code the app shows, or choose **Use a recovery code** if you no longer have the device. Either way you get 5 attempts.
-3. You land in the workspace. Your access token lasts 10 minutes and renews itself in the background.
+Every sign-in requires your password and a second factor: a one-time code sent to your email, or, if you have set one up, the code from an authenticator app.
+
+1. **Credentials verification:** Enter your username and password. Password verification uses Argon2id hashing with unique random salts. Tick "Remember me" if you want a longer session.
+2. **Second factor:** Enter the six-digit code. An emailed code expires after 5 minutes and can be resent after a 60-second cooldown; it is stored only as a keyed HMAC-SHA256 digest in PostgreSQL. With an authenticator app, nothing is emailed: type the code the app shows, or choose **Use a recovery code** if you no longer have the device. Either way you get 5 attempts.
+3. **Session initiation:** You land in the workspace. Authentication uses a token dual-model:
+   - **Access Token:** Short-lived JWT (10-minute expiration) carrying user claims and assigned roles.
+   - **Refresh Token:** Cryptographically secure 64-byte random string stored in `auth_sessions`. Refresh requests invoke atomic rotation using row-level database locks (`with_for_update`) to prevent concurrent token replay.
+
+![Sign-in screen with email, password, Remember me, and Forgot password controls](user-guide-images/sign-in.jpg)
+
+*Sign in with your workspace email and password, or use **Forgot password?** to start account recovery.*
+
+![Two-factor verification screen with six code fields and a resend timer](user-guide-images/verification.jpg)
+
+*Enter the six-digit code and choose **Verify identity**. The resend control becomes available when the timer ends.*
 
 **Set up an authenticator app (optional, recommended).** Open Settings > Security > Sign-in verification and choose **Set up authenticator app**. Scan the QR code with Google Authenticator, Microsoft Authenticator, 1Password or any TOTP app (or type the setup key shown under it), then enter the code the app shows. You are then given 8 recovery codes. They are shown once; copy or download them and keep them away from your password. Each one signs you in once. From the same panel you can generate a new set (needs a current code) or turn the app off (needs your password and a code). An authenticator works offline and does not depend on email delivery.
 
@@ -130,15 +165,25 @@ Sign-in attempts are rate limited. Too many from one address, or five wrong pass
 
 A normal session lasts 60 minutes. With remember me it lasts 7 days. If you forget your password, use the recovery link on the sign-in screen; the reset link it emails you is valid for 30 minutes. These limits come from `.env` and your admin can change them.
 
-**What each role can do**
+**Role-Based Access Control (RBAC) Matrix**
 
-| Action | Admin | Analyst | Viewer |
-| --- | --- | --- | --- |
-| View dashboard, logs, alerts, incidents, notes, evidence | Yes | Yes | Yes |
-| Upload logs | Yes | Yes | No |
-| Update alerts and investigations, create and resolve incidents, add notes | Yes | Yes | No |
-| Tune built-in rules and build custom rules | Yes | Yes | No |
-| Manage users and roles | Yes | No | No |
+| Workspace Capability / Endpoint | Admin | Analyst | Viewer |
+| :--- | :---: | :---: | :---: |
+| View Dashboards, Event Logs, Alerts, Incidents, Notes | Yes | Yes | Yes |
+| Export Server-Side PDF Reports (`GET /reports/*/pdf`) | Yes | Yes | Yes |
+| Query AI Analysis Assistant (`POST /assistant/chat`) | Yes | Yes | Yes |
+| Ingest & Upload Log Batches (`POST /upload`) | Yes | Yes | No |
+| Update Alert Investigation Status & Triage Notes | Yes | Yes | No |
+| Create, Assign, Transition & Resolve Incidents | Yes | Yes | No |
+| Create & Tune Custom Detection Rules (`/custom-rules`) | Yes | Yes | No |
+| Override Built-in Detection Rules (`PATCH /detection/rules/*`) | Yes | Yes | No |
+| Export Events & Alerts as ECS (`GET /events/export`, `GET /alerts/export`) | Yes | Yes | No |
+| Trigger ML Model Training (`POST /ml/models/*/train`) | Yes | No | No |
+| Activate / Roll Back ML Models (`POST /ml/models/*/activate`) | Yes | No | No |
+| User Provisioning, Role Modification, Account Revocation | Yes | No | No |
+| Manage Threat Intelligence Feeds (`/threat-intel/feeds`) | Yes | No | No |
+| View the Audit Log (`GET /audit/events`) | Yes | No | No |
+| Reset a User's Authenticator (`POST /users/{id}/mfa/reset`) | Yes | No | No |
 
 The interface hides or disables what your role cannot do, but the backend enforces the same limits on every request. Hiding a button is a convenience, not the security boundary.
 
@@ -152,6 +197,10 @@ The interface hides or disables what your role cannot do, but the backend enforc
 ## 4. Tour of the workspace
 
 The left sidebar groups every page under three headings, with a Help center link for task guides and a role reference.
+
+![Dashboard with sidebar navigation, global time range, event volume, alert severity, and top sources](user-guide-images/dashboard.jpg)
+
+*Use the sidebar to switch pages and the global time range to change which activity appears on the dashboard.*
 
 | Group | Page | Use it to |
 | --- | --- | --- |
@@ -184,6 +233,10 @@ The interface has light and dark themes, keyboard navigation and reduced-motion 
 ## 5. Upload logs
 
 Upload is how most data enters the system. Analysts and Admins can do it; Viewers cannot. Open Event Logs and choose a file.
+
+![Event Logs page with upload drop zone, file history, and event filters](user-guide-images/event-logs.jpg)
+
+*The demo shows the CSV/TXT preview. Connect the backend to store uploads and use the full set of formats listed below.*
 
 **What you can upload**
 
@@ -230,58 +283,95 @@ For syslog the severity comes from the `<PRI>` value, raised when the message it
 
 ## 6. Detection rules
 
-Thirty built-in rules run on every upload or collected batch. Each alert carries a severity (how bad it would be if true), a separate confidence score, a MITRE ATT&CK technique and the entity it pivots on.
+The CyberShield SOC detection subsystem operates as a layered stream and batch analytics engine. Every uploaded or collected log batch passes through field normalization, sliding-window aggregation, custom rule evaluation, built-in threat detection, and automated evidence correlation.
+
+```
+Raw Logs (.log, .csv, .json, .jsonl)
+       │
+       ▼
+┌──────────────────────────────┐
+│  Log Ingestion & Normalizer  │ ──► Structured Event Fields
+└──────────────┬───────────────┘
+               │
+       ┌───────┴────────────────────────┐
+       ▼                                ▼
+┌────────────────────────────┐   ┌────────────────────────────┐
+│ 30+ Built-In Engine Rules  │   │ Custom Condition Evaluator │
+└──────────────┬─────────────┘   └──────────────┬─────────────┘
+               │                                │
+               └───────────────┬────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│          Correlation & Evidence Generation Engine           │
+│   - Multi-event Evidence Linking (Log IDs preserved)        │
+│   - Sliding Window Deduplication & Cooldown Tracking        │
+│   - MITRE ATT&CK Tactic / Technique Tagging                 │
+│   - Severity & Confidence Calculation (0–100 Score)         │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Database Storage (Alerts, Correlation Groups, Audit Log)    │
+│ Optional Webhook Dispatch (Slack / Automated Incident)      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The engine evaluates enabled rules from the 31 built-in rules on uploaded and collected batches. Each alert carries a severity (how bad it would be if true), a separate 0–100 confidence score, a MITRE ATT&CK tactic/technique mapping, and the entity it pivots on (source IP, account, or host).
+
+![Threat Detection page with executable rule counts, category filters, and a selected rule’s details](user-guide-images/threat-detection.jpg)
+
+*On **Threat Detection**, filter the inventory by category, type, or status and select a rule to read its details.*
 
 **Rule catalog**
 
-| Rule | Severity | Detects | Needs |
-| --- | --- | --- | --- |
-| `brute_force_login` | High | 5 failed logins from one IP in 60 s | Any auth log |
-| `invalid_user_enumeration` | Medium | One IP trying 3 or more usernames in 10 min | Any auth log |
-| `sudo_failure` | Medium | 3 failed sudo attempts in 5 min | Auth or syslog |
-| `password_spraying` | High | One account failing from 5 or more IPs in 10 min | Any auth log |
-| `credential_stuffing_success` | High | A failure burst followed by a success from the same IP | Any auth log |
-| `port_scan` | Medium | 10 port-scan events from one IP in 60 s | Firewall or IDS export |
-| `multi_ip_successful_login` | Medium | One account logging in from 3 IPs in 5 min | Any auth log |
-| `sudo_after_login` | Medium | A login quickly followed by successful sudo | Auth or syslog |
-| `new_account_created` | High | `useradd` or `adduser` created an account | Syslog |
-| `privileged_group_modified` | High | An account added to sudo, wheel, admin, root or docker | Syslog |
-| `cron_persistence` | Medium | A crontab edited or a systemd timer started | Syslog |
-| `security_control_disabled` | High | auditd, apparmor, fail2ban, ufw, firewalld or clamav stopped | Syslog |
-| `log_tampering` | Critical | An audit or logging service stopped, or the journal vacuumed | Syslog, auditd |
-| `direct_root_login` | High | A successful direct login to root | Any auth log |
-| `service_account_interactive` | High | A listed service account logged in interactively | Any auth log; off until you list accounts |
-| `login_to_nonexistent_account` | Medium | A failed login to a listed decommissioned account | Any auth log; off until you list accounts |
-| `off_hours_login` | Low | A successful login outside 06:00–20:00 UTC | Any auth log |
-| `dormant_account_activity` | Medium | A login after 30 or more idle days | Any auth log, history across uploads |
-| `lateral_movement_chain` | High | One account reaching 3 or more hosts in 10 min | Syslog, history across uploads |
-| `ssh_key_added` | High | An `authorized_keys` file written, created or deleted | auditd |
-| `host_log_silence` | High | A host with a steady cadence stopped sending logs | Any source with a hostname |
-| `impossible_travel` | High | Consecutive logins too far apart for the time elapsed | Geo columns or GeoIP database |
-| `first_seen_geo_asn` | Medium | A login from a country or ASN new to that account | Geo columns or GeoIP database |
-| `host_sweep` | Medium | One IP probing the same port on 10 or more hosts | Firewall or flow logs |
-| `outbound_beaconing` | High | Regular, low-jitter connections to one external destination | Firewall, flow or proxy logs |
-| `dns_tunneling` | High | 20 or more long, high-entropy queries under one domain | DNS server logs |
-| `egress_volume_anomaly` | High | Outbound bytes far above a host's own baseline | Flow or proxy exports with bytes |
-| `threat_intel_match` | High | Traffic or DNS matching an imported indicator | Network logs plus an imported feed |
-| `behavioral_anomaly_login` | Low | A login time and location scored unusual by a trained model | Any auth log |
-| `behavioral_anomaly_egress` | Low | An hourly egress pattern scored unusual by a trained model | Flow or proxy exports with bytes |
+| Rule | Severity | Default Window / Threshold | MITRE ATT&CK | Required Log Sources & Fields |
+| :--- | :--- | :--- | :--- | :--- |
+| `brute_force_login` | High | 5 failures in 60s per `ip_address` | `T1110.001` (Brute Force) | Auth/Syslog (`ip_address`, `status=failed`) |
+| `invalid_user_enumeration` | Medium | 3+ distinct usernames in 10m | `T1087` (Account Discovery) | Auth logs (`username`, `ip_address`) |
+| `password_spraying` | High | 1 user failing from 5+ IPs in 10m | `T1110.003` (Password Spraying) | Auth logs (`username`, `ip_address`) |
+| `credential_stuffing_success` | High | Failed burst followed by success within 5m | `T1110.004` (Credential Stuffing) | Auth logs (`ip_address`, `status`) |
+| `direct_root_login` | High | 1 successful login directly as `root` | `T1078.001` (Valid Accounts: Default) | Auth/SSH logs (`username=root`, `status=success`) |
+| `multi_ip_successful_login` | Medium | 1 account logging in from 3+ IPs in 5m | `T1078` (Valid Accounts) | Auth logs (`username`, `ip_address`, `status=success`) |
+| `sudo_failure` | Medium | 3 failed sudo executions in 5m | `T1548.003` (Sudo / Elevation) | Syslog/Auth (`event_type=privilege_escalation`) |
+| `sudo_after_login` | Medium | Successful login followed by sudo within 60s | `T1078` / `T1548.003` | Syslog/Auth (`username`, `event_type`) |
+| `new_account_created` | High | Local user creation (`useradd`/`adduser`) | `T1136.001` (Create Local Account) | Linux Syslog/Auditd |
+| `privileged_group_modified` | High | User added to `sudo`, `wheel`, `admin`, `docker` | `T1098` (Account Manipulation) | Linux Syslog/Auditd |
+| `cron_persistence` | Medium | Crontab updated or systemd timer created | `T1053.003` (Scheduled Task/Job: Cron) | Linux Syslog/Auditd |
+| `security_control_disabled` | High | `auditd`, `ufw`, `fail2ban`, `clamav` stopped | `T1562.001` (Disable Security Tools) | Linux Syslog/Service logs |
+| `log_tampering` | Critical | Logging daemon killed, journal logs vacuumed | `T1562.002` (Disable or Clear Logs) | Linux Syslog/Auditd |
+| `ssh_key_added` | High | Modification to `~/.ssh/authorized_keys` | `T1098.004` (SSH Authorized Keys) | Linux Auditd (`EXECVE`/`PATH`) |
+| `port_scan` | Medium | 10 port-probes from single IP in 60s | `T1046` (Network Service Discovery) | Firewall / IDS / Netfilter logs |
+| `host_sweep` | Medium | Single IP probing same port on 10+ hosts in 2m | `T1046` (Network Service Discovery) | Netfilter / Firewall Flow logs |
+| `dns_tunneling` | High | 20+ high-entropy / long subdomains in 5m | `T1071.004` (Application Layer: DNS) | DNS logs (`dns_query`, `dnsmasq`, `bind`) |
+| `outbound_beaconing` | High | Regular, low-jitter periodic external egress | `T1071` (C2 Protocol) | Flow logs (`dest_ip`, `dest_port`, `timestamp`) |
+| `egress_volume_anomaly` | High | Host outbound volume > 3x rolling baseline | `T1048` (Exfiltration Over Protocol) | Netflow / Proxy logs (`bytes_out`, `source_host`) |
+| `impossible_travel` | High | Consecutive logins with speed > 900 km/h | `T1078` (Valid Accounts) | Auth logs with Geo coordinates / GeoIP DB |
+| `first_seen_geo_asn` | Medium | First login from country/ASN for account | `T1078` (Valid Accounts) | Auth logs with Geo/ASN metadata |
+| `dormant_account_activity` | Medium | Login after 30+ consecutive days of inactivity | `T1078` (Valid Accounts) | Auth history across batches (`username`) |
+| `lateral_movement_chain` | High | 1 account authenticating to 3+ hosts in 10m | `T1021` (Remote Services) | Syslog / Kerberos / Auth logs |
+| `service_account_interactive` | High | Interactive login by configured service accounts | `T1078.002` (Service Accounts) | Auth logs + configured service account list |
+| `login_to_nonexistent_account` | Medium | Failed login to listed decommissioned account | `T1078` (Valid Accounts) | Auth logs + decommissioned account list |
+| `off_hours_login` | Low | Successful login outside 06:00–20:00 UTC | `T1078` (Valid Accounts) | Any auth log with timestamp |
+| `host_log_silence` | High | Monitored host heartbeat cadence interrupted | `T1562` (Impair Defenses) | All logs carrying `source_host` |
+| `threat_intel_match` | High | Traffic/DNS matches imported threat feed | Multiple | Network / DNS logs + Imported Feeds |
+| `behavioral_anomaly_login` | Low | Model scores login hour/geo as an anomaly | `T1078` (Valid Accounts) | Auth logs (`timestamp`, `ip_address`, `username`) |
+| `behavioral_anomaly_egress` | Low | Model scores hourly egress byte pattern as anomaly | `T1048` (Exfiltration) | Flow logs (`bytes_out`, `source_host`) |
+| `behavioral_anomaly_threat_log` | Low | Model scores a source IP’s hourly traffic pattern as anomalous | `T1046` (Network Service Discovery) | Firewall or flow logs (`ip_address`, `dest_ip`, `timestamp`) |
 
 **Things that surprise people**
 
-- Rules that keep history across uploads (dormant account, lateral movement, impossible travel, first-seen geo, egress volume, and both behavioral rules) never fire the first time they see an entity. They have nothing to compare against yet.
+- Rules that keep history across uploads (dormant account, lateral movement, impossible travel, first-seen geo, egress volume, and the behavioral rules) use accumulated data for comparison.
 - `host_log_silence` watches every host the deployment has ever seen, not just the hosts in your latest file, so an unrelated upload can surface it for other hosts.
-- Both `behavioral_anomaly_*` rules start in shadow mode. They score and store events (see `GET /ml/scores`) but raise no alerts until an Admin reviews the scores and turns shadow mode off.
+- The `behavioral_anomaly_*` rules start in shadow mode. With an active model they store scores (see `GET /ml/scores`). Alerting requires an Admin to turn shadow mode off.
 - Interactive `history -c` is a shell builtin that writes no log record, so it is only caught when run through a logged command path.
 - Only imported threat-intel feeds can trigger `threat_intel_match`. See section 11.
 
-**Tuning a rule**
+**Tuning a rule (Configuration Precedence)**
 
-Settings stack in this order, and later layers win:
+Settings resolve at runtime using a 3-tier override hierarchy, where later layers win:
 
-1. The rule's built-in defaults.
-2. The `DETECTION_RULE_CONFIG` environment variable, a JSON object keyed by rule name.
-3. Admin or Analyst overrides saved from the Threat Detection page (or `PATCH /detection/rules/{name}`). They apply from the next upload, with no restart.
+1. **Engine Defaults:** Embedded baseline values inside Python rule classes.
+2. **Environment Overrides:** Global JSON object defined in the `DETECTION_RULE_CONFIG` environment variable.
+3. **Database Runtime Overrides:** Admin or Analyst overrides saved from the Threat Detection page (or via `PATCH /detection/rules/{name}`). Stored in PostgreSQL (`detection_rule_settings`), they take effect immediately on the next upload with zero server downtime.
 
 ```json
 {
@@ -319,7 +409,19 @@ The typical flow is: read the alert, check the evidence, decide, then either clo
 
 Incident statuses in the interface are Open, Investigating, Resolved and False Positive.
 
+![Alerts page with queue filters and a selected failed SSH login showing its status and matched rule](user-guide-images/alert-triage.jpg)
+
+*Select an alert row to open its details and investigation controls.*
+
+![Incident Tracking page with the incident selector, response playbook, and resolution controls](user-guide-images/incident-tracking.jpg)
+
+*Use **Incident Tracking** for the response playbook and status controls. Scroll down for the investigation timeline and analyst notes.*
+
 **Quick Resolve** puts the whole path on one screen. Select an alert, review its evidence, use the response controls, tick the resolution checklist, add a note, and optionally run AI guidance. Use it for routine alerts and Incident Tracking for larger work.
+
+![Quick Resolve displaying a matched log event, detection rule, and resolution controls for a sample alert](user-guide-images/quick-resolve.jpg)
+
+*Choose an alert in **Quick Resolve** to review the matched logs and record an outcome for the linked incident.*
 
 **Limits and safeguards**
 
@@ -330,7 +432,11 @@ Incident statuses in the interface are Open, Investigating, Resolved and False P
 
 ## 8. Build your own rules
 
-The Rule Builder lets Admins and Analysts add detection rules without touching code. Custom rules run alongside the 30 built-in rules on every upload. Open it from Threat Detection with the new-rule button, or choose Edit rule on an existing custom rule.
+The Rule Builder lets Admins and Analysts add detection rules without touching code. Enabled custom rules run alongside the built-in rules on upload. Open it from Threat Detection with the new-rule button, or choose Edit rule on an existing custom rule.
+
+![New custom rule form with severity, conditions, Run test, Save draft, and Enable rule controls](user-guide-images/rule-builder.jpg)
+
+*Define the rule and its conditions, then use **Run test** to check it against recent logs before enabling it.*
 
 **Anatomy of a rule**
 
@@ -347,20 +453,48 @@ The Rule Builder lets Admins and Analysts add detection rules without touching c
 | ATT&CK technique | Optional, in the form `T1110` or `T1110.001`. Alerts from the rule carry it. |
 | Actions | create alert, notify Slack, auto-create incident, suggest playbook |
 
-**Conditions**
+**Custom Rule Schema Definition**
+
+Admins and Analysts can create and update rules via the UI or directly via the REST API (`POST /custom-rules`).
+
+```json
+{
+  "name": "Suspicious_Dev_Ssh_Burst",
+  "category": "threat hunting",
+  "severity": "High",
+  "status": "Enabled",
+  "conditions": [
+    {"field": "event_type", "operator": "equals", "value": "ssh_login"},
+    {"field": "status", "operator": "equals", "value": "failed"},
+    {"field": "port", "operator": "equals", "value": "22"},
+    {"field": "timestamp", "operator": "between", "value": "22:00-06:00"}
+  ],
+  "group_by": "ip_address",
+  "min_count": 5,
+  "window_seconds": 300,
+  "mitre_tactic": "TA0001",
+  "mitre_technique": "T1110.001",
+  "actions": {
+    "create_alert": true,
+    "notify_slack": true,
+    "auto_create_incident": false,
+    "suggested_playbook": "Contain Host & Block IP"
+  }
+}
+```
+
+**Conditions & Operators**
 
 Custom rules can test these fields: `event_type`, `status`, `ip_address`, `username`, `hostname`, `process`, `command`, `message`, `file_path`, `dest_ip`, `protocol`, `domain`, `dns_query`, `port` and `timestamp`. A field your log format does not fill is simply empty, so a condition on it does not match.
 
-| Field type | Operators |
-| --- | --- |
-| Text fields | equals, not equals, contains, startswith, endswith, in (comma-separated list) |
-| `port` | equals, >, <, in |
-| `timestamp` | between, before, after |
+| Field type | Supported Operators | Description |
+| --- | --- | --- |
+| Text fields (`event_type`, `status`, `ip_address`, `username`, `hostname`, `process`, `command`, `message`, `file_path`, `dest_ip`, `protocol`, `domain`, `dns_query`) | `equals`, `not equals`, `contains`, `startswith`, `endswith`, `in` | Case-insensitive and trims surrounding spaces. `in` accepts a comma-separated list. |
+| Numeric fields (`port`) | `equals`, `>`, `<`, `in` | Integer comparison. Validates ports (1–65535). |
+| Temporal fields (`timestamp`) | `between`, `before`, `after` | `between` accepts `HH:MM-HH:MM` ranges (e.g. `22:00-06:00` wrapping overnight) in UTC or named timezones. The start is included and the end is excluded. |
 
-- Text comparisons ignore case and surrounding spaces.
 - **Any of.** Put several alternatives in one value, separated by `|`: `command endswith /bin/bash | /bin/sh` matches either. Write `\|` for a literal pipe. Works for every text operator except `in`, and for `port equals`.
 - **NOT.** The NOT button before a condition inverts it. NOT on a field the event does not have counts as a match, so `NOT ip_address equals 198.51.100.250` also matches events with no address. A rule cannot be made only of NOT conditions.
-- A timestamp between takes an hour range such as 00:00 – 06:00. The start is included, the end is excluded, and a range like 22:00 – 06:00 wraps past midnight. The default zone is UTC; pick any named zone to account for daylight saving time.
 - Invalid ports, empty list items, blank values and malformed times are rejected before the rule is saved.
 
 **How matching and windows work**
@@ -429,29 +563,56 @@ Collection is by polling, so new lines arrive within one poll interval.
 
 ## 10. AI Analysis and reports
 
-**AI Analysis**
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   CyberShield SOC Reporting Subsystem                  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+       ┌────────────────────────────┴────────────────────────────┐
+       ▼                                                         ▼
+┌──────────────────────────────┐                         ┌──────────────────────────────┐
+│   Server-Side PDF Engine     │                         │   AI Investigation Assistant │
+│   - ReportLab & PyPDF        │                         │   - Claude Model Tool-Calls  │
+│   - Parameterized Lookbacks  │                         │   - Read-Only SQL Inquiries  │
+│   - Context-Aware Layouts    │                         │   - Prompt Injection Defense │
+└──────────────┬───────────────┘                         └──────────────┬───────────────┘
+               │                                                         │
+               ▼                                                         ▼
+┌──────────────────────────────┐                         ┌──────────────────────────────┐
+│ Downloadable PDF Exports     │                         │ Contextual Analyst Guidance  │
+│ (Daily, Weekly, Coverage,    │                         │ (Quick Resolve, AI Assistant │
+│ Executive Risk)              │                         │ Recommendations)             │
+└──────────────────────────────┘                         └──────────────────────────────┘
+```
 
-The assistant answers questions about your workspace's alerts, incidents, events, sign-in activity, users and rules. It is read-only: it advises and prepares recommendations, and you decide and act. It never blocks an IP, locks an account or resolves an alert.
+**Server-Side PDF Reporting Engine**
 
-- **Turn it on.** Set `ANTHROPIC_API_KEY` in `.env`. If it is empty, the assistant is disabled and the endpoint returns 503. `ASSISTANT_MODEL` and `ASSISTANT_MAX_TOKENS` tune the model and answer length. Never commit a real key.
-- **Ask specific questions.** For example, which IPs caused the failed logins in the current time range. The assistant looks up the data with tools before answering and respects the time range you have selected.
-- **Read the answer critically.** It cites concrete values (IPs, counts, rule IDs, hosts), says when a lookup returned nothing, and notes when results were truncated. A filtered lookup covers only that filter.
-- **Recommendations** map to platform actions such as Block IP, Lock account, Enable MFA, Reset password and Investigate host, and are framed as options tied to evidence.
-- **Prompt-injection guard.** Text inside logs is treated as data. If a log row looks like an attempt to instruct the assistant, it names the event, quotes a short fragment and flags it as possible attack evidence.
-- Quick Resolve has an Analyze alert button that uses the same assistant for one alert. Settings has an AI assistant boundaries panel, and Quick Resolve shows a warning if the assistant is switched off.
+Open Reports to export any of four built-in reports as a server-rendered vector PDF. The reporting subsystem is powered by `reportlab` and `pypdf`, generating parameterized documents on demand via `GET /reports/{report_id}/pdf`. PDF export requires a connected backend and is unavailable in demo mode.
 
-**Reports**
+![Reports page with four report choices, a CSV export button, and a disabled PDF export button in demo mode](user-guide-images/reports.jpg)
 
-Open Reports to export any of four built-in reports as a server-rendered PDF. PDF export needs a connected backend and is unavailable in demo mode.
+*Select a report to see its export controls. In a connected workspace, choose the PDF time range and select **Export PDF**.*
 
-| Report | What it covers |
-| --- | --- |
-| Daily SOC operations | Hourly alert volume by severity, status mix, top rules and source IPs, host and log-source health, incidents opened and assigned. |
-| Weekly incident summary | Incident volume by severity and rule, time to resolve, the full incident list, most affected hosts and users, comparison with the previous period. |
-| Detection coverage | Which built-in rules are enabled, in shadow mode or disabled, MITRE ATT&CK coverage, rule activity and host heartbeat health. |
-| Executive risk overview | Open high and critical incidents, alert trend by severity, most affected hosts and users, resolution performance. |
+| Report Archetype | Lookback & Focus | Detailed Contents |
+| :--- | :--- | :--- |
+| **Daily SOC Operations** (`daily-operations`) | Past 24 Hours | Hourly alert volume by severity, triage status mix, top 10 offending source IPs and targeted users, host and log-source health, analyst incident assignment distribution. |
+| **Weekly Incident Summary** (`weekly-incidents`) | Past 7 Days | MTTR (Mean Time to Resolution) metrics, incident severity breakdown against prior-week historical baselines, itemized index of open, resolved, and false-positive incidents. |
+| **Detection Coverage & MITRE Matrix** (`detection-coverage`) | Deployment Lifecycle | Active, shadow-mode, and disabled rule distribution; MITRE ATT&CK tactic/technique coverage percentage; host heartbeat cadence and dead-agent reporting. |
+| **Executive Risk Overview** (`executive-risk`) | Past 30 Days | High-level threat trend indicators, open critical exposure summaries, resolution performance, and systemic vulnerability hotspots across monitored infrastructure. |
 
-Reports are on demand. There is no scheduling or run history yet.
+Reports are generated dynamically on demand without persistent queue delays.
+
+**AI Security Analysis Assistant**
+
+Integrated through Anthropic's Claude API (`ANTHROPIC_API_KEY`), the assistant provides real-time analyst support across alerts, incidents, events, sign-in activity, users, and detection rules. It operates under strict security boundaries:
+
+- **Strict Read-Only Enforcement:** The assistant queries workspace telemetry using structured read-only tool calls (`query_alerts`, `query_incidents`, `get_host_telemetry`). It cannot mutate database records, alter firewall rules, or close incidents.
+- **Turn it on:** Set `ANTHROPIC_API_KEY` in `.env`. If it is empty, the assistant is disabled and the endpoint returns 503. `ASSISTANT_MODEL` and `ASSISTANT_MAX_TOKENS` tune the model and answer length. Never commit a real key.
+- **Ask specific questions:** For example, which IPs caused the failed logins in the current time range. The assistant looks up the data with tools before answering and respects the time range you have selected.
+- **Read the answer critically:** It cites concrete values (IPs, counts, rule IDs, hosts), says when a lookup returned nothing, and notes when results were truncated. A filtered lookup covers only that filter.
+- **Evidence-Backed Recommendations:** Recommendations map to concrete response playbooks (e.g., *Isolate Host*, *Block CIDR*, *Rotate Credentials*, *Revoke Session*) framed as options tied to specific evidence log IDs.
+- **Prompt Injection Defense:** Text inside logs is treated strictly as data. If a log row attempts instruction hijacking or prompt manipulation, the assistant isolates the text, names the event, quotes a short fragment, and flags it as suspicious attack evidence.
+- **Quick Resolve Integration:** The **Analyze Alert** module in Quick Resolve invokes the assistant with pre-scoped alert context to generate immediate, tailored investigation checklists.
 
 ## 11. Admin tasks
 
@@ -470,22 +631,85 @@ Every security-relevant action is recorded with who did it, their role, the time
 
 Filter by category, person, outcome and time range, and page back with Load older entries. The log is read-only: there is no way to edit or delete an entry through the app. A failed sign-in for a name that is not an account is recorded without the typed name, because people sometimes type a password into the username box. The API is `GET /audit/events`.
 
+![Users page showing sample accounts, their roles, and the Edit workspace access panel](user-guide-images/user-management.jpg)
+
+*Select a user to review their role and account access. Use **Invite user** to start an invitation in a connected workspace.*
+
+**Machine Learning & Behavioral Anomaly Detection**
+
+CyberShield integrates unsupervised behavioral anomaly detection using scikit-learn Isolation Forests to identify subtle, low-and-slow threats that evade static threshold rules.
+
+```
+Batch Ingestion Stream
+       │
+       ▼
+┌─────────────────────────────────┐
+│   ML Feature Extractor Pipeline │
+│   - Rolling Temporal Windows    │
+│   - Geolocation & ASN Vectors   │
+│   - Egress Volume Aggregations  │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ PostgreSQL Feature Snapshots    │ ◄─── Accumulated Baseline Data
+│ (`ml_feature_snapshots`)        │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ Isolation Forest Engine         │
+│ - Fit Model (Contamination: 2%) │
+│ - Decision Function Scoring     │
+│ - Anomaly Score Scaling (0-100) │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ Attribution & Deviation Engine  │ ──► Deviation Breakdown (Top Feature Drivers)
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ Shadow Mode Review / Live Alert │
+└─────────────────────────────────┘
+```
+
+*Feature Sets & Extraction Pipelines:*
+
+| Feature Set Key | Monitored Entity | Feature Dimensions Extracted | Minimum Samples (`min_samples`) |
+| :--- | :--- | :--- | :--- |
+| `login_temporal_geo` | `username` / `account` | `login_hour_sin`, `login_hour_cos`, `day_of_week`, `is_weekend`, `geo_distance_km`, `asn_novelty_score` | 50 snapshots |
+| `egress_volume_hourly` | `source_host` | `bytes_out_mean`, `bytes_out_std`, `flow_count`, `dest_port_entropy`, `peak_to_average_ratio` | 100 snapshots |
+| `source_ip_window` | `ip_address` | `event_rate_per_min`, `unique_usernames_probed`, `failure_ratio`, `distinct_dest_ports` | 75 snapshots |
+
+*Model Architecture & Scoring:*
+- **Model Type:** Scikit-learn `IsolationForest(n_estimators=100, contamination=0.02, random_state=42)`.
+- **Score Normalization:** Raw tree decision function outputs are mapped linearly to a normalized `0–100` Anomaly Score:
+  $$\text{Anomaly Score} = \min\left(100, \max\left(0, \frac{-\text{decision\_function}(X) - \text{threshold}}{\text{scale\_factor}} \times 100\right)\right)$$
+- **Explainability & Attribution:** Feature-level deviations against baseline mean and variance are computed via `feature_deviations()`, highlighting which specific metric (e.g. `bytes_out` spike or anomalous login hour) drove the score.
+
+*Model Training & Shadow Mode Lifecycle:*
+1. **Accumulate History:** Feature snapshots are saved automatically in `ml_feature_snapshots` during standard log ingestion.
+2. **Train Model:** Trigger training per feature set via `POST /ml/models/{feature_set}/train`. Serialized artifacts and parameters are versioned in `ml_models`.
+3. **Audit Shadow Mode Scores:** Evaluate live scoring at `GET /ml/scores`. In shadow mode, events are scored and recorded without raising noisy alerts.
+4. **Activate & Alert:** Activate the model via `POST /ml/models/{model_id}/activate` and disable shadow mode in rule settings when anomaly scoring is calibrated.
+
 **Threat-intel feeds**
 
 `threat_intel_match` stays silent until you import a feed. A feed is either a plain text list with one IP, CIDR range or domain per line, or a STIX 2.1 bundle (JSON) such as an ISAC or MISP export. Paste it or choose Load from file in Threat Detection > Threat Intelligence, or use the API (`POST /threat-intel/feeds`). From a STIX bundle, the `ipv4-addr`, `ipv6-addr` and `domain-name` indicators are imported; revoked or expired indicators and other kinds (file hashes, URLs, email addresses) are skipped and counted in the result. List indicators with `GET /threat-intel/indicators`, and remove a feed with `DELETE /threat-intel/feeds/{source}`. To suppress an indicator you trust, add it to that rule's allowlist.
 
 Export STIX on a feed downloads it as a STIX 2.1 bundle (`GET /threat-intel/feeds/{source}/stix`) to share with another tool. Its ids are stable, so exporting the same feed twice gives the same objects.
 
-**Host heartbeats**
+**Host heartbeats & cadence tracking**
 
-`host_log_silence` learns each host's reporting rhythm. View the tracked hosts at `GET /detection/host-heartbeats`, and run a silence check on demand with `POST /detection/host-silence/check`.
+`host_log_silence` learns each host's reporting cadence from ingested telemetry batches. View tracked hosts at `GET /detection/host-heartbeats`, and run a silence check on demand with `POST /detection/host-silence/check`. Inactivity exceeding learned thresholds triggers `host_log_silence` alerts.
 
-**ML models (the two `behavioral_anomaly_*` rules)**
+**Audit trails & concurrency safeguards**
 
-1. Collect enough history first. The models train from snapshots stored across uploads.
-2. Train a model per feature set (`POST /ml/models/{feature_set}/train`) and activate it (`POST /ml/models/{model_id}/activate`). List models with `GET /ml/models`.
-3. Leave the rule in shadow mode and review stored scores at `GET /ml/scores`.
-4. When the scores look sensible, turn shadow mode off for that rule so it can raise alerts.
+- **Immutable Audit Logging:** Incident state transitions record exact timestamps, originating user IDs, prior states, and resolution reasons.
+- **Incident Capacity Rules:** Incidents store up to 5 concurrent investigative notes.
+- **Optimistic Concurrency Control:** State updates validate entity version timestamps, rejecting stale writes with HTTP 409 if another analyst modified the record concurrently.
 
 **Settings and notifications.** Only Admins can change workspace settings. Session lifetime, rate limits and privileged re-authentication are controlled by the backend (`.env`), not by the Settings page; each person sets up their own authenticator app in Settings > Security. Each person can pick which live events appear in their notification center, plus theme, density, text size, contrast and motion.
 
@@ -550,6 +774,7 @@ For `threat_intel_match.csv`, import `threat_intel_feed_import.txt` as a feed fi
 
 | Topic | File |
 | --- | --- |
+| Project charter, architecture scope, milestones and KPIs | [docs/PROJECT_CHARTER.md](PROJECT_CHARTER.md) |
 | Full environment variable table and demo checklist | [docs/deployment_and_documentation.md](deployment_and_documentation.md) |
 | Authentication, roles and endpoint permissions | [docs/backend-auth-rbac.md](backend-auth-rbac.md) |
 | Correlation, evidence and incident lifecycle | [docs/sprint6.md](sprint6.md) |
