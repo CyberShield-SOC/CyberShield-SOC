@@ -14,6 +14,10 @@ FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
+# This image is built for Railway, whose edge proxy is the only way in and
+# overwrites X-Real-IP with the caller's address. Rate limits and the audit
+# log key on it. Unset this if the container is ever exposed directly.
+ENV RATE_LIMIT_CLIENT_IP_HEADER=X-Real-IP
 
 WORKDIR /app
 

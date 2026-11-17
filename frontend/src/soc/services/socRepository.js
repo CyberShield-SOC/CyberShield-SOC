@@ -17,6 +17,9 @@ import { apiRequest, isBackendConfigured } from "../../services/apiClient.js";
 import { buildAnomalyStat, buildMlInsight, normalizeDeviations } from "../utils/mlInsight.js";
 import { customRuleUpdates } from "../utils/customRuleDraft.js";
 import { normalizeWorkflowEvent } from "../utils/workflowHistory.js";
+import { auditQueryParams, filterAuditEvents, normalizeAuditEvent } from "../utils/auditLog.js";
+import { isStixContent, summarizeStixBundle } from "../utils/threatFeed.js";
+import { normalizeSigmaImport } from "../utils/sigmaImport.js";
 
 const INVITE_REQUEST_TIMEOUT_MS = 25_000;
 
@@ -45,10 +48,43 @@ const UPLOAD_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a
 
 const DEFAULT_WORKSPACE_USERS = Object.freeze([
   { id: 1, username: "admin", email: "admin@cybershield.io", fullName: "CyberShield Admin", isActive: true, role: "Admin" },
-  { id: 2, username: "analyst", email: "analyst@cybershield.io", fullName: "Yugal P.", isActive: true, role: "Analyst" },
+  { id: 2, username: "analyst", email: "analyst@cybershield.io", fullName: "Yugal P.", isActive: true, role: "Analyst", mfaMethod: "totp" },
   { id: 3, username: "marvellous", email: "marvellous@cybershield.io", fullName: "Marvellous", isActive: true, role: "Analyst" },
   { id: 4, username: "viewer", email: "viewer@cybershield.io", fullName: "Workspace Viewer", isActive: true, role: "Viewer" },
 ]);
+
+// Illustrative audit entries for sample mode: [minutes ago, actor, role,
+// action, outcome, target type, target label, detail, source address].
+const SAMPLE_AUDIT_ROWS = Object.freeze([
+  [4, "Yugal P.", "Analyst", "log.upload", "SUCCESS", "upload", "auth.log", { format: "syslog", events: 412, alerts: 3 }, "198.51.100.24"],
+  [9, "Yugal P.", "Analyst", "auth.login.second_factor", "SUCCESS", "", "", { remember_me: false }, "198.51.100.24"],
+  [9, "Yugal P.", "Analyst", "auth.login.password", "SUCCESS", "", "", { second_factor: "email" }, "198.51.100.24"],
+  [31, "Anonymous", "", "auth.login.password", "FAILURE", "user", "viewer", { reason: "invalid_credentials", account_known: true }, "203.0.113.77"],
+  [32, "Anonymous", "", "auth.login.password", "FAILURE", "user", "viewer", { reason: "invalid_credentials", account_known: true }, "203.0.113.77"],
+  [58, "CyberShield Admin", "Admin", "user.role.change", "SUCCESS", "user", "marvellous", { from: "Viewer", to: "Analyst" }, "198.51.100.10"],
+  [61, "CyberShield Admin", "Admin", "user.invite.create", "SUCCESS", "invite", "new.analyst@cybershield.io", { role: "Analyst" }, "198.51.100.10"],
+  [95, "Marvellous", "Analyst", "rule.builtin.update", "SUCCESS", "detection_rule", "brute_force_login", { updates: { fail_threshold: 8 } }, "198.51.100.31"],
+  [120, "Marvellous", "Analyst", "rule.custom.create", "SUCCESS", "custom_rule", "After-hours admin sign-in", { status: "DRAFT", severity: "HIGH" }, "198.51.100.31"],
+  [185, "CyberShield Admin", "Admin", "threat_intel.feed.import", "SUCCESS", "threat_feed", "abuse-ch", { imported: 1840, rejected_lines: 2, replaced: 1795 }, "198.51.100.10"],
+  [240, "CyberShield Admin", "Admin", "ml.model.train", "SUCCESS", "ml_model", "login_behavior v3", { sample_count: 2210 }, "198.51.100.10"],
+  [300, "Workspace Viewer", "Viewer", "export.report", "SUCCESS", "report", "executive-summary", { format: "pdf", severity: null }, "198.51.100.52"],
+]);
+
+function sampleAuditEvents() {
+  const now = Date.now();
+  return SAMPLE_AUDIT_ROWS.map(([minutesAgo, actor, role, action, outcome, targetType, targetLabel, detail, ip], index) => normalizeAuditEvent({
+    id: SAMPLE_AUDIT_ROWS.length - index,
+    occurred_at: new Date(now - minutesAgo * 60_000).toISOString(),
+    actor_name: actor,
+    actor_role: role,
+    action,
+    outcome,
+    target_type: targetType,
+    target_label: targetLabel,
+    ip_address: ip,
+    detail,
+  }));
+}
 
 function clone(value) {
   return structuredClone(value);
@@ -242,6 +278,7 @@ export function normalizeWorkspaceUser(user) {
     email,
     fullName: String(user?.fullName ?? user?.full_name ?? "").trim(),
     isActive: Boolean(user?.isActive ?? user?.is_active),
+    mfaMethod: (user?.mfaMethod ?? user?.mfa_method) === "totp" ? "totp" : "email",
     role,
   };
 }
@@ -536,6 +573,7 @@ function normalizeEvent(log, alerts = []) {
   return {
     id: evidenceId(log),
     backendId: log.id,
+    uploadId: log.upload_id ? String(log.upload_id) : "",
     sourceAlertId: alert?.id || null,
     timestamp: log.timestamp || "",
     ingestedAt: log.ingested_at || log.timestamp || "",
@@ -674,11 +712,16 @@ function normalizeCustomRule(rule) {
     conditions: (rule.conditions || []).map((condition) => ({
       field: condition.field,
       operator: condition.operator,
-      value: condition.value,
+      ...(Array.isArray(condition.values) ? { values: condition.values.map(String) } : { value: condition.value }),
+      ...(condition.negate === true ? { negate: true } : {}),
       timezone: condition.timezone ?? null,
     })),
     groupBy: rule.group_by || rule.groupBy || "none",
     windowSeconds: Number(rule.window_seconds ?? rule.windowSeconds) || 600,
+    minCount: Math.max(1, Number(rule.min_count ?? rule.minCount) || 1),
+    mitreTechnique: rule.mitre_technique || rule.mitreTechnique || "",
+    source: (rule.source || "builder") === "sigma" ? "sigma" : "builder",
+    externalId: rule.external_id || rule.externalId || "",
     actions: rule.actions || {},
     status: String(rule.status || "draft").toLowerCase(),
     dsl: rule.dsl || "",
@@ -697,6 +740,8 @@ function customRuleApiPayload(rule) {
     conditions: rule.conditions,
     group_by: rule.groupBy || "none",
     window_seconds: rule.windowSeconds,
+    min_count: Number(rule.minCount) || 1,
+    mitre_technique: String(rule.mitreTechnique || "").trim().toUpperCase() || null,
     actions: rule.actions || {},
     ...(rule.status ? { status: rule.status.toUpperCase() } : {}),
     ...(rule.dsl ? { dsl: rule.dsl } : {}),
@@ -813,6 +858,7 @@ const mockRepository = {
   async getNotes() { await wait(90); return readSessionNotes(); },
   async getSettings() { await wait(100); return readSessionSettings(); },
   async getUsers() { await wait(100); return readSessionUsers(); },
+  async getAuditEvents(filters = {}) { await wait(110); return filterAuditEvents(sampleAuditEvents(), filters); },
   async getUserRoles() { await wait(70); return clone(DEFAULT_USER_ROLES); },
   async getAssignableUsers() {
     await wait(80);
@@ -958,6 +1004,15 @@ const mockRepository = {
     if (!target) throw new Error("That user no longer exists.");
     return { success: true, sessionsRevoked: 0, user: clone(target) };
   },
+  async resetUserMfa(userId) {
+    await wait(100);
+    const users = readSessionUsers();
+    const target = users.find((item) => item.id === Number(userId));
+    if (!target) throw new Error("That user no longer exists.");
+    target.mfaMethod = "email";
+    writeSessionUsers(users);
+    return { success: true, sessionsRevoked: 0, user: clone(target) };
+  },
   async updateUserRole(userId, role) {
     await wait(100);
     const users = readSessionUsers();
@@ -1021,6 +1076,14 @@ const mockRepository = {
   },
   async importThreatIntelFeed({ source, content }) {
     await wait(120);
+    if (isStixContent(content)) {
+      const { imported, rejected } = summarizeStixBundle(content);
+      if (!imported) throw new Error("The STIX bundle contained no IP, CIDR, or domain indicators this platform can match.");
+      const feeds = readSessionThreatFeeds().filter((feed) => feed.source !== source);
+      feeds.push({ source, indicatorCount: imported, updatedAt: new Date().toISOString(), byType: {} });
+      writeSessionThreatFeeds(feeds);
+      return { source, imported, rejectedLines: rejected, format: "stix" };
+    }
     const indicators = String(content || "")
       .split(/\r?\n/)
       .map((line) => line.split(/[#;]/, 1)[0].trim().split(/[\s,]+/, 1)[0])
@@ -1029,7 +1092,7 @@ const mockRepository = {
     const feeds = readSessionThreatFeeds().filter((feed) => feed.source !== source);
     feeds.push({ source, indicatorCount: new Set(indicators).size, updatedAt: new Date().toISOString(), byType: {} });
     writeSessionThreatFeeds(feeds);
-    return { source, imported: new Set(indicators).size, rejectedLines: 0 };
+    return { source, imported: new Set(indicators).size, rejectedLines: 0, format: "text" };
   },
   async deleteThreatIntelFeed(source) {
     await wait(80);
@@ -1110,6 +1173,10 @@ const mockRepository = {
     });
     writeSessionCustomRules(rules);
     return normalizeCustomRule(target);
+  },
+  async importSigmaRules() {
+    await wait(120);
+    throw new Error("Sigma import translates rules on the server, so it is unavailable with sample data.");
   },
   async deleteCustomRule(backendId) {
     await wait(100);
@@ -1262,6 +1329,14 @@ export const httpRepository = {
   async getUsers() {
     const payload = await request("/users");
     return responseArray(payload, "users").map(normalizeWorkspaceUser);
+  },
+  async getAuditEvents(filters = {}) {
+    const payload = await request(`/audit/events?${auditQueryParams(filters)}`);
+    const nextBeforeId = Number(payload.next_before_id);
+    return {
+      events: responseArray(payload, "events").map(normalizeAuditEvent).filter(Boolean),
+      nextBeforeId: Number.isSafeInteger(nextBeforeId) && nextBeforeId > 0 ? nextBeforeId : null,
+    };
   },
   async getAssignableUsers() {
     const payload = await request("/users/assignable");
@@ -1437,6 +1512,16 @@ export const httpRepository = {
       user: normalizeWorkspaceUser(payload.user),
     };
   },
+  async resetUserMfa(userId) {
+    const payload = await request(`/users/${requireBackendId(userId, "User")}/mfa/reset`, {
+      method: "POST",
+    });
+    return {
+      success: payload.success === true,
+      sessionsRevoked: Math.max(0, Number(payload.sessions_revoked) || 0),
+      user: normalizeWorkspaceUser(payload.user),
+    };
+  },
   async updateUserRole(userId, role) {
     const payload = await request(`/users/${requireBackendId(userId, "User")}/role`, {
       method: "PATCH",
@@ -1518,6 +1603,7 @@ export const httpRepository = {
       source: payload.source,
       imported: Number(payload.imported) || 0,
       rejectedLines: Number(payload.rejected_lines) || 0,
+      format: payload.format === "stix" ? "stix" : "text",
     };
   },
   async deleteThreatIntelFeed(source) {
@@ -1559,6 +1645,13 @@ export const httpRepository = {
     });
     return normalizeCustomRule(payload.rule);
   },
+  async importSigmaRules(content) {
+    const payload = await request("/custom-rules/import/sigma", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+    return normalizeSigmaImport(payload, normalizeCustomRule);
+  },
   async deleteCustomRule(ruleId) {
     return request(`/custom-rules/${requireBackendId(ruleId, "Custom rule")}`, { method: "DELETE" });
   },
@@ -1578,6 +1671,8 @@ export const httpRepository = {
         eventType: match.event_type,
         status: match.status,
         port: match.port,
+        hostname: match.hostname || "",
+        process: match.process || "",
       })),
       noise: {
         label: payload.noise?.label || "LOW",

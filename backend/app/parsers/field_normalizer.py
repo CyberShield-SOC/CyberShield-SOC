@@ -5,6 +5,12 @@ CORE_FIELDS = ["timestamp", "ip_address", "username", "event_type", "status"]
 _IP_OCTET = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 _IP_RE = re.compile(rf"\b(?:{_IP_OCTET}\.){{3}}{_IP_OCTET}\b")
 
+# A line is a comment when it opens with "#" or ";" followed by anything but
+# a digit: "# exported 2024-01-01", "#Fields: date time", ";; config".
+# "#4821 2024-01-01T00:00:00Z user=svc ..." is a ticket/IDS id, not a
+# comment, and must still parse.
+COMMENT_LINE = re.compile(r"\s*[#;](?![0-9])")
+
 _FAILED_WORDS = ("failed", "failure", "invalid", "denied", "blocked", "error", "reject", "rejected")
 _SUCCESS_WORDS = ("accepted", "success", "successful", "allowed", "pass", "passed", "ok")
 _INFO_WORDS = ("closed", "disconnected", "started", "stopped", "info")

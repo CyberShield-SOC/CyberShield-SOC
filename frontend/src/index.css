@@ -662,6 +662,29 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 .otp-grid input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(11, 138, 127, 0.12); }
 .otp-grid input:focus-visible { outline: 0; }
 .otp-grid.has-error input { border-color: #dc4c4c; box-shadow: none; }
+.otp-grid[hidden] { display: none; }
+.recovery-code-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 4px;
+  color: var(--subtle-copy);
+  font-size: 12px;
+  font-weight: 600;
+}
+.recovery-code-field input {
+  width: 100%;
+  height: 52px;
+  padding: 0 14px;
+  color: var(--auth-text);
+  border: 1px solid var(--field-border);
+  border-radius: 8px;
+  background: var(--field);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 17px;
+  letter-spacing: 0.08em;
+}
+.recovery-code-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(11, 138, 127, 0.12); outline: 0; }
+.recovery-code-field input[aria-invalid="true"] { border-color: #dc4c4c; box-shadow: none; }
 .mfa-footer {
   display: flex;
   align-items: center;

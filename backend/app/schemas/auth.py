@@ -36,6 +36,9 @@ class TwoFactorRequiredResponse(BaseModel):
     success: bool
     requiresTwoFactor: bool = True
     email: str
+    # "email": a code was sent to the address above. "totp": enter the code
+    # from the account's authenticator app (or a recovery code).
+    method: str = "email"
 
 
 class TwoFactorVerifyRequest(BaseModel):
@@ -98,3 +101,13 @@ class ResetPasswordRequest(BaseModel):
 class ResetPasswordResponse(BaseModel):
     success: bool
     message: str
+
+
+class MfaCodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=32)
+
+
+class MfaDisableRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+    # An authenticator code or an unused recovery code.
+    code: str = Field(min_length=1, max_length=32)

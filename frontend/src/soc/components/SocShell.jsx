@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { canOpenUserManagement } from "../../utils/permissions";
 import {
   Activity,
   AlertTriangle,
@@ -22,6 +21,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  ScrollText,
   Search,
   Settings,
   ShieldAlert,
@@ -76,6 +76,7 @@ const NAV_GROUPS = [
     items: [
       [SOC_ROUTES.manage, "Manage", UserRoundCog],
       [SOC_ROUTES.users, "Users", Users],
+      [SOC_ROUTES.auditLog, "Audit Log", ScrollText],
       [SOC_ROUTES.integrations, "Integrations", Network],
       [SOC_ROUTES.settings, "Settings", Settings],
     ],
@@ -264,7 +265,7 @@ export function SocShell({ children, expiresAt, navigate, onSignOut, route, them
             <div className="soc-nav-group" key={group.label}>
               <p>{group.label}</p>
               {group.items
-                .filter(([itemRoute]) => itemRoute !== SOC_ROUTES.users || canOpenUserManagement(user))
+                .filter(([itemRoute]) => canAccessSocRoute(itemRoute, user))
                 .map(([itemRoute, label, Icon, badge]) => {
                 const badgeValue = badge === "alerts" ? activeAlertCount : badge === "incidents" ? openIncidentCount : null;
                 const badgeDescription = badge === "alerts" ? "active alerts" : "open incidents";

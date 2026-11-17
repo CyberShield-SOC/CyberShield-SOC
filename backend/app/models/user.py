@@ -67,6 +67,18 @@ class User(Base):
         server_default="true",
     )
 
+    # Authenticator-app MFA (see app/services/totp.py). The secret is
+    # Fernet-encrypted; it is live only once totp_enabled_at is set, and
+    # totp_last_counter is the last time step accepted (replay protection).
+    totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    totp_last_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

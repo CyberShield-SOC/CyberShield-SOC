@@ -6,7 +6,7 @@ New here? See the [User Guide](docs/USER_GUIDE.md).
 
 ## Overview
 
-CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, email-based two-factor verification, and role-based access control (Admin, Analyst, Viewer).
+CyberShield SOC is a full security-operations platform: a FastAPI backend that ingests and parses security logs, runs them through a rule-based detection engine, and persists logs, alerts, incidents, and analyst notes in PostgreSQL; and a React/Vite SOC dashboard for upload, investigation, incident workflows, and administration. Authentication uses JWT access tokens, refresh-token sessions, a second factor at every sign-in (an emailed code, or an authenticator app), and role-based access control (Admin, Analyst, Viewer).
 
 Sprint 6 adds correlation, exact evidence APIs, investigation states, and incident assignment/resolution/reopening with history. See [Sprint 6 additions](docs/sprint6.md).
 
@@ -295,6 +295,14 @@ Request:
 - Accepted extensions: `.log`, `.csv`, `.txt`, `.json`, `.jsonl`
 - Max size: 50 MB
 
+The format is recognised from the content, not the extension: syslog
+(RFC 3164, with or without a `<PRI>` prefix, and RFC 5424 with structured
+data), ArcSight CEF and IBM LEEF 1.0/2.0 (bare or carried inside a syslog
+line), Linux auditd, Apache/Nginx access logs, CSV, JSON/NDJSON, and
+free-form `key=value` lines. Example files for each standard format are in
+`sample-logs/` (`cef_bruteforce.log`, `leef_bruteforce.log`,
+`rfc5424_bruteforce.log`).
+
 Every route is also served under an `/api` prefix (e.g. `POST /api/upload`) for frontend/API routing.
 
 Authentication and RBAC backend handoff details are documented in
@@ -313,11 +321,14 @@ Returns backend service health.
 | Area | Endpoints |
 | --- | --- |
 | Auth | `POST /auth/login`, `/auth/2fa/verify`, `/auth/2fa/resend`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` |
-| Users | `GET/POST /users`, `PATCH /users/{id}`, role/active/password management |
+| Authenticator MFA | `GET /auth/mfa`, `POST /auth/mfa/totp/setup`, `/auth/mfa/totp/enable`, `/auth/mfa/totp/disable`, `/auth/mfa/recovery-codes` |
+| Users | `GET/POST /users`, `PATCH /users/{id}`, role/active/password management, `POST /users/{id}/mfa/reset` |
+| Audit | `GET /audit/events` (Admin only; read-only, filter by category/actor/outcome/time) |
 | Upload | `POST /upload`, `GET /upload/latest`, `/upload/history`, `/upload/batches/{id}`, `/upload/formats` |
 | Detection | `GET /detection/rules`, `PATCH /detection/rules/{name}`, `GET /detection/host-heartbeats`, `POST /detection/host-silence/check` |
-| Threat intel | `GET/POST /threat-intel/feeds`, `DELETE /threat-intel/feeds/{source}`, `GET /threat-intel/indicators` |
-| Custom rules | `GET/POST /custom-rules`, `PATCH/DELETE /custom-rules/{id}`, `POST /custom-rules/test` |
+| Threat intel | `GET/POST /threat-intel/feeds` (plain text or STIX 2.1 bundle), `GET /threat-intel/feeds/{source}/stix`, `DELETE /threat-intel/feeds/{source}`, `GET /threat-intel/indicators` |
+| Custom rules | `GET/POST /custom-rules`, `PATCH/DELETE /custom-rules/{id}`, `POST /custom-rules/test`, `POST /custom-rules/import/sigma` |
+| Export | `GET /events/export?format=ecs`, `GET /alerts/export?format=ecs` (Elastic Common Schema, NDJSON, Admin/Analyst) |
 | Alerts / Incidents / Notes | `GET/PATCH /alerts`, `GET/POST/PATCH /incidents`, `GET/POST/PATCH/DELETE /notes` |
 | Correlation / evidence | `GET /correlation-groups`, group details/events/alerts/uploads/rule context; `GET /alerts/{alert_id}/evidence`, `/correlation-groups` |
 | Investigations | `GET/PATCH /alerts/{alert_id}/investigation`, `POST /alerts/{alert_id}/escalate`, investigation notes/history |
@@ -326,6 +337,28 @@ Returns backend service health.
 | Reports | `GET /reports`, `GET /reports/{report_id}/pdf` (server-rendered PDF export of the four phase-1 reports) |
 
 Full request/response contracts and RBAC rules are in [`docs/backend-auth-rbac.md`](docs/backend-auth-rbac.md) and the backend test suite (`backend/tests/`).
+
+## Standards
+
+What the platform implements, and how far. "Partial" means the subset
+described is implemented and tested; the rest of the standard is not.
+
+| Standard | Where | Scope |
+| --- | --- | --- |
+| MITRE ATT&CK | Detection rules, alerts, custom rules | Every built-in rule carries a technique id; custom and imported Sigma rules can carry one, and alerts keep it. |
+| Sigma | `POST /custom-rules/import/sigma`, Rule Builder → Import Sigma | Partial. Selections joined by AND, `not` filters on one field, `1 of`/`all of`, value lists, the `contains`/`startswith`/`endswith`/`all`/`gt`/`gte`/`lt`/`lte` modifiers, plain-value `*` wildcards, `level`, ATT&CK `tags`, `timeframe`, and `count() [by field] > N`. Regular expressions, OR between selections, negated multi-field groups, unmapped fields and correlation rules are rejected with a reason per rule. Imports are drafts. |
+| STIX 2.1 | Threat intel feeds | Partial. Imports `ipv4-addr`, `ipv6-addr` and `domain-name` indicators from a bundle (revoked or expired indicators and other observable types are counted as skipped); exports a feed as a bundle with deterministic ids. No TAXII server. |
+| Elastic Common Schema 8 | `/events/export`, `/alerts/export` | Events and alerts as ECS documents (NDJSON), capped at 50,000 rows per export with an `X-Export-Truncated` header. |
+| CEF, LEEF | Log upload | ArcSight CEF and IBM LEEF 1.0/2.0, including header escapes, custom labels (`cs1Label`), LEEF delimiters, and a syslog carrier. |
+| RFC 3164 / RFC 5424 syslog | Log upload | `<PRI>` facility and severity, the RFC 5424 header and structured data. |
+| RFC 6238 TOTP (NIST SP 800-63B) | Sign-in | Optional authenticator app per user: SHA-1, 6 digits, 30-second steps, ±1 step, replay protection, 8 single-use recovery codes, secrets encrypted at rest. Accounts without one keep emailed codes. |
+| OWASP secure headers | Every response | Strict `Content-Security-Policy` (no inline or remote scripts), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP/CORP. |
+| RFC 6585 rate limiting (OWASP API4) | Sign-in, uploads, assistant, everything | Per-address and per-account limits returning `429` with `Retry-After`. In-process: limits are per server process and reset on restart. |
+| NIST SP 800-53 AU-2/AU-3 audit trail | `GET /audit/events`, Audit Log page | Who did what, when, from where, and with what outcome for sign-in, account administration, rule, threat-intel, model, upload and export actions. Append-only through the API. |
+| Argon2, JWT (RFC 7519), Bearer tokens (RFC 6750) | Authentication | Unchanged. |
+
+Not implemented: OCSF, a TAXII server, WebAuthn/passkeys, and any formal
+compliance certification, which is an organisational process rather than code.
 
 ## Output
 

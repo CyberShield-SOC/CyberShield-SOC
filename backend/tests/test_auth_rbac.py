@@ -88,6 +88,27 @@ def test_security_and_no_store_headers_are_applied():
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_content_security_policy_is_strict_for_scripts():
+    policy = client.get("/health").headers["content-security-policy"]
+    directives = dict(
+        part.strip().split(" ", 1) for part in policy.split(";") if part.strip()
+    )
+
+    assert directives["default-src"] == "'self'"
+    assert directives["script-src"] == "'self'"
+    assert directives["object-src"] == "'none'"
+    assert directives["frame-ancestors"] == "'none'"
+    assert "'unsafe-inline'" not in directives["style-src"]
+    assert "'unsafe-eval'" not in policy
+
+
+def test_interactive_docs_are_exempt_from_the_application_csp():
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert "content-security-policy" not in response.headers
+
+
 def test_cors_limits_credentialed_browser_requests_to_known_origins_and_headers():
     allowed = client.options(
         "/auth/me",

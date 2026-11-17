@@ -29,8 +29,12 @@ test("normalizes backend user records without trusting malformed identities", ()
     email: "analyst7@example.com",
     fullName: "Analyst Seven",
     isActive: true,
+    mfaMethod: "email",
     role: "Analyst",
   });
+  const base = { id: 7, username: "a", email: "a@example.com", role: "Analyst" };
+  assert.equal(normalizeWorkspaceUser({ ...base, mfa_method: "totp" }).mfaMethod, "totp");
+  assert.equal(normalizeWorkspaceUser({ ...base, mfa_method: "sms" }).mfaMethod, "email");
   assert.throws(() => normalizeWorkspaceUser({ id: 0, username: "", email: "" }), /invalid user record/i);
   assert.throws(() => normalizeWorkspaceUser({ id: 7, username: "user", email: "user@example.com", role: "Owner" }), /invalid user record/i);
 });

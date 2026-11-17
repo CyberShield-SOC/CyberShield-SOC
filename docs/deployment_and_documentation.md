@@ -70,7 +70,10 @@ Root `.env` variables:
 | `AUTH_COOKIE_SECURE` | No | FastAPI auth | Use `false` for local HTTP. Use `true` only when serving over HTTPS. |
 | `JWT_SECRET_KEY` | Yes | FastAPI auth | Long random signing key for JWT access tokens. Generate with `python -c "import secrets; print(secrets.token_urlsafe(64))"`. |
 | `JWT_ACCESS_TTL_MINUTES` | No | FastAPI auth | Defaults to `10`; valid range is 1 to 60. |
-| `OTP_SECRET` | Yes | FastAPI auth | Random value of at least 16 characters used to hash OTP codes. |
+| `OTP_SECRET` | Yes | FastAPI auth | Random value of at least 16 characters used to hash OTP codes and to encrypt authenticator-app secrets. Rotating it forces authenticator users back to emailed codes until they re-enrol. |
+| `RATE_LIMIT_ENABLED` | No | FastAPI | Defaults to `true`. Per-process limits; they reset when the server restarts. |
+| `RATE_LIMIT_CLIENT_IP_HEADER` | No | FastAPI | Header holding the real client address behind a trusted proxy. The `Dockerfile` sets `X-Real-IP` for Railway. Leave empty when the API is reached directly. |
+| `RATE_LIMIT_*_PER_MINUTE`, `RATE_LIMIT_LOGIN_FAILURES`, `RATE_LIMIT_LOGIN_FAILURE_WINDOW_MINUTES` | No | FastAPI | Tuning for the global (600/min per address), sign-in (10/min), token-endpoint (10/min), upload (30/min per user) and assistant (20/min per user) limits, and the account lockout (5 failures in 15 minutes). |
 | `RESEND_API_KEY` | Required for sign-in | Email delivery | Needed to deliver OTP codes; configure `RESEND_FROM_EMAIL` for the sender. |
 | `CYBERSHIELD_ADMIN_USERNAME` | No | Seed script | Initial Admin username; defaults to `admin`. |
 | `CYBERSHIELD_ADMIN_EMAIL` | No | Seed script | Initial Admin email; defaults to `admin@cybershield.io`. |
@@ -95,6 +98,14 @@ Set-Location ..
 ```
 
 The same command is run automatically by `start.ps1` before the backend server starts. Sprint 6 adds correlation/evidence tables, investigation history, and incident lifecycle fields while preserving legacy source records.
+
+The standards work adds three migrations, each reversible with
+`alembic downgrade`: `d4e8b1a6c3f2` (the `audit_events` table),
+`e5f9c2b7d4a1` (authenticator MFA columns on `users`, a `method` on
+`otp_verifications`, and `mfa_recovery_codes`), and `f6a1d3c8e9b2`
+(`min_count`, `mitre_technique`, `source` and `external_id` on
+`custom_rules`). Downgrading `e5f9c2b7d4a1` deletes pending authenticator
+sign-in challenges, which only live for a few minutes.
 
 ## Seeded Accounts and Roles
 
@@ -145,6 +156,12 @@ To deploy:
 7. Deploy. Railway provides `PORT` automatically; the configured start
    command (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`) and
    `/health` healthcheck path do not need to be changed.
+8. After the first deploy, confirm rate limiting sees real client
+   addresses: sign in from two different networks and check that the
+   Audit Log shows two different IP addresses. If every row shows the same
+   internal address, the edge is not sending `X-Real-IP` and
+   `RATE_LIMIT_CLIENT_IP_HEADER` needs to name the header Railway does send.
+   Until that is confirmed, every user shares one rate-limit budget.
 
 This project has not been deployed to a live Railway environment from this
 workspace — verify the first deploy against Railway's own build logs before

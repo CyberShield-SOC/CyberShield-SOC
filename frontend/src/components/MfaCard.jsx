@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CircleAlert, Fingerprint } from "lucide-react";
 import { isCompleteOtp, sanitizeOtp } from "../utils/authValidation";
+import { normalizeRecoveryCode } from "../soc/utils/mfa";
 import { AuthBackButton, AuthCardIntro } from "./AuthCardIntro";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
-export function MfaCard({ email, onBack, onResend, onVerified }) {
+/**
+ * The second sign-in step. `method` is "email" (a code was sent, and can be
+ * resent) or "totp" (the code comes from the account's authenticator app; a
+ * single-use recovery code is accepted instead when the device is lost).
+ */
+export function MfaCard({ email, method = "email", onBack, onResend, onVerified }) {
+  const usesAuthenticator = method === "totp";
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const recoveryInput = useRef(null);
   const [digits, setDigits] = useState(() => Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState("");
   const [resendStatus, setResendStatus] = useState("");
@@ -53,6 +63,26 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
     event.preventDefault();
     if (submitting || resending) return;
 
+    if (useRecoveryCode) {
+      const normalized = normalizeRecoveryCode(recoveryCode);
+      if (!normalized) {
+        setError("Enter one of your recovery codes, for example abcde-fghjk.");
+        recoveryInput.current?.focus();
+        return;
+      }
+      setError("");
+      setSubmitting(true);
+      try {
+        await onVerified(normalized);
+      } catch (verifyError) {
+        setError(verifyError.message || "The recovery code could not be checked. Please try again.");
+        recoveryInput.current?.focus();
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!isCompleteOtp(digits)) {
       setError("Enter the complete six-digit verification code.");
       const firstEmptyIndex = digits.findIndex((digit) => !digit);
@@ -71,6 +101,13 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function toggleRecoveryCode() {
+    setUseRecoveryCode((current) => !current);
+    setRecoveryCode("");
+    setDigits(Array(OTP_LENGTH).fill(""));
+    setError("");
   }
 
   async function submitResend() {
@@ -106,10 +143,41 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
         title="Two-factor authentication"
         titleId="mfa-title"
       >
-        Enter the six-digit verification code for <strong>{email || "your email"}</strong>.
+        {useRecoveryCode
+          ? <>Enter one of the recovery codes you saved when you set up your authenticator app. Each works once.</>
+          : usesAuthenticator
+            ? <>Enter the six-digit code from your authenticator app for <strong>{email || "your account"}</strong>.</>
+            : <>Enter the six-digit verification code for <strong>{email || "your email"}</strong>.</>}
       </AuthCardIntro>
 
+      {useRecoveryCode && (
+        <label className="recovery-code-field" htmlFor="recovery-code">
+          <span>Recovery code</span>
+          <input
+            ref={recoveryInput}
+            id="recovery-code"
+            name="recovery-code"
+            type="text"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck="false"
+            autoFocus
+            maxLength={14}
+            placeholder="abcde-fghjk"
+            value={recoveryCode}
+            disabled={submitting}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "otp-error" : undefined}
+            onChange={(event) => {
+              setRecoveryCode(event.target.value);
+              if (error) setError("");
+            }}
+          />
+        </label>
+      )}
+
       <div
+        hidden={useRecoveryCode}
         className={`otp-grid ${error ? "has-error" : ""}`}
         role="group"
         aria-label="Six-digit verification code"
@@ -129,7 +197,7 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
             pattern="[0-9]*"
             maxLength={index === 0 ? OTP_LENGTH : 1}
             value={digit}
-            required
+            required={!useRecoveryCode}
             disabled={submitting || resending}
             onPaste={(event) => {
               event.preventDefault();
@@ -175,17 +243,26 @@ export function MfaCard({ email, onBack, onResend, onVerified }) {
       <button className="primary-button auth-primary-action" type="submit" disabled={submitting || resending}>
         {submitting ? "Verifying…" : "Verify identity"} <ArrowRight size={17} aria-hidden="true" />
       </button>
-      <div className="mfa-footer">
-        <span>Didn&apos;t receive a code?</span>
-        <button
-          className="text-link"
-          type="button"
-          disabled={submitting || resending || cooldown > 0}
-          onClick={submitResend}
-        >
-          {resending ? "Sending…" : cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
-        </button>
-      </div>
+      {usesAuthenticator ? (
+        <div className="mfa-footer">
+          <span>{useRecoveryCode ? "Have your device?" : "Lost your device?"}</span>
+          <button className="text-link" type="button" disabled={submitting} onClick={toggleRecoveryCode}>
+            {useRecoveryCode ? "Use an authenticator code" : "Use a recovery code"}
+          </button>
+        </div>
+      ) : (
+        <div className="mfa-footer">
+          <span>Didn&apos;t receive a code?</span>
+          <button
+            className="text-link"
+            type="button"
+            disabled={submitting || resending || cooldown > 0}
+            onClick={submitResend}
+          >
+            {resending ? "Sending…" : cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
+          </button>
+        </div>
+      )}
       {resendStatus && (
         <p className="inline-status" role="status" aria-live="polite">
           {resendStatus}

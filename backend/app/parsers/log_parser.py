@@ -1,5 +1,7 @@
 from app.parsers.apache_parser import parse_apache_log
 from app.parsers.auditd_parser import looks_like_auditd, parse_auditd_log
+from app.parsers.cef_parser import looks_like_cef, parse_cef_log
+from app.parsers.leef_parser import looks_like_leef, parse_leef_log
 from app.parsers.syslog_parser import parse_syslog
 from app.parsers.csv_parser import parse_csv_log
 from app.parsers.json_parser import parse_json_log
@@ -11,8 +13,11 @@ import re
 # Apache combined: IP - user [DD/Mon/YYYY:HH:MM:SS tz] "METHOD path HTTP/x" status bytes
 _APACHE_PATTERN = re.compile(r'^\S+\s+\S+\s+\S+\s+\[\d{2}/\w+/\d{4}')
 
-# Syslog: Mon DD HH:MM:SS hostname process[pid]: message
-_SYSLOG_PATTERN = re.compile(r'^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+')
+# Syslog: Mon DD HH:MM:SS hostname process[pid]: message  (RFC 3164), with
+# an optional <PRI>, or <PRI>1 ISO-timestamp host app ...  (RFC 5424)
+_SYSLOG_PATTERN = re.compile(
+    r'^(?:<\d{1,3}>)?(?:\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+|\d{1,2} \S+ \S+ \S+ \S+ \S+ )'
+)
 
 # Delimiters the CSV parser can safely take on when a .txt file turns out to
 # be a delimiter-separated export rather than free-form log lines.
@@ -58,6 +63,15 @@ def parse_log(content: str, filename: str) -> dict:
 
     if ext in {"json", "jsonl"}:
         return parse_json_log(content, lines)
+
+    # CEF and LEEF are recognised by their marker wherever it sits in the
+    # line (they usually ride inside a syslog header). Checked before the
+    # .txt sniff, which would otherwise read their pipes as a delimiter.
+    if looks_like_cef(lines):
+        return parse_cef_log(content, lines)
+
+    if looks_like_leef(lines):
+        return parse_leef_log(content, lines)
 
     if ext == "txt":
         delimiter = _sniff_delimiter(lines)

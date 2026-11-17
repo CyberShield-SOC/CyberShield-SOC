@@ -107,7 +107,12 @@ def test_correct_password_triggers_email_with_six_digit_code(db_session: Session
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {"success": True, "requiresTwoFactor": True, "email": f"{user.username[:2]}***@example.test"}
+    assert body == {
+        "success": True,
+        "requiresTwoFactor": True,
+        "email": f"{user.username[:2]}***@example.test",
+        "method": "email",
+    }
     assert "access_token" not in body
     assert code is not None
     assert len(code) == 6

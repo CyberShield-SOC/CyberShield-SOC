@@ -143,10 +143,10 @@ Log in as the Admin from your `.env` (username `admin` unless you changed `CYBER
 └──────────────────────────────┘
 ```
 
-Every sign-in requires your password and a one-time verification code (2FA OTP) sent to your email.
+Every sign-in requires your password and a second factor: a one-time code sent to your email, or, if you have set one up, the code from an authenticator app.
 
 1. **Credentials verification:** Enter your username and password. Password verification uses Argon2id hashing with unique random salts. Tick "Remember me" if you want a longer session.
-2. **Two-Factor OTP:** Enter the emailed code. Codes expire after 5 minutes, permit up to 5 attempts, and can be resent after a 60-second cooldown. OTP codes are stored exclusively as keyed HMAC-SHA256 digests in PostgreSQL.
+2. **Second factor:** Enter the six-digit code. An emailed code expires after 5 minutes and can be resent after a 60-second cooldown; it is stored only as a keyed HMAC-SHA256 digest in PostgreSQL. With an authenticator app, nothing is emailed: type the code the app shows, or choose **Use a recovery code** if you no longer have the device. Either way you get 5 attempts.
 3. **Session initiation:** You land in the workspace. Authentication uses a token dual-model:
    - **Access Token:** Short-lived JWT (10-minute expiration) carrying user claims and assigned roles.
    - **Refresh Token:** Cryptographically secure 64-byte random string stored in `auth_sessions`. Refresh requests invoke atomic rotation using row-level database locks (`with_for_update`) to prevent concurrent token replay.
@@ -158,6 +158,10 @@ Every sign-in requires your password and a one-time verification code (2FA OTP) 
 ![Two-factor verification screen with six code fields and a resend timer](user-guide-images/verification.jpg)
 
 *Enter the six-digit code and choose **Verify identity**. The resend control becomes available when the timer ends.*
+
+**Set up an authenticator app (optional, recommended).** Open Settings > Security > Sign-in verification and choose **Set up authenticator app**. Scan the QR code with Google Authenticator, Microsoft Authenticator, 1Password or any TOTP app (or type the setup key shown under it), then enter the code the app shows. You are then given 8 recovery codes. They are shown once; copy or download them and keep them away from your password. Each one signs you in once. From the same panel you can generate a new set (needs a current code) or turn the app off (needs your password and a code). An authenticator works offline and does not depend on email delivery.
+
+Sign-in attempts are rate limited. Too many from one address, or five wrong passwords for one account within 15 minutes, return "Too many requests" with a time to wait.
 
 A normal session lasts 60 minutes. With remember me it lasts 7 days. If you forget your password, use the recovery link on the sign-in screen; the reset link it emails you is valid for 30 minutes. These limits come from `.env` and your admin can change them.
 
@@ -173,10 +177,13 @@ A normal session lasts 60 minutes. With remember me it lasts 7 days. If you forg
 | Create, Assign, Transition & Resolve Incidents | Yes | Yes | No |
 | Create & Tune Custom Detection Rules (`/custom-rules`) | Yes | Yes | No |
 | Override Built-in Detection Rules (`PATCH /detection/rules/*`) | Yes | Yes | No |
+| Export Events & Alerts as ECS (`GET /events/export`, `GET /alerts/export`) | Yes | Yes | No |
 | Trigger ML Model Training (`POST /ml/models/*/train`) | Yes | No | No |
 | Activate / Roll Back ML Models (`POST /ml/models/*/activate`) | Yes | No | No |
 | User Provisioning, Role Modification, Account Revocation | Yes | No | No |
 | Manage Threat Intelligence Feeds (`/threat-intel/feeds`) | Yes | No | No |
+| View the Audit Log (`GET /audit/events`) | Yes | No | No |
+| Reset a User's Authenticator (`POST /users/{id}/mfa/reset`) | Yes | No | No |
 
 The interface hides or disables what your role cannot do, but the backend enforces the same limits on every request. Hiding a button is a convenience, not the security boundary.
 
@@ -185,6 +192,7 @@ The interface hides or disables what your role cannot do, but the backend enforc
 - Deactivating a user blocks them on their very next request.
 - Resetting a password or revoking sessions stops new tokens from being issued, but a token already issued keeps working until it expires, at most 10 minutes by default.
 - The system will not let the last active Admin be removed or demoted.
+- Lost your authenticator and your recovery codes? An Admin can reset it (section 11). Your next sign-in then uses an emailed code.
 
 ## 4. Tour of the workspace
 
@@ -240,6 +248,18 @@ Upload is how most data enters the system. Analysts and Admins can do it; Viewer
 
 The API field name is `logfile`. `GET /upload/formats` returns the accepted formats.
 
+**Formats recognised from the content.** The extension only decides whether a file is accepted; the parser is chosen by what the lines look like:
+
+| Format | Example start of a line |
+| --- | --- |
+| Syslog, RFC 3164 | `Jan 10 08:00:01 server01 sshd[1234]: ...`, optionally prefixed with `<34>` |
+| Syslog, RFC 5424 | `<34>1 2026-01-10T08:00:01Z server01 sshd 1234 ID47 [origin@32473 ip="..."] ...` |
+| ArcSight CEF | `CEF:0\|Vendor\|Product\|1.0\|100\|Name\|7\|src=203.0.113.5 duser=root ...`, bare or after a syslog header |
+| IBM LEEF 1.0 / 2.0 | `LEEF:1.0\|Vendor\|Product\|1.0\|EventID\|src=...<tab>usrName=...` |
+| auditd, Apache/Nginx, CSV, JSON, NDJSON, `key=value` | as before |
+
+For syslog the severity comes from the `<PRI>` value, raised when the message itself says more (sshd logs a failed password as informational, which is shown as a warning). CEF and LEEF severities 0-10 map to Low (0-3), Medium (4-6), High (7-8) and Critical (9-10). Lines that start with `#` or `;` followed by a non-digit are comments and are listed as skipped.
+
 **What happens after upload**
 
 1. The file is parsed into normalized events. Lines the parser cannot read are reported as skipped, and the response lists them.
@@ -256,6 +276,8 @@ The API field name is `logfile`. `GET /upload/formats` returns the accepted form
 - Geo rules need `country`, `asn`, `latitude` and `longitude` columns, or a local MaxMind-format database set with `GEOIP_CITY_DB_PATH` and `GEOIP_ASN_DB_PATH`. No network geolocation lookups are ever made.
 
 **Reviewing events.** Event Logs supports filters, search, pagination and export, and shows the normalized evidence for each event. CSV exports neutralize spreadsheet-formula prefixes so they are safe to open in Excel.
+
+**Export to another SIEM (ECS).** Export ECS on Event Logs downloads every stored event of the upload on screen as Elastic Common Schema documents, one JSON object per line (NDJSON), ready for Elasticsearch, OpenSearch or any tool that reads ECS. Unlike Export CSV it ignores the on-screen filters: it exports the whole stored upload. Analysts and Admins can export; Viewers cannot. Alerts export the same way through `GET /alerts/export?format=ecs`. An export stops at 50,000 records; the response header `X-Export-Truncated: true` says when, so narrow it with `upload_id`, `from` and `to`. Every export is recorded in the audit log.
 
 **Upload history.** `GET /upload/history` and `GET /upload/batches/{id}` list past batches with their source name, type, host and uploader.
 
@@ -425,8 +447,10 @@ The Rule Builder lets Admins and Analysts add detection rules without touching c
 | Status | Draft, Enabled, Disabled |
 | Conditions | One or more field tests. All must match (AND). |
 | Group by | `ip_address`, `username`, or none |
-| Time window | 5 min, 10 min, 30 min, 1 hour or 24 hours |
+| Time window | 5 min, 10 min, 30 min, 1 hour or 24 hours (an imported Sigma rule may use any whole number of seconds from 60 to 86,400) |
+| At least N events | Alert only when a window holds this many matches. Default 1. |
 | MITRE tactic | Optional, in the form `TA0001` |
+| ATT&CK technique | Optional, in the form `T1110` or `T1110.001`. Alerts from the rule carry it. |
 | Actions | create alert, notify Slack, auto-create incident, suggest playbook |
 
 **Custom Rule Schema Definition**
@@ -446,7 +470,7 @@ Admins and Analysts can create and update rules via the UI or directly via the R
     {"field": "timestamp", "operator": "between", "value": "22:00-06:00"}
   ],
   "group_by": "ip_address",
-  "threshold": 5,
+  "min_count": 5,
   "window_seconds": 300,
   "mitre_tactic": "TA0001",
   "mitre_technique": "T1110.001",
@@ -461,14 +485,16 @@ Admins and Analysts can create and update rules via the UI or directly via the R
 
 **Conditions & Operators**
 
-Custom rules can test these fields only: `event_type`, `status`, `ip_address`, `username`, `port` and `timestamp`.
+Custom rules can test these fields: `event_type`, `status`, `ip_address`, `username`, `hostname`, `process`, `command`, `message`, `file_path`, `dest_ip`, `protocol`, `domain`, `dns_query`, `port` and `timestamp`. A field your log format does not fill is simply empty, so a condition on it does not match.
 
 | Field type | Supported Operators | Description |
 | --- | --- | --- |
-| Text fields (`event_type`, `status`, `ip_address`, `username`) | `equals`, `not equals`, `contains`, `in` | Case-insensitive and trims surrounding spaces. `in` accepts a comma-separated list. |
+| Text fields (`event_type`, `status`, `ip_address`, `username`, `hostname`, `process`, `command`, `message`, `file_path`, `dest_ip`, `protocol`, `domain`, `dns_query`) | `equals`, `not equals`, `contains`, `startswith`, `endswith`, `in` | Case-insensitive and trims surrounding spaces. `in` accepts a comma-separated list. |
 | Numeric fields (`port`) | `equals`, `>`, `<`, `in` | Integer comparison. Validates ports (1–65535). |
-| Temporal fields (`timestamp`) | `between`, `before`, `after` | `between` accepts `HH:MM-HH:MM` ranges (e.g. `22:00-06:00` wrapping overnight) in UTC or named timezones. |
+| Temporal fields (`timestamp`) | `between`, `before`, `after` | `between` accepts `HH:MM-HH:MM` ranges (e.g. `22:00-06:00` wrapping overnight) in UTC or named timezones. The start is included and the end is excluded. |
 
+- **Any of.** Put several alternatives in one value, separated by `|`: `command endswith /bin/bash | /bin/sh` matches either. Write `\|` for a literal pipe. Works for every text operator except `in`, and for `port equals`.
+- **NOT.** The NOT button before a condition inverts it. NOT on a field the event does not have counts as a match, so `NOT ip_address equals 198.51.100.250` also matches events with no address. A rule cannot be made only of NOT conditions.
 - Invalid ports, empty list items, blank values and malformed times are rejected before the rule is saved.
 
 **How matching and windows work**
@@ -480,6 +506,14 @@ Custom rules can test these fields only: `event_type`, `status`, `ip_address`, `
 **Slack alerts.** To use notify Slack, set `SLACK_WEBHOOK_URL` in `.env`. Delivery is HTTPS only, and webhook secrets are hidden in error messages.
 
 **Test before you enable.** Use the test option (`POST /custom-rules/test`) against sample events, save the rule as Draft, then switch it to Enabled when you are happy. Deleting a rule asks for confirmation.
+
+**Import Sigma rules.** Choose Import Sigma on the new-rule screen, then paste YAML or load a `.yml` file (several rules separated by `---`, up to 50 and 256 KB). Each rule comes back as one of:
+
+- **Draft created**, with its new rule id and any note about the translation (for example that the `logsource` is not used, because a custom rule runs on every upload). Choose **Review and test** to open it in the builder, run a test, and enable it.
+- **Already imported**, when a rule with the same Sigma `id` exists.
+- **Not imported**, with the reason. The engine can express selections joined by `and`, `not` filters on a single field, `1 of` / `all of`, lists of values, the `contains`, `startswith`, `endswith`, `all`, `gt`, `gte`, `lt` and `lte` modifiers, `*` at either end of a value, `timeframe`, and `count() [by SourceIp|User] > N`. It refuses rather than approximates: regular expressions (`|re`), `or` between selections, a `not` over several fields, fields with no CyberShield equivalent (such as `Hashes`), and Sigma correlation rules.
+
+`level` sets the severity (informational counts as Low), and `attack.*` tags set the tactic and technique. The original YAML stays attached to the rule. Common Sigma field names are mapped automatically: `SourceIp`, `DestinationIp`, `DestinationPort`, `User`/`TargetUserName`, `Computer`, `Image`, `CommandLine`, `TargetFilename`, `QueryName`, `DestinationHostname`, `Protocol`, and ECS names such as `source.ip` and `process.command_line`. `sample-logs/sigma/` has example rules and a log to test them on.
 
 ## 9. Collect logs automatically
 
@@ -589,6 +623,13 @@ Integrated through Anthropic's Claude API (`ANTHROPIC_API_KEY`), the assistant p
 - Passwords must meet the minimum length (12 by default, set by `PASSWORD_MIN_LENGTH`). Set `EMAIL_VERIFY_DELIVERABILITY=true` to also check that a new user's email domain resolves in DNS; leave it false offline.
 - Passwords are hashed with Argon2. Resetting a password or disabling an account revokes that user's sessions.
 - The system refuses any change that would remove the last active Admin. The interface also stops you from demoting or disabling your own account.
+- **Reset authenticator.** When a user with an authenticator app has lost the device and their recovery codes, select them and choose Reset authenticator. This removes the app and the codes, signs them out everywhere, and their next sign-in uses an emailed code. The user's details show which method they use.
+
+**Audit log (Admin only, Manage > Audit Log)**
+
+Every security-relevant action is recorded with who did it, their role, the time, the address and browser it came from, what it was done to, and whether it succeeded. That covers sign-ins (both steps, including failures), sign-outs, password resets, invites, authenticator changes, every user-management action, rule changes and Sigma imports, threat-feed imports, deletions and exports, model training and activation, uploads and collector ingests, and report and ECS exports. Alert and incident changes are not repeated here; they are in each alert's and incident's own history.
+
+Filter by category, person, outcome and time range, and page back with Load older entries. The log is read-only: there is no way to edit or delete an entry through the app. A failed sign-in for a name that is not an account is recorded without the typed name, because people sometimes type a password into the username box. The API is `GET /audit/events`.
 
 ![Users page showing sample accounts, their roles, and the Edit workspace access panel](user-guide-images/user-management.jpg)
 
@@ -656,7 +697,9 @@ Batch Ingestion Stream
 
 **Threat-intel feeds**
 
-`threat_intel_match` stays silent until you import a feed. A feed is a plain text file with one IP, CIDR range or domain per line. Import it from Threat Detection > Threat Intelligence > Import Feed, or through the API (`POST /threat-intel/feeds`), list indicators with `GET /threat-intel/indicators`, and remove a feed with `DELETE /threat-intel/feeds/{source}`. To suppress an indicator you trust, add it to that rule's allowlist.
+`threat_intel_match` stays silent until you import a feed. A feed is either a plain text list with one IP, CIDR range or domain per line, or a STIX 2.1 bundle (JSON) such as an ISAC or MISP export. Paste it or choose Load from file in Threat Detection > Threat Intelligence, or use the API (`POST /threat-intel/feeds`). From a STIX bundle, the `ipv4-addr`, `ipv6-addr` and `domain-name` indicators are imported; revoked or expired indicators and other kinds (file hashes, URLs, email addresses) are skipped and counted in the result. List indicators with `GET /threat-intel/indicators`, and remove a feed with `DELETE /threat-intel/feeds/{source}`. To suppress an indicator you trust, add it to that rule's allowlist.
+
+Export STIX on a feed downloads it as a STIX 2.1 bundle (`GET /threat-intel/feeds/{source}/stix`) to share with another tool. Its ids are stable, so exporting the same feed twice gives the same objects.
 
 **Host heartbeats & cadence tracking**
 
@@ -668,7 +711,7 @@ Batch Ingestion Stream
 - **Incident Capacity Rules:** Incidents store up to 5 concurrent investigative notes.
 - **Optimistic Concurrency Control:** State updates validate entity version timestamps, rejecting stale writes with HTTP 409 if another analyst modified the record concurrently.
 
-**Settings and notifications.** Only Admins can change workspace settings. Session lifetime, MFA and privileged re-authentication are controlled by the backend (`.env`), not by the Settings page. Each person can pick which live events appear in their notification center, plus theme, density, text size, contrast and motion.
+**Settings and notifications.** Only Admins can change workspace settings. Session lifetime, rate limits and privileged re-authentication are controlled by the backend (`.env`), not by the Settings page; each person sets up their own authenticator app in Settings > Security. Each person can pick which live events appear in their notification center, plus theme, density, text size, contrast and motion.
 
 **Tuning noise.** If a rule is too chatty, raise its threshold or set a `cooldown_seconds`. If it is irrelevant, set `enabled` to false. Do this per rule from Threat Detection, or for the whole deployment with `DETECTION_RULE_CONFIG`.
 

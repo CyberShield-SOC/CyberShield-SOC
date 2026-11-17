@@ -1,3 +1,4 @@
+import { normalizeMfaState, normalizeTotpSetup } from "../soc/utils/mfa.js";
 import {
   apiRequest,
   ApiRequestError,
@@ -46,6 +47,24 @@ export function getTwoFactorFailureMessage(status, payload = {}) {
   if (status === 429) return "Please wait before requesting another code.";
   if (status === 401) return "Your verification code has expired. Request a new code.";
   return "The secure service could not complete the request. Please try again.";
+}
+
+export function getMfaFailureMessage(status, payload = {}) {
+  const detail = safeAuthValidationDetail(payload);
+  if (detail) return detail;
+  if (status === 429) return "Too many attempts. Wait a minute and try again.";
+  if (status === 401) return "Your session has expired. Sign in again to change sign-in verification.";
+  return "The secure service could not complete the request. Please try again.";
+}
+
+function readRecoveryCodes(payload) {
+  const codes = Array.isArray(payload?.recovery_codes)
+    ? payload.recovery_codes.filter((code) => typeof code === "string" && code)
+    : [];
+  if (!codes.length) {
+    throw new AuthRequestError("The secure service returned an invalid response. Please try again.");
+  }
+  return codes;
 }
 
 function safeAuthValidationDetail(payload) {
@@ -144,7 +163,12 @@ export const authClient = {
     if (!payload?.requiresTwoFactor) {
       throw new AuthRequestError("The secure service returned an invalid response. Please try again.");
     }
-    return { requiresTwoFactor: true, email: String(payload.email || "") };
+    return {
+      requiresTwoFactor: true,
+      email: String(payload.email || ""),
+      // "totp": the account uses an authenticator app, so nothing was emailed.
+      method: payload.method === "totp" ? "totp" : "email",
+    };
   },
 
   /** Complete a pending login. Only on success does a real session exist. */
@@ -170,6 +194,46 @@ export const authClient = {
       errorMessage: getTwoFactorFailureMessage,
     });
     return String(payload?.message || "A new verification code has been sent.");
+  },
+
+  /** How this account proves its second factor: emailed code or authenticator app. */
+  async getMfa() {
+    return normalizeMfaState(await authRequest("/auth/mfa", { errorMessage: getMfaFailureMessage }));
+  },
+
+  /** Start authenticator enrolment. Nothing changes at sign-in until enableTotp(). */
+  async beginTotpSetup() {
+    return normalizeTotpSetup(await authRequest("/auth/mfa/totp/setup", {
+      method: "POST",
+      errorMessage: getMfaFailureMessage,
+    }));
+  },
+
+  /** Confirm enrolment. The recovery codes in the result are shown once. */
+  async enableTotp(code) {
+    const payload = await authRequest("/auth/mfa/totp/enable", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      errorMessage: getMfaFailureMessage,
+    });
+    return { recoveryCodes: readRecoveryCodes(payload), state: normalizeMfaState(payload) };
+  },
+
+  async disableTotp({ password, code }) {
+    return normalizeMfaState(await authRequest("/auth/mfa/totp/disable", {
+      method: "POST",
+      body: JSON.stringify({ password, code }),
+      errorMessage: getMfaFailureMessage,
+    }));
+  },
+
+  async regenerateRecoveryCodes(code) {
+    const payload = await authRequest("/auth/mfa/recovery-codes", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      errorMessage: getMfaFailureMessage,
+    });
+    return { recoveryCodes: readRecoveryCodes(payload), state: normalizeMfaState(payload) };
   },
 
   async currentUser() {

@@ -217,7 +217,7 @@ export async function apiRequestBlob(path, {
 
   try {
     const headers = new Headers(options.headers);
-    headers.set("Accept", "application/pdf");
+    if (!headers.has("Accept")) headers.set("Accept", "application/pdf");
     if (accessToken) {
       headers.set("Authorization", `Bearer ${accessToken}`);
     }
@@ -247,7 +247,7 @@ export async function apiRequestBlob(path, {
 
     const blob = await response.blob();
     const filename = filenameFromContentDisposition(response.headers.get("content-disposition"));
-    return { blob, filename };
+    return { blob, filename, headers: response.headers };
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new ErrorType(timeoutMessage, { status: 0 });

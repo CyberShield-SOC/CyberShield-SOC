@@ -10,17 +10,21 @@ from app.detection._ts import parse_ts, ts_to_str
 from app.detection.models import Alert, LogRecord
 from app.detection.rules.base import BaseRule
 
-# The only LogRecord attributes a custom rule may read. Anything else the
-# frontend might offer (bytes_out, host, dest_ip, ...) has no backing column
-# in the parsed event schema and can never match, so field validation rejects
+# The only LogRecord attributes a custom rule may read. Each is filled by the
+# parsers through app/detection/normalize.py; anything else (bytes_out as a
+# string, a "host" alias, ...) could never match, so field validation rejects
 # it before a rule is ever saved.
-STRING_FIELDS = frozenset({"event_type", "status", "ip_address", "username"})
+STRING_FIELDS = frozenset({
+    "event_type", "status", "ip_address", "username",
+    "hostname", "process", "message", "command", "file_path",
+    "dest_ip", "protocol", "domain", "dns_query",
+})
 NUMBER_FIELDS = frozenset({"port"})
 TIMESTAMP_FIELDS = frozenset({"timestamp"})
 KNOWN_FIELDS = STRING_FIELDS | NUMBER_FIELDS | TIMESTAMP_FIELDS
 
 OPERATORS_BY_TYPE = {
-    "string": ("equals", "not equals", "contains", "in"),
+    "string": ("equals", "not equals", "contains", "startswith", "endswith", "in"),
     "number": ("equals", ">", "<", "in"),
     "timestamp": ("between", "before", "after"),
 }
@@ -49,6 +53,10 @@ def _match_string(actual: Any, operator: str, expected: str) -> bool:
         return actual_l != expected_l
     if operator == "contains":
         return expected_l in actual_l
+    if operator == "startswith":
+        return actual_l.startswith(expected_l)
+    if operator == "endswith":
+        return actual_l.endswith(expected_l)
     if operator == "in":
         options = {item.strip().lower() for item in expected.split(",") if item.strip()}
         return actual_l in options
@@ -123,12 +131,9 @@ def _match_timestamp(actual: Any, operator: str, expected: str, tz_name: str | N
     return False
 
 
-def evaluate_condition(record: LogRecord, condition: dict) -> bool:
-    """Return True when one WHERE/AND condition matches a parsed log record."""
-
+def _match_one(record: LogRecord, condition: dict, value: str) -> bool:
     field = condition.get("field")
     operator = condition.get("operator")
-    value = str(condition.get("value", ""))
     actual = getattr(record, field, None) if field in KNOWN_FIELDS else None
 
     kind = field_type(field)
@@ -139,12 +144,31 @@ def evaluate_condition(record: LogRecord, condition: dict) -> bool:
     return _match_string(actual, operator, value)
 
 
+def evaluate_condition(record: LogRecord, condition: dict) -> bool:
+    """Return True when one WHERE/AND condition matches a parsed log record.
+
+    A condition holds either one ``value`` or a ``values`` list, which
+    matches when any of them does (OR). ``negate`` inverts the result, so
+    "NOT process endswith [a, b]" matches an event whose process ends in
+    neither, including one with no process at all.
+    """
+
+    field = condition.get("field")
+    if field not in KNOWN_FIELDS:
+        return False
+    values = condition.get("values")
+    candidates = [str(item) for item in values] if values else [str(condition.get("value", ""))]
+    matched = any(_match_one(record, condition, value) for value in candidates)
+    return not matched if condition.get("negate") else matched
+
+
 class CustomConditionRule(BaseRule):
     """
     Evaluates one persisted, user-authored condition set against parsed log
     records. All conditions must match (logical AND, mirroring the "WHERE /
     AND" rows in the Rule Builder UI). Matches are grouped by an optional
-    field and bucketed into non-overlapping windows, one alert per bucket.
+    field and bucketed into non-overlapping windows, one alert per bucket
+    that holds at least ``min_count`` events (default 1: every bucket).
     """
 
     def __init__(
@@ -156,6 +180,8 @@ class CustomConditionRule(BaseRule):
         conditions: list[dict],
         group_by: str | None = None,
         window_seconds: int = 600,
+        min_count: int = 1,
+        mitre_technique: str | None = None,
     ):
         self.rule_id = rule_id
         self.name = rule_id
@@ -165,6 +191,8 @@ class CustomConditionRule(BaseRule):
         self.conditions = list(conditions)
         self.group_by = group_by if group_by in GROUP_FIELDS else None
         self.window_seconds = max(60, int(window_seconds or 600))
+        self.min_count = max(1, int(min_count or 1))
+        self.mitre_technique = mitre_technique or None
 
     def _matches(self, record: LogRecord) -> bool:
         return bool(self.conditions) and all(evaluate_condition(record, condition) for condition in self.conditions)
@@ -199,10 +227,11 @@ class CustomConditionRule(BaseRule):
                     and bucket[0][1] is not None
                     and (ts - bucket[0][1]).total_seconds() > self.window_seconds
                 ):
-                    alerts.append(self._alert_for_bucket(bucket, group_key))
+                    if len(bucket) >= self.min_count:
+                        alerts.append(self._alert_for_bucket(bucket, group_key))
                     bucket = []
                 bucket.append((record, ts))
-            if bucket:
+            if bucket and len(bucket) >= self.min_count:
                 alerts.append(self._alert_for_bucket(bucket, group_key))
 
         return alerts
@@ -238,4 +267,5 @@ class CustomConditionRule(BaseRule):
                 f"within {self.window_seconds}s."
             ),
             matched_line_numbers=[record.line_number for record in bucket_records],
+            mitre_technique=self.mitre_technique,
         )

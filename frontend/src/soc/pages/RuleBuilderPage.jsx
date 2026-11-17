@@ -5,6 +5,7 @@ import {
   Check,
   CircleAlert,
   CircleCheck,
+  FileCode2,
   Play,
   Plus,
   X,
@@ -12,6 +13,7 @@ import {
 import { SOC_ROUTES } from "../../hooks/useAuthRoute";
 import { useSocWorkspace } from "../context/SocWorkspaceContext";
 import { InlineNotice, LoadingState, Panel } from "../components/Ui";
+import { SigmaImportDialog } from "../components/SigmaImportDialog";
 import {
   ACTION_OPTIONS,
   FIELD_CATALOG,
@@ -26,12 +28,22 @@ import {
   WINDOW_SECONDS_BY_VALUE,
 } from "../data/ruleBuilderMockData";
 import "./RuleBuilderPage.css";
-import { actionIsEnabled, toggleRuleAction, validateCustomRuleDraft } from "../utils/customRuleDraft";
+import {
+  actionIsEnabled,
+  formatWindowSeconds,
+  MAX_MIN_COUNT,
+  toggleRuleAction,
+  validateCustomRuleDraft,
+  windowSecondsOf,
+  windowValueOf,
+} from "../utils/customRuleDraft";
 import { RULE_CATEGORIES } from "../data/ruleCategories";
 import {
   TIMEZONE_OPTIONS,
+  conditionFromApi,
+  conditionToApi,
   conditionToDsl as buildConditionDsl,
-  conditionTimezonePayload,
+  supportsAlternatives,
   supportsTimezone,
 } from "../utils/ruleConditions";
 
@@ -60,17 +72,24 @@ export default function RuleBuilderPage({ navigate }) {
 function RuleBuilderForm({ navigate, initialRule }) {
   const baseId = useId();
   const conditionKeyRef = useRef(0);
-  const { canManageRules, createCustomRule, updateCustomRule, nextCustomRuleId, testCustomRule } = useSocWorkspace();
+  const {
+    canManageRules, createCustomRule, updateCustomRule, nextCustomRuleId, testCustomRule,
+    refresh, repositoryMode, setEditingCustomRuleId,
+  } = useSocWorkspace();
+  const importedFromSigma = initialRule?.source === "sigma";
+  const [sigmaOpen, setSigmaOpen] = useState(false);
   const [ruleName, setRuleName] = useState(initialRule?.name ?? RULE_BUILDER_DEFAULTS.name);
   const [category, setCategory] = useState(initialRule?.category ?? RULE_BUILDER_DEFAULTS.category);
   const [severity, setSeverity] = useState(initialRule?.severity ?? RULE_BUILDER_DEFAULTS.severity);
   const [tactic, setTactic] = useState(initialRule ? initialRule.tactic || "" : RULE_BUILDER_DEFAULTS.tactic);
   const [conditions, setConditions] = useState(() => (initialRule?.conditions || INITIAL_CONDITIONS).map((condition) => ({
-    ...condition,
+    ...conditionFromApi(condition),
     key: `c${(conditionKeyRef.current += 1)}`,
   })));
+  const [minCount, setMinCount] = useState(String(initialRule?.minCount ?? 1));
+  const [mitreTechnique, setMitreTechnique] = useState(initialRule?.mitreTechnique ?? "");
   const [groupBy, setGroupBy] = useState(initialRule?.groupBy ?? RULE_BUILDER_DEFAULTS.groupBy);
-  const [windowValue, setWindowValue] = useState(initialRule ? Object.keys(WINDOW_SECONDS_BY_VALUE).find((value) => WINDOW_SECONDS_BY_VALUE[value] === initialRule.windowSeconds) || "" : RULE_BUILDER_DEFAULTS.window);
+  const [windowValue, setWindowValue] = useState(initialRule ? windowValueOf(initialRule.windowSeconds) : RULE_BUILDER_DEFAULTS.window);
   const [actions, setActions] = useState(() => Object.fromEntries(
     ACTION_OPTIONS.map((action) => [action.id, initialRule ? initialRule.actions?.[action.id] ?? false : action.checked]),
   ));
@@ -89,8 +108,8 @@ function RuleBuilderForm({ navigate, initialRule }) {
     : initialRule ? `${initialRule.id} · editing` : `${nextCustomRuleId || RULE_BUILDER_DEFAULTS.ruleId} · auto-assigned`;
 
   const validation = useMemo(
-    () => validateCustomRuleDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category }),
-    [conditions, groupBy, ruleName, severity, windowValue, category],
+    () => validateCustomRuleDraft({ conditions, groupBy, ruleName, severity, window: windowValue, category, minCount, mitreTechnique }),
+    [conditions, groupBy, ruleName, severity, windowValue, category, minCount, mitreTechnique],
   );
   const syntaxValid = !validation.syntaxProblems.length;
   const schemaValid = !validation.unknownFields.length;
@@ -112,16 +131,18 @@ function RuleBuilderForm({ navigate, initialRule }) {
     });
     lines.push([{ text: "  group by ", kind: "keyword" }, { text: groupBy, kind: "field" }]);
     lines.push([{ text: "  window ", kind: "keyword" }, { text: windowValue, kind: "value" }]);
+    if (Number(minCount) > 1) lines.push([{ text: "  count >= ", kind: "keyword" }, { text: String(minCount), kind: "value" }]);
     lines.push([
       { text: "  then ", kind: "keyword" },
       { text: "alert(", kind: "fn" },
       { text: "severity: ", kind: "punct" },
       { text: severity.toUpperCase(), kind: "value" },
+      ...(mitreTechnique.trim() ? [{ text: ", technique: ", kind: "punct" }, { text: mitreTechnique.trim().toUpperCase(), kind: "value" }] : []),
       { text: ")", kind: "fn" },
     ]);
     lines.push([{ text: "}", kind: "punct" }]);
     return lines;
-  }, [conditions, groupBy, initialRule, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category]);
+  }, [conditions, groupBy, initialRule, nextCustomRuleId, ruleName, savedRule, severity, windowValue, category, minCount, mitreTechnique]);
 
   const dslText = useMemo(
     () => dslLines.map((line) => line.map((fragment) => fragment.text).join("")).join("\n"),
@@ -144,7 +165,7 @@ function RuleBuilderForm({ navigate, initialRule }) {
     // The old value's format (e.g. "00:00 – 06:00") is almost never valid
     // for the new field's type, so clear it rather than leave a stale value
     // that would silently never match once the rule runs.
-    updateCondition(key, { field, operator: operatorsFor(field)[0], value: "", timezone: "" });
+    updateCondition(key, { field, operator: operatorsFor(field)[0], value: "", timezone: "", negate: false });
   }
 
   function addCondition() {
@@ -154,6 +175,7 @@ function RuleBuilderForm({ navigate, initialRule }) {
       operator: operatorsFor(FIELD_CATALOG[0].value)[0],
       value: "",
       timezone: "",
+      negate: false,
     }]);
     clearDraftFeedback();
   }
@@ -171,17 +193,15 @@ function RuleBuilderForm({ navigate, initialRule }) {
       category,
       severity,
       tactic,
-      conditions: conditions.map((condition) => ({
-        field: condition.field,
-        operator: condition.operator,
-        value: condition.value,
-        timezone: conditionTimezonePayload(condition, fieldTypeOf(condition.field)),
-      })),
+      conditions: conditions.map((condition) => conditionToApi(condition, fieldTypeOf(condition.field))),
       groupBy,
-      windowSeconds: WINDOW_SECONDS_BY_VALUE[windowValue] || 600,
+      windowSeconds: windowSecondsOf(windowValue) || 600,
+      minCount: Number(minCount) || 1,
+      mitreTechnique: mitreTechnique.trim().toUpperCase(),
       actions,
       status,
-      dsl: dslText,
+      // An imported rule keeps its original Sigma YAML as its source text.
+      dsl: importedFromSigma && initialRule?.dsl ? initialRule.dsl : dslText,
     };
   }
 
@@ -223,6 +243,12 @@ function RuleBuilderForm({ navigate, initialRule }) {
 
   const showResult = testState !== "loading" && testResult;
 
+  async function reviewImportedRule(rule) {
+    setSigmaOpen(false);
+    await refresh("customRules");
+    setEditingCustomRuleId(rule.backendId);
+  }
+
   return (
     <>
       <header className="soc-page-header rule-builder-header">
@@ -235,6 +261,12 @@ function RuleBuilderForm({ navigate, initialRule }) {
           <p>{initialRule ? `Update ${initialRule.id} without changing existing alert evidence.` : "Create a custom rule for future uploads."}</p>
         </div>
         <div className="soc-page-actions">
+          {!initialRule && canManageRules && (
+            <button className="soc-button secondary" type="button" onClick={() => setSigmaOpen(true)} disabled={Boolean(savingAction)}>
+              <FileCode2 size={15} aria-hidden="true" />
+              Import Sigma
+            </button>
+          )}
           <button
             className="soc-button secondary"
             type="button"
@@ -279,6 +311,19 @@ function RuleBuilderForm({ navigate, initialRule }) {
       )}
 
       {!canManageRules && <InlineNotice title="Read-only access">Your role can view rules but cannot change or test them.</InlineNotice>}
+      {importedFromSigma && (
+        <InlineNotice className="rule-builder-confirmation" tone="info" title="Imported from Sigma">
+          Translated from Sigma rule {initialRule.externalId || "without an id"}. Its original YAML is kept as this rule&apos;s source. Run a test before enabling it.
+        </InlineNotice>
+      )}
+      {sigmaOpen && (
+        <SigmaImportDialog
+          repositoryMode={repositoryMode}
+          onClose={() => setSigmaOpen(false)}
+          onImported={() => refresh("customRules")}
+          onReview={reviewImportedRule}
+        />
+      )}
       <fieldset className="rule-builder-workspace" disabled={!canManageRules || Boolean(savingAction) || savedNewRule || testState === "loading"}>
         <div className="rule-builder-editor">
           <Panel title="Rule definition">
@@ -310,6 +355,20 @@ function RuleBuilderForm({ navigate, initialRule }) {
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
+              </label>
+              <label className="rule-builder-field" htmlFor={`${baseId}-technique`}>
+                <span>ATT&amp;CK technique</span>
+                <input
+                  id={`${baseId}-technique`}
+                  className="rule-builder-mono"
+                  type="text"
+                  maxLength="9"
+                  autoCapitalize="characters"
+                  spellCheck="false"
+                  placeholder="T1110.001"
+                  value={mitreTechnique}
+                  onChange={(event) => { setMitreTechnique(event.target.value); clearDraftFeedback(); }}
+                />
               </label>
               <label className="rule-builder-field" htmlFor={`${baseId}-tactic`}>
                 <span>MITRE ATT&amp;CK tactic</span>
@@ -348,7 +407,7 @@ function RuleBuilderForm({ navigate, initialRule }) {
 
           <Panel
             title="Conditions — WHEN"
-            subtitle="all conditions must match"
+            subtitle="all conditions must match · separate alternatives with |"
             actions={(
               <button className="soc-button secondary compact" type="button" disabled={conditions.length >= 10} onClick={addCondition}>
                 <Plus size={14} aria-hidden="true" />
@@ -361,11 +420,22 @@ function RuleBuilderForm({ navigate, initialRule }) {
                 const rowId = `${baseId}-${condition.key}`;
                 const isFirst = index === 0;
                 const hasTimezone = supportsTimezone(condition.field, fieldTypeOf(condition.field), condition.operator);
+                const allowsAlternatives = supportsAlternatives(fieldTypeOf(condition.field), condition.operator);
                 return (
                   <div className={`rule-builder-condition-row${hasTimezone ? " has-timezone" : ""}`} key={condition.key}>
                     <span className="rule-builder-chip" data-chip={isFirst ? "where" : "and"}>
                       {isFirst ? "WHERE" : "AND"}
                     </span>
+                    <button
+                      className="rule-builder-not"
+                      type="button"
+                      aria-pressed={condition.negate ? "true" : "false"}
+                      aria-label={`Condition ${index + 1}: ${condition.negate ? "does not match (NOT on)" : "matches (NOT off)"}`}
+                      title={condition.negate ? "Matches events where this is not true" : "Invert this condition"}
+                      onClick={() => updateCondition(condition.key, { negate: !condition.negate })}
+                    >
+                      NOT
+                    </button>
                     <label className="sr-only" htmlFor={`${rowId}-field`}>Condition {index + 1} field</label>
                     <select
                       id={`${rowId}-field`}
@@ -393,10 +463,10 @@ function RuleBuilderForm({ navigate, initialRule }) {
                       id={`${rowId}-value`}
                       className="rule-builder-mono"
                       type="text"
-                      maxLength="120"
+                      maxLength={allowsAlternatives ? 2000 : 200}
                       value={condition.value}
                       aria-invalid={String(condition.value || "").trim() ? undefined : "true"}
-                      placeholder="value"
+                      placeholder={allowsAlternatives ? "value | another" : "value"}
                       onChange={(event) => updateCondition(condition.key, { value: event.target.value })}
                     />
                     {hasTimezone && (
@@ -444,10 +514,29 @@ function RuleBuilderForm({ navigate, initialRule }) {
               <label htmlFor={`${baseId}-window`}>
                 <span>WINDOW</span>
                 <select id={`${baseId}-window`} className="rule-builder-mono" value={windowValue} onChange={(event) => { setWindowValue(event.target.value); clearDraftFeedback(); }}>
+                  {!WINDOW_SECONDS_BY_VALUE[windowValue] && windowSecondsOf(windowValue) && (
+                    <option value={windowValue}>{formatWindowSeconds(windowSecondsOf(windowValue))}</option>
+                  )}
                   {WINDOW_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
+              </label>
+              <label htmlFor={`${baseId}-min-count`}>
+                <span>AT LEAST</span>
+                <input
+                  id={`${baseId}-min-count`}
+                  className="rule-builder-mono rule-builder-count"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max={MAX_MIN_COUNT}
+                  step="1"
+                  value={minCount}
+                  aria-describedby={`${baseId}-min-count-unit`}
+                  onChange={(event) => { setMinCount(event.target.value); clearDraftFeedback(); }}
+                />
+                <span id={`${baseId}-min-count-unit`}>EVENTS</span>
               </label>
             </div>
           </Panel>
@@ -514,6 +603,8 @@ function RuleBuilderForm({ navigate, initialRule }) {
                         {" "}{match.ipAddress || "—"} {match.eventType || "—"}
                         {match.username ? ` (${match.username})` : ""}
                         {match.port ? ` :${match.port}` : ""}
+                        {match.process ? ` · ${match.process}` : ""}
+                        {match.hostname ? ` on ${match.hostname}` : ""}
                       </li>
                     ))}
                   </ul>
